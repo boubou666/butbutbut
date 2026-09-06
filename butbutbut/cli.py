@@ -313,7 +313,9 @@ def _watch_headless(guard, args, stopping) -> None:
                 media = resolve_sound(args)
             play_goal_sound(media[0])
 
-        stopping.wait(guard.next_delay())
+        # plan_wait() et pas next_delay() : le watcher retient ce qu'on s'est
+        # engage a attendre, et voit ainsi au tick suivant qu'on a dormi.
+        stopping.wait(guard.plan_wait())
 
 
 def _watch_with_cards(guard, args, stopping, stack) -> None:
@@ -335,7 +337,7 @@ def _watch_with_cards(guard, args, stopping, stack) -> None:
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
-            stopping.wait(guard.next_delay())
+            stopping.wait(guard.plan_wait())
 
     thread = threading.Thread(target=poll, name="butbutbut-watch", daemon=True)
     thread.start()

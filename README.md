@@ -275,6 +275,32 @@ Deux garde-fous :
 - **un score qui descend** (but refuse par la VAR) affiche une carte orange
   `BUT ANNULE`, sans son.
 
+### Sortie de veille
+
+Si la machine dort, hiberne, ou si le processus est gele pendant une mi-temps,
+le tableau de bord a pris des heures d'avance sur la derniere photo : le
+comparer telle quelle sortirait une carte `BUT` avec un delta de 3 et une
+minute perimee, voire un `COUP D'ENVOI` pour un match deja termine.
+
+Avant chaque releve, le daemon confronte le temps d'horloge reellement ecoule a
+celui qu'il avait prevu d'attendre. Au-dela de **deux minutes de retard** (de
+quoi laisser passer sans broncher une machine chargee ou un releve traine par
+le timeout HTTP de 8 s), il considere qu'il a saute dans le temps :
+il **rephotographie tous les scores en silence**, exactement comme au premier
+releve, et le note dans le journal :
+
+```
+2026-09-06 21:14:07  trou de 47 min dans le temps (veille, hibernation ou processus gele) - on rephotographie les scores sans rien annoncer
+```
+
+La surveillance reprend ensuite normalement, et le but suivant est annonce
+comme d'habitude. Les buts tombes pendant la veille, eux, sont perdus : c'est
+le prix a payer pour ne pas raconter n'importe quoi.
+
+La mesure porte sur l'horloge murale et non sur `time.monotonic()` : sous
+Linux, monotonic est gelee pendant la veille et ne verrait donc aucun trou,
+alors que sous Windows elle continue d'avancer.
+
 ### Cadence
 
 Chaque championnat a son propre rythme, pour ne pas marteler la source :

@@ -7,11 +7,15 @@ minute, csc, penalty) ; elle arrive parfois avec quelques secondes de retard,
 c'est pour ca qu'elle ne sert jamais a *detecter* le but, seulement a le
 decrire.
 
-Deux garde-fous :
+Trois garde-fous :
   - le premier passage sur un championnat ne declenche rien : il photographie
     l'existant, sinon lancer le daemon en pleine journee de championnat ferait
     hurler tous les buts deja marques ;
-  - un score qui *descend* (but refuse par la VAR) est signale sans son.
+  - un score qui *descend* (but refuse par la VAR) est signale sans son ;
+  - un trou dans le temps (veille, hibernation, processus gele) remet tous les
+    championnats a l'etat "jamais photographie" : au reveil la source a des
+    heures d'avance sur nous, la comparer a notre derniere photo n'a plus de
+    sens.
 
 La cadence s'adapte : rapide quand un match est en cours, lente quand il n'y a
 rien a regarder. Chaque championnat a son propre rythme, donc on n'interroge
@@ -31,6 +35,7 @@ KICKOFF_WINDOW = 1200.0        # "imminent" = dans moins de 20 min
 MAX_BACKOFF = 300.0            # plafond d'attente apres une erreur reseau
 SPREAD = 1.5                   # decalage entre deux competitions, en secondes
 FORGET_AFTER = 12 * 3600.0     # on oublie un match vu il y a plus de 12 h
+GAP_GRACE = 120.0              # retard tolere avant de crier a la suspension
 
 GOAL = "goal"
 CANCELLED = "cancelled"
@@ -179,7 +184,7 @@ class Watcher:
     def __init__(self, leagues, interval=DEFAULT_INTERVAL,
                  idle_interval=DEFAULT_IDLE_INTERVAL,
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
-                 opener=None, on_log=None, teams=None):
+                 opener=None, on_log=None, teams=None, clock=None):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
@@ -190,12 +195,17 @@ class Watcher:
         self.timeout = float(timeout)
         self.opener = opener
         self.on_log = on_log or (lambda message: None)
+        # L'horloge murale, surchargeable : elle sert a reperer les trous, et
+        # les tests ne peuvent pas endormir la machine pour de vrai.
+        self.clock = clock or time.time
 
         self.matches = {}          # slug -> list[Match] du dernier passage
         self._snapshots = {}       # match_id -> _Snapshot
         self._due = {league.slug: 0.0 for league in self.leagues}
         self._failures = {league.slug: 0 for league in self.leagues}
         self._primed = set()       # championnats deja photographies une fois
+        self._planned = 0.0        # attente annoncee a la boucle de surveillance
+        self._planned_at = None    # ... et l'heure a laquelle on l'a annoncee
 
     # ------------------------------------------------------------ cadence ---
 
@@ -210,6 +220,37 @@ class Watcher:
             return self.idle_interval
         soonest = min(self._due.get(l.slug, 0.0) for l in self.leagues)
         return max(1.0, min(60.0, soonest - now))
+
+    def plan_wait(self, now=None) -> float:
+        """Le meme delai, mais note : c'est ce qu'on s'engage a attendre.
+
+        La boucle de surveillance appelle ceci plutot que next_delay() juste
+        avant de dormir. Le prochain tick() confrontera cette promesse au
+        temps reellement ecoule ; l'ecart, c'est le trou.
+        """
+        delay = self.next_delay(now=now)
+        self._planned = delay
+        self._planned_at = self.clock()
+        return delay
+
+    def _gap(self) -> float:
+        """Le temps d'horloge perdu depuis la derniere promesse, 0.0 sinon.
+
+        On mesure avec l'horloge murale et non time.monotonic() : sous Linux
+        monotonic est gelee pendant la veille, elle ne verrait donc aucun
+        trou, alors que sous Windows elle continue d'avancer. Un reglage NTP
+        peut la faire sauter, mais le prix d'un faux positif se limite a une
+        re-photographie muette.
+        """
+        if self._planned_at is None:
+            return 0.0
+        elapsed = self.clock() - self._planned_at
+        # GAP_GRACE laisse largement passer une machine chargee ou un releve
+        # traine par le timeout HTTP : un vrai reveil de veille se compte en
+        # minutes, jamais en secondes.
+        if elapsed <= self._planned + GAP_GRACE:
+            return 0.0
+        return elapsed
 
     def _cadence(self, matches) -> float:
         """Rythme de ce championnat, d'apres ce qu'il a au programme."""
@@ -276,10 +317,29 @@ class Watcher:
     def tick(self, now=None) -> list:
         """Passe sur tous les championnats dont l'heure est venue."""
         now = now if now is not None else time.monotonic()
+        self._check_gap()
         events = []
         for league in self.due_leagues(now):
             events.extend(self.refresh(league, now=now))
         return events
+
+    def _check_gap(self) -> float:
+        """Si on a saute dans le temps, tout redevient a photographier.
+
+        Sans ca, un 0-0 releve avant la veille compare a un 3-1 lu au reveil
+        sortirait une carte "BUT" de delta 3 avec une minute perimee, voire un
+        "COUP D'ENVOI" pour un match deja fini. Le silence du premier releve
+        est exactement le bon comportement : on le rejoue.
+        """
+        gap = self._gap()
+        if not gap:
+            return 0.0
+        self.on_log("trou de {:.0f} min dans le temps (veille, hibernation ou "
+                    "processus gele) - on rephotographie les scores sans rien "
+                    "annoncer".format(gap / 60.0))
+        self._primed.clear()
+        self._planned_at = None
+        return gap
 
     def prime(self, pause: float = 0.2) -> None:
         """Premier passage sur tout : photographie l'existant, sans alerte.
