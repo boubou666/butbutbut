@@ -670,17 +670,13 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**218 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
-**225 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
-**222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
-la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
-une police factice, donc sans tkinter.
-**238 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
-cache d'ecussons par un `fetcher`, et la geometrie des cartes (empilement,
-debordement, troncature, place des ecussons) est verifiee avec une police
-factice, donc sans tkinter. Le choix de couleur, lui, est une fonction pure :
-son invariant est teste sur toutes les paires d'un jeu de couleurs reelles - ce
-qui sort est toujours lisible, ou c'est la couleur de la competition.
+**401 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
+des cartes (empilement, debordement, troncature, place des ecussons) est
+verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
+est une fonction pure : son invariant est teste sur toutes les paires d'un jeu
+de couleurs reelles - ce qui sort est toujours lisible, ou c'est la couleur de
+la competition.
 
 ---
 
