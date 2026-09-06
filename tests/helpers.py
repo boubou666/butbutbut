@@ -78,6 +78,23 @@ def bump(source, side="away", by=1, details=()):
     return after
 
 
+class FakeClock:
+    """Une horloge murale qu'on avance a la main.
+
+    Un test ne peut pas endormir la machine : on simule le saut de temps que
+    la veille ou l'hibernation laisse derriere elle.
+    """
+
+    def __init__(self, start=1600000000.0):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+    def jump(self, seconds):
+        self.now += float(seconds)
+
+
 class FakeFont:
     """Une police mesurable sans tkinter : largeur fixe par caractere.
 

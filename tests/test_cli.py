@@ -139,6 +139,15 @@ class TestPaths(unittest.TestCase):
         self.assertIn("butbutbut", str(cli.data_dir()).lower())
 
 
+class TestWatchLoops(unittest.TestCase):
+    def test_both_loops_announce_their_wait(self):
+        # Une boucle qui appellerait next_delay() dormirait sans rien promettre
+        # au watcher : la sortie de veille repasserait inapercue.
+        source = Path(cli.__file__).read_text(encoding="utf-8")
+        self.assertEqual(source.count("stopping.wait(guard.plan_wait())"), 2)
+        self.assertNotIn("guard.next_delay()", source)
+
+
 class TestSoundResolution(unittest.TestCase):
     def test_no_sound_gives_no_path_and_the_default_duration(self):
         args = cli.build_parser().parse_args(["--no-sound"])

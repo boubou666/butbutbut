@@ -2,7 +2,7 @@ import unittest
 
 from butbutbut import espn, leagues, watcher
 
-from helpers import bump, event, goal_detail, opener_for, payload
+from helpers import FakeClock, bump, event, goal_detail, opener_for, payload
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
@@ -343,6 +343,89 @@ class TestResilience(unittest.TestCase):
         state["payload"] = payload(event(match_id="2"))
         guard.refresh(LIGUE1)
         self.assertNotIn("1", guard._snapshots)
+
+
+class TestWakeFromSleep(unittest.TestCase):
+    """Veille, hibernation, processus gele : au reveil on ne crie pas.
+
+    Le scenario : 0-0 releve avant la veille, 3-1 au tableau de bord au
+    reveil. Sans garde-fou le watcher sortirait une carte "BUT" de delta 3
+    avec une minute perimee.
+    """
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.state = {"payload": payload(event(state="in"))}
+        self.logged = []
+        self.guard = make_watcher(self.state, interval=25, clock=self.clock,
+                                  on_log=self.logged.append)
+        self.guard.refresh(LIGUE1, now=0.0)   # la photo d'avant la veille
+
+    def fall_asleep(self, seconds):
+        """Promet une attente courte, puis fait sauter l'horloge murale."""
+        self.guard.plan_wait(now=25.0)
+        self.clock.jump(seconds)
+
+    def test_a_time_jump_rephotographs_without_alerting(self):
+        self.fall_asleep(40 * 60)
+        self.state["payload"] = bump(self.state["payload"], "away", by=3)
+
+        self.assertEqual(self.guard.tick(now=25.0), [])
+
+    def test_the_gap_is_written_to_the_log(self):
+        self.fall_asleep(40 * 60)
+        self.guard.tick(now=25.0)
+        self.assertTrue(any("trou" in line for line in self.logged), self.logged)
+
+    def test_a_stale_phase_card_is_swallowed_too(self):
+        # Sinon le reveil annoncerait "FIN DU MATCH" pour un match termine
+        # depuis une heure, dont on n'a rien suivi.
+        self.fall_asleep(90 * 60)
+        self.state["payload"] = payload(event(state="post", home_score=2,
+                                              away_score=1))
+        self.assertEqual(self.guard.tick(now=25.0), [])
+
+    def test_a_goal_after_the_rephotograph_is_announced(self):
+        self.fall_asleep(40 * 60)
+        self.state["payload"] = bump(self.state["payload"], "away", by=3)
+        self.guard.tick(now=25.0)
+
+        self.guard.plan_wait(now=50.0)
+        self.clock.jump(25.0)
+        self.state["payload"] = bump(self.state["payload"], "away")
+
+        events = self.guard.tick(now=50.0)
+        self.assertEqual([e.kind for e in events], [watcher.GOAL])
+        self.assertEqual(events[0].delta, 1)
+        self.assertEqual(events[0].score_line, "Angers 0 - 4 Stade Rennais")
+
+    def test_a_normal_wait_never_takes_that_path(self):
+        # Un releve traine par le timeout HTTP de 8 s n'est pas une veille.
+        self.fall_asleep(1.0 + 8.0)
+        self.state["payload"] = bump(self.state["payload"], "away")
+
+        events = self.guard.tick(now=25.0)
+        self.assertEqual([e.kind for e in events], [watcher.GOAL])
+        self.assertEqual(self.logged, [])
+
+    def test_the_grace_is_generous(self):
+        self.fall_asleep(1.0 + watcher.GAP_GRACE)
+        self.assertEqual(self.guard._gap(), 0.0)
+        self.clock.jump(1.0)
+        self.assertGreater(self.guard._gap(), 0.0)
+
+    def test_nothing_promised_yet_is_not_a_gap(self):
+        # Au demarrage la boucle n'a encore rien annonce : pas de trou imagine.
+        self.clock.jump(3 * 3600)
+        self.assertEqual(self.guard._gap(), 0.0)
+
+    def test_a_clock_stepped_backwards_is_not_a_gap(self):
+        self.fall_asleep(-3600)
+        self.assertEqual(self.guard._gap(), 0.0)
+
+    def test_plan_wait_returns_the_same_delay_as_next_delay(self):
+        self.assertEqual(self.guard.plan_wait(now=10.0),
+                         self.guard.next_delay(now=10.0))
 
 
 if __name__ == "__main__":
