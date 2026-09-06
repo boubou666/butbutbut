@@ -286,8 +286,7 @@ The **full-time** card goes a little further: it lists each side's scorers
 under the score, because a bare `1 - 2` does not say who scored, and that is
 precisely the question when you haven't watched the match.
 
-butbutbut speaks French for now, so the cards, log lines and summaries
-reproduced below are shown exactly as they appear on screen:
+The cards speak the language of the machine, French among five (see [Card language](#card-language)); this help, `--status` and the log stay in French.
 
 ```
 FIN DU MATCH   LIGUE 1                                        90'+4'
@@ -418,6 +417,50 @@ speeds up the polling rate so that the time you asked for is actually met.
 The **team filter** applies to these three cards just as it does to goals:
 with `--teams om`, only OM's sendings-off, announcements and full-time cards
 come through.
+
+### Card language
+
+The cards speak the language of the machine, among the five of the big-five
+leagues - French, English, Spanish, Italian, German - falling back to French
+when it is none of them.
+
+```bash
+butbutbut --lang de       # force German
+butbutbut --status        # the "langue" line says which one was picked
+```
+
+```
+TOR!   BUNDESLIGA                                              89'
+Eintracht Frankfurt      1 - 4      FC Augsburg
+Tor von F. Rieder
+```
+
+Competition names follow: the Champions League becomes CHAMPIONS LEAGUE, the
+World Cup WELTMEISTERSCHAFT. The ones whose name is a proper noun are left
+alone - the Bundesliga, Serie A or the Coupe de France are spelled the same
+everywhere.
+
+**What is not translated**: this help, `--status`, `--scores` and the log. The
+log stays in French **by choice**: `--today` reads it back, and a file written
+before a language change would otherwise be half unreadable to the parser. So a
+card can read `TOR!` while the log records `BUT`.
+
+Precedence, strongest first:
+
+| | |
+| --- | --- |
+| 1 | `--lang de`, or the `lang` key in the configuration file |
+| 2 | the `BUTBUTBUT_LANG` environment variable |
+| 3 | the language of the system |
+| 4 | French |
+
+On Windows the system API comes before `LANG` and friends: a shell like Git
+Bash sets `LANG=en_US` whatever happens, which would make detection blind to
+the real language of the machine. And Windows can answer two different
+languages - the one of its interface and the one of the regional settings. The
+first one wins, following Microsoft's own convention for interface text; if your
+machine shows English menus while you want it in French, `lang = fr` in the
+configuration file settles it.
 
 ---
 
@@ -645,11 +688,10 @@ cannot read is ignored without a fuss.
 2026-09-06 19:24:10  FIN DU MATCH [Premier League] Arsenal 2 - 1 Chelsea - Arsenal : B. Saka 12', M. Odegaard 50' ; Chelsea : C. Palmer 74' (FT)
 ```
 
-Path: `butbutbut --paths`. The daemon also writes kick-offs, full-time
-results, sendings-off and pre-match announcements - even the ones whose card
-is switched off on screen.
-Path: `butbutbut --paths`. The daemon also writes kick-offs and full-time
-results. It is this trace that `butbutbut --today` reads back.
+Path: `butbutbut --paths`. The daemon also writes kick-offs, half-times,
+full-time whistles, sendings-off and pre-match announcements there - even the
+ones whose card went unnoticed on screen. That trace is what
+`butbutbut --today` reads back.
 
 ---
 
@@ -753,7 +795,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**459 tests**, with no network and no screen: the source is simulated by an
+**496 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

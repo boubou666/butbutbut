@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import time
 
-from . import espn
+from . import espn, i18n
 
 DEFAULT_INTERVAL = 25.0        # un match est en cours
 DEFAULT_IDLE_INTERVAL = 300.0  # rien en cours dans ce championnat
@@ -60,16 +60,29 @@ PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
 # temps forts ne doit pas couper ce qu'on a explicitement demande.
 SOBER = PHASES + (RED_CARD, PREMATCH)
 
-TITLES = {
-    GOAL: "BUT !",
-    CANCELLED: "BUT ANNULE",
-    KICKOFF: "COUP D'ENVOI",
-    HALFTIME: "MI-TEMPS",
-    RESTART: "REPRISE",
-    FULLTIME: "FIN DU MATCH",
-    RED_CARD: "CARTON ROUGE",
-    PREMATCH: "LE MATCH VA COMMENCER",
+# Une cle de traduction par sorte d'evenement : la formulation vit dans
+# i18n.py, pas ici.
+TITLE_KEYS = {
+    GOAL: "title_goal",
+    CANCELLED: "title_cancelled",
+    KICKOFF: "title_kickoff",
+    HALFTIME: "title_halftime",
+    RESTART: "title_restart",
+    FULLTIME: "title_fulltime",
+    RED_CARD: "title_red_card",
+    PREMATCH: "title_prematch",
 }
+
+
+def title_of(kind, play=None, lang=None) -> str:
+    """Le titre d'une carte, dans la langue demandee (courante par defaut)."""
+    if kind == GOAL and play is not None:
+        if play.own_goal:
+            return i18n.text("title_own_goal", lang=lang)
+        if play.penalty:
+            return i18n.text("title_penalty", lang=lang)
+    key = TITLE_KEYS.get(kind)
+    return i18n.text(key, lang=lang) if key else kind.upper()
 
 # Ce qui declenche une carte de phase : (phase precedente, phase actuelle).
 # Un match jamais vu en cours ne declenche pas de "fin du match" : on n'a rien
@@ -84,37 +97,37 @@ TRANSITIONS = {
 }
 
 
-def _scorer_text(play) -> str:
+def _scorer_text(play, lang=None) -> str:
     """Un buteur en quelques signes : Kalimuendo 58', Lefort (csc) 17'.
 
     Volontairement plus court que Play.summary() : la carte de fin de match en
     aligne plusieurs sur une ligne, "But de " repete trois fois mangerait la
     place des noms.
     """
-    who = play.scorer or play.prefix()
+    who = play.scorer or play.prefix(lang=lang)
     if play.own_goal:
-        who += " (csc)"
+        who += " (" + i18n.text("own_goal_short", lang=lang) + ")"
     elif play.penalty:
-        who += " (sp)"
+        who += " (" + i18n.text("penalty_short", lang=lang) + ")"
     return (who + " " + play.minute) if play.minute else who
 
 
-def _countdown(seconds: float) -> str:
+def _countdown(seconds: float, lang=None) -> str:
     """Le compte a rebours d'avant match, arrondi a la minute superieure."""
     minutes = int(seconds // 60) + 1
     if minutes <= 1:
-        return "Coup d'envoi dans moins d'une minute"
-    return "Coup d'envoi dans {} min".format(minutes)
+        return i18n.text("kickoff_soon", lang=lang)
+    return i18n.text("kickoff_in", lang=lang, minutes=minutes)
 
 
 class Event:
     """Ce qui vient de se passer : un but, une expulsion, un temps fort."""
 
     __slots__ = ("kind", "match", "side", "team", "opponent", "home_score",
-                 "away_score", "delta", "play", "at", "note")
+                 "away_score", "delta", "play", "at", "countdown")
 
     def __init__(self, kind, match, side, team, opponent, home_score,
-                 away_score, delta, play, at=None, note=""):
+                 away_score, delta, play, at=None, countdown=None):
         self.kind = kind
         self.match = match
         self.side = side              # "home" ou "away"
@@ -125,9 +138,11 @@ class Event:
         self.delta = delta            # +1, +2 (doublon rattrape), -1...
         self.play = play              # espn.Play ou None
         self.at = at or time.time()
-        # Texte fige au moment de l'evenement : le compte a rebours d'avant
-        # match vieillirait si on le recalculait a l'affichage.
-        self.note = note
+        # Le compte a rebours est fige en SECONDES au moment de l'evenement,
+        # pas en texte : recalcule a l'affichage il vieillirait, mais fige en
+        # francais il ne pourrait plus etre rendu dans une autre langue - la
+        # carte et le journal n'en veulent pas la meme.
+        self.countdown = countdown
 
     @property
     def league(self):
@@ -149,12 +164,7 @@ class Event:
 
     @property
     def title(self) -> str:
-        if self.kind == GOAL and self.play is not None:
-            if self.play.own_goal:
-                return "BUT CONTRE SON CAMP"
-            if self.play.penalty:
-                return "BUT SUR PENALTY"
-        return TITLES.get(self.kind, self.kind.upper())
+        return title_of(self.kind, self.play)
 
     @property
     def minute(self) -> str:
@@ -185,16 +195,18 @@ class Event:
             return (self.match.away_color, self.match.away_alt)
         return ("", "")
 
-    def detail_parts(self) -> list:
+    def detail_parts(self, lang=None) -> list:
         """La troisieme ligne, en morceaux : (texte, mis_en_valeur).
 
         Le nom du buteur est le seul morceau mis en valeur : c'est l'info qu'on
         veut lire en premier apres le score.
         """
         if self.kind == CANCELLED:
-            return [("Score corrige", False)]
+            return [(i18n.text("cancelled", lang=lang), False)]
         if self.kind == PREMATCH:
-            return [(self.note, False)] if self.note else []
+            if self.countdown is None:
+                return []
+            return [(_countdown(self.countdown, lang=lang), False)]
         if self.kind == RED_CARD:
             # L'equipe se lit ici plutot que dans la couleur du score : voir
             # une equipe passer en couleur, sur cette carte, ressemblerait a
@@ -210,18 +222,20 @@ class Event:
         play = self.play
         if play is None:
             minute = self.minute
-            return [("Minute " + minute, False)] if minute else []
+            if not minute:
+                return []
+            return [(i18n.text("minute", lang=lang, minute=minute), False)]
 
         # La minute n'est pas repetee ici : l'en-tete de la carte la porte deja.
         if play.scorer:
-            return [(play.prefix() + " de ", False), (play.scorer, True)]
-        return [(play.prefix(), False)]
+            return [(play.prefix_for(lang=lang), False), (play.scorer, True)]
+        return [(play.prefix(lang=lang), False)]
 
-    def detail_line(self) -> str:
+    def detail_line(self, lang=None) -> str:
         """La meme ligne, d'un bloc : journal, tests, mode --no-overlay."""
-        return "".join(text for text, _ in self.detail_parts())
+        return "".join(t for t, _ in self.detail_parts(lang=lang))
 
-    def extra_parts(self) -> list:
+    def extra_parts(self, lang=None) -> list:
         """Les lignes supplementaires de la carte, en morceaux.
 
         Seule la fin du match en a : le score seul ne dit pas qui a marque,
@@ -235,24 +249,32 @@ class Event:
         lines = []
         for team, team_id in ((match.home, match.home_id),
                               (match.away, match.away_id)):
-            scorers = [_scorer_text(play) for play in match.plays_for(team_id)]
+            scorers = [_scorer_text(play, lang=lang)
+                       for play in match.plays_for(team_id)]
             if scorers:
                 lines.append([(team + " : ", False), (", ".join(scorers), True)])
         return lines
 
-    def extra_lines(self) -> list:
+    def extra_lines(self, lang=None) -> list:
         """Les memes lignes, chacune d'un bloc : journal et tests."""
-        return ["".join(text for text, _ in line) for line in self.extra_parts()]
+        return ["".join(t for t, _ in line) for line in self.extra_parts(lang=lang)]
 
     def log_line(self) -> str:
-        head = TITLES.get(self.kind, self.kind.upper()).rstrip(" !")
+        """La ligne du journal, toujours en francais.
+
+        Deux raisons de ne pas la traduire : elle voisine la ligne de commande,
+        qui parle francais, et `--today` la relit. Un fichier ecrit avant un
+        changement de langue resterait sinon a moitie illisible pour le
+        relecteur.
+        """
+        head = title_of(self.kind, self.play, lang=i18n.FALLBACK).rstrip(" !")
         parts = ["{} [{}] {}".format(head, self.league.name, self.score_line)]
         if self.team:
             parts.append("pour " + self.team)
-        detail = self.detail_line()
+        detail = self.detail_line(lang=i18n.FALLBACK)
         if detail:
             parts.append("- " + detail)
-        extra = self.extra_lines()
+        extra = self.extra_lines(lang=i18n.FALLBACK)
         if extra:
             parts.append("- " + " ; ".join(extra))
         if self.minute:
@@ -561,7 +583,7 @@ class Watcher:
                 away_score=match.away_score,
                 delta=0,
                 play=None,
-                note=_countdown(remaining),
+                countdown=remaining,
             ))
 
         # La photo est mise a jour avant tout filtrage : un evenement tu par le

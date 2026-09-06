@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import re
 
+from . import i18n
+
 # Un code ESPN ressemble a "fra.1", "uefa.champions", "fra.coupe_de_france".
 SLUG_SHAPE = re.compile(r"^[a-z]{2,8}(?:\.[a-z0-9_]+)+$")
 
@@ -27,17 +29,28 @@ NEUTRAL_ACCENT = "#7cc0ff"
 class League:
     """Une competition : identite ESPN + habillage de la carte."""
 
-    __slots__ = ("slug", "name", "label", "accent", "aliases", "provisional")
+    __slots__ = ("slug", "name", "_label", "accent", "aliases", "provisional",
+                 "key")
 
-    def __init__(self, slug, name, label, accent, aliases=(), provisional=False):
+    def __init__(self, slug, name, label, accent, aliases=(), provisional=False,
+                 key=""):
         self.slug = slug              # code ESPN, ex. "fra.1"
         self.name = name              # "Ligue 1"
-        self.label = label            # "LIGUE 1", pour l'en-tete de la carte
+        self._label = label           # "LIGUE 1", pour l'en-tete de la carte
+        # Cle de traduction, pour les competitions dont le nom se traduit. La
+        # Bundesliga ou la Coupe de France s'ecrivent pareil partout ; la Ligue
+        # des champions, non.
+        self.key = key
         self.accent = accent          # couleur de la competition sur la carte
         self.aliases = tuple(aliases)
         # Vrai pour une competition ouverte a la volee : on ne connait pas
         # encore son vrai nom, la source nous le dira au premier releve.
         self.provisional = provisional
+
+    @property
+    def label(self) -> str:
+        """L'etiquette de la carte, dans la langue courante."""
+        return i18n.text(self.key) if self.key else self._label
 
     def matches_token(self, token: str) -> bool:
         token = token.strip().lower()
@@ -49,7 +62,7 @@ class League:
         if not self.provisional or not name:
             return
         self.name = str(name).strip()
-        self.label = str(abbreviation or name).strip().upper()
+        self._label = str(abbreviation or name).strip().upper()
         self.provisional = False
 
     def __repr__(self):
@@ -77,20 +90,27 @@ LEAGUES = (
 EXTRA = (
     # Coupes d'Europe
     League("uefa.champions", "Ligue des champions", "LIGUE DES CHAMPIONS", "#4c6ef5",
-           ("ucl", "ldc", "c1", "champions", "championsleague")),
+           ("ucl", "ldc", "c1", "champions", "championsleague"),
+           key="league_ucl"),
     League("uefa.europa", "Ligue Europa", "LIGUE EUROPA", "#ff922b",
-           ("uel", "europa", "c3", "europaleague")),
+           ("uel", "europa", "c3", "europaleague"),
+           key="league_uel"),
     League("uefa.europa.conf", "Ligue Conference", "LIGUE CONFERENCE", "#51cf66",
-           ("uecl", "conference", "conf", "c4")),
+           ("uecl", "conference", "conf", "c4"),
+           key="league_uecl"),
     League("uefa.super_cup", "Supercoupe d'Europe", "SUPERCOUPE UEFA", "#845ef7",
-           ("supercoupe", "uefasupercup")),
+           ("supercoupe", "uefasupercup"),
+           key="league_usc"),
     # Selections
     League("uefa.nations", "Ligue des nations", "LIGUE DES NATIONS", "#22b8cf",
-           ("nations", "ldn", "nationsleague")),
+           ("nations", "ldn", "nationsleague"),
+           key="league_nations"),
     League("fifa.world", "Coupe du monde", "COUPE DU MONDE", "#fcc419",
-           ("cdm", "mondial", "worldcup", "wc")),
+           ("cdm", "mondial", "worldcup", "wc"),
+           key="league_wc"),
     League("fifa.worldq.uefa", "Qualif. Coupe du monde (UEFA)", "QUALIF. CDM", "#a9b4c4",
-           ("qualifs", "wcq", "eliminatoires")),
+           ("qualifs", "wcq", "eliminatoires"),
+           key="league_wcq"),
     # Deuxiemes divisions
     League("fra.2", "Ligue 2", "LIGUE 2", "#c0b32a",
            ("l2", "ligue2", "ligue-2", "fra2")),

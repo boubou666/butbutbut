@@ -174,6 +174,10 @@ OPTIONS = (
            "carte des que l'ecran se libere, pendant ce nombre de secondes au "
            "plus. 0 desactive. Windows uniquement.",
            "120", fallback="desactive"),
+    Option("lang", _text,
+           "Langue des cartes : fr, en, es, it, de. Par defaut celle du "
+           "systeme, et le francais si elle n'est pas des cinq.",
+           "de", fallback="la langue du systeme"),
     Option("quiet", _flag,
            "Silence dans le terminal : oui pour n'ecrire que dans le journal.",
            "non"),

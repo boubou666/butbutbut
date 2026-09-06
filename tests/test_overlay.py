@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from butbutbut import fullscreen, leagues, overlay, screens, watcher
+from butbutbut import fullscreen, i18n, leagues, overlay, screens, watcher
 from butbutbut import crests, leagues, overlay, screens, watcher
 
 from helpers import (bump, event, fake_fonts, goal_detail, in_minutes,
@@ -77,6 +77,12 @@ def one_phase(first, second):
     state["payload"] = payload(event(**second))
     return guard.refresh(LIGUE1)[0]
 
+
+def setUpModule():
+    # Ces tests affirment des formulations francaises. Sans cet epinglage ils
+    # passeraient sur une machine francaise et echoueraient sur la CI, dont les
+    # machines sont anglaises.
+    i18n.use("fr")
 
 class TestCard(unittest.TestCase):
     def test_card_carries_league_score_and_scorer(self):

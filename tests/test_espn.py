@@ -1,12 +1,18 @@
 import unittest
 from datetime import datetime, timezone
 
-from butbutbut import espn, leagues
+from butbutbut import espn, i18n, leagues
 
 from helpers import event, goal_detail, opener_for, payload, red_card_detail
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
+
+def setUpModule():
+    # Ces tests affirment des formulations francaises. Sans cet epinglage ils
+    # passeraient sur une machine francaise et echoueraient sur la CI, dont les
+    # machines sont anglaises.
+    i18n.use("fr")
 
 class TestParse(unittest.TestCase):
     def test_reads_teams_scores_and_state(self):

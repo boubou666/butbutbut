@@ -41,7 +41,7 @@ from __future__ import annotations
 import sys
 import time
 
-from . import crests, fullscreen, screens, sound
+from . import crests, fullscreen, i18n, screens, sound
 
 TRANSPARENT_KEY = "#ff00fe"
 CARD_BG = "#0d1017"
@@ -244,7 +244,7 @@ class Card:
         scoring = home if sample["side"] == "home" else away
 
         return cls(
-            title="BUT !",
+            title=i18n.text("title_goal"),
             league=league.label,
             minute=sample["minute"],
             home=home[0],
@@ -252,7 +252,7 @@ class Card:
             home_score=sample["score"][0],
             away_score=sample["score"][1],
             side=sample["side"],
-            detail=[("But de ", False), (sample["scorer"], True)],
+            detail=[(i18n.text("goal_by"), False), (sample["scorer"], True)],
             accent=league.accent,
             team_accent=crests.pick_accent(scoring[2], scoring[3],
                                            league.accent, CARD_BG),

@@ -7,6 +7,52 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.5.0] - 2026-09-07
+
+### Ajoute
+
+- **Les cartes parlent la langue de la machine** : francais, anglais, espagnol,
+  italien, allemand - les cinq langues des cinq grands championnats - et le
+  francais quand ce n'est aucune des cinq. Un but en Bundesliga s'affiche
+  `TOR!` / `Tor von F. Rieder` sur une machine allemande.
+- Le nom des competitions suit quand il se traduit : la Ligue des champions
+  devient CHAMPIONS LEAGUE, la Coupe du monde WELTMEISTERSCHAFT. Celles dont
+  le nom est un nom propre sont laissees tranquilles - Bundesliga, Serie A,
+  Coupe de France s'ecrivent pareil partout.
+- `--lang de`, la cle `lang` du fichier de configuration, ou la variable
+  d'environnement `BUTBUTBUT_LANG`. `--status` affiche la langue retenue, et une
+  langue inconnue est refusee au demarrage avec la liste de celles qu'on parle.
+- **Le README existe en anglais** ([README.en.md](README.en.md)), avec un
+  renvoi croise en tete des deux versions.
+
+### Change
+
+- **Le journal reste en francais, quelle que soit la langue des cartes.** Il
+  voisine la ligne de commande, qui n'est pas traduite, et surtout `--today` le
+  relit : un fichier ecrit avant un changement de langue resterait sinon a
+  moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!`
+  pendant que le journal note `BUT`.
+- Le compte a rebours d'avant match est fige en secondes et non en texte : fige
+  en francais, il n'aurait pu etre rendu ni dans la langue de la carte ni dans
+  celle du journal, qui n'en veulent pas la meme.
+- Sous Windows, l'API systeme passe avant les variables `LANG` : un shell comme
+  Git Bash pose `LANG=en_US` quoi qu'il arrive, ce qui rendait la detection
+  aveugle a la langue reelle de la machine.
+
+### Corrige
+
+- Le paragraphe du journal apparaissait deux fois dans le README, chaque moitie
+  venant d'une PR differente fusionnee le meme jour. Repere par la relecture
+  pour la traduction anglaise.
+
+### Interne
+
+- La langue par defaut dependant de la machine, les trois modules de tests qui
+  affirment une formulation epinglent la leur. Sans ca la suite passait sur une
+  machine francaise et echouait sur la CI, dont les machines sont anglaises :
+  elle tourne desormais a l'identique en fr, en, es, it et de.
+- 459 -> **496 tests**.
+
 ## [1.4.0] - 2026-09-06
 
 Premiere contribution exterieure au projet, par
@@ -274,7 +320,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.4.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/boubou666/butbutbut/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/boubou666/butbutbut/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/butbutbut/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/boubou666/butbutbut/compare/v1.1.1...v1.2.0

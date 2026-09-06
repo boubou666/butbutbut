@@ -13,8 +13,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import (__version__, config, crests, espn, fullscreen, journal,
-               leagues, screens, sound, state, teams, watcher)
+from . import (__version__, config, crests, espn, fullscreen, i18n,
+               journal, leagues, screens, sound, state, teams, watcher)
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -623,6 +623,7 @@ def do_status(args) -> int:
     chosen = team_filter(args)
     if chosen is not None:
         print("  equipes     : {}".format(chosen.describe()))
+    print("  langue      : {}".format(i18n.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
     print("  suivi       : {}".format(summary))
@@ -864,6 +865,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="annonce le match ce nombre de minutes avant le "
                              "coup d'envoi, une seule fois et sans son "
                              "(0 = desactive, defaut)")
+    parser.add_argument("--lang", default=None, metavar="CODE",
+                        help="langue des cartes : fr, en, es, it, de (defaut : "
+                             "celle du systeme, francais a defaut). Le journal "
+                             "et cette aide restent en francais.")
     parser.add_argument("--no-logos", action="store_true", dest="no_logos",
                         help="pas d'ecusson sur les cartes, et rien de "
                              "telecharge (les couleurs des clubs restent)")
@@ -909,6 +914,12 @@ def main(argv=None) -> int:
     if args.position.strip().lower() not in screens.CORNERS:
         print("butbutbut : position inconnue : {} (voir --help)".format(args.position),
               file=sys.stderr)
+        return 2
+
+    try:
+        i18n.use(args.lang)
+    except i18n.UnknownLanguage as exc:
+        print("butbutbut : {}".format(exc), file=sys.stderr)
         return 2
 
     try:

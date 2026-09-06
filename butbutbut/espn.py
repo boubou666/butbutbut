@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from . import __version__, crests
+from . import __version__, i18n, crests
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
 TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams"
@@ -90,21 +90,35 @@ class Play:
         self.shootout = shootout
         self.red_card = red_card
 
-    def prefix(self) -> str:
-        """La nature de l'action, sans le joueur : But, Penalty, Carton rouge."""
+    def prefix(self, lang=None) -> str:
+        """La nature de l'action, sans le joueur, dans la langue demandee."""
         if self.red_card:
-            return "Carton rouge"
+            return i18n.text("red_card", lang=lang)
         if self.own_goal:
-            return "But contre son camp"
+            return i18n.text("own_goal", lang=lang)
         if self.penalty:
-            return "Penalty"
-        return "But"
+            return i18n.text("penalty", lang=lang)
+        return i18n.text("goal", lang=lang)
 
-    def summary(self) -> str:
-        """Une ligne en francais : But de C. Arcus (35')."""
-        base = self.prefix()
-        if self.scorer:
-            base += " pour " + self.scorer if self.red_card else " de " + self.scorer
+    def prefix_for(self, lang=None) -> str:
+        """La meme chose, suivie de sa preposition : "But de ", "Tor von ".
+
+        On ne colle pas une preposition derriere prefix() : d'une langue a
+        l'autre elle change, et l'allemand n'en met pas du tout apres une
+        carte de carton rouge.
+        """
+        if self.red_card:
+            return i18n.text("red_card_for", lang=lang)
+        if self.own_goal:
+            return i18n.text("own_goal_by", lang=lang)
+        if self.penalty:
+            return i18n.text("penalty_by", lang=lang)
+        return i18n.text("goal_by", lang=lang)
+
+    def summary(self, lang=None) -> str:
+        """Une ligne : But de C. Arcus (35'), Tor von H. Kane (35')."""
+        base = ((self.prefix_for(lang=lang) + self.scorer) if self.scorer
+                else self.prefix(lang=lang))
         if self.minute:
             base += " (" + self.minute + ")"
         return base

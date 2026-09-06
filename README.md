@@ -366,6 +366,7 @@ est le cas normal et silencieux, et un fichier illisible, mal forme, ou
 porteur d'une cle inconnue ou d'une valeur impossible (`interval = beaucoup`,
 `position = milieu`) est signale sur la sortie d'erreur - la cle fautive est
 ignoree, le reste s'applique.
+
 ### Les cartons rouges
 
 ```bash
@@ -414,6 +415,52 @@ cadence des releves pour que l'heure demandee soit tenue.
 Le **filtre par equipe** s'applique a ces trois cartes comme aux buts : avec
 `--teams om`, seules les expulsions, annonces et fins de match de l'OM
 remontent.
+
+### La langue des cartes
+
+Les cartes parlent la langue de la machine, parmi les cinq des cinq grands
+championnats - francais, anglais, espagnol, italien, allemand - et le francais
+quand ce n'est aucune des cinq.
+
+```bash
+butbutbut --lang de       # force l'allemand
+butbutbut --status        # la ligne "langue" dit ce qui a ete retenu
+```
+
+```
+TOR!   BUNDESLIGA                                              89'
+Eintracht Frankfurt      1 - 4      FC Augsburg
+Tor von F. Rieder
+```
+
+Le nom des competitions suit : la Ligue des champions devient CHAMPIONS LEAGUE,
+la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
+touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
+pareil partout.
+
+**Ce qui n'est pas traduit** : cette aide, `--status`, `--scores` et le
+journal. Le journal reste en francais **par choix** : `--today` le relit, et un
+fichier ecrit avant un changement de langue resterait sinon a moitie illisible
+pour le relecteur. Une carte peut donc afficher `TOR!` pendant que le journal
+note `BUT`.
+
+L'ordre de decision, du plus fort au plus faible :
+
+| | |
+| --- | --- |
+| 1 | `--lang de`, ou la cle `lang` du fichier de configuration |
+| 2 | la variable d'environnement `BUTBUTBUT_LANG` |
+| 3 | la langue du systeme |
+| 4 | le francais |
+
+Sous Windows, l'API systeme passe avant les variables `LANG` et compagnie :
+un shell comme Git Bash pose `LANG=en_US` quoi qu'il arrive, ce qui rendrait la
+detection aveugle a la langue reelle de la machine. Et Windows sait repondre
+deux langues differentes - celle de son interface et celle des reglages
+regionaux. C'est la premiere qui est retenue, suivant la convention de
+Microsoft pour les textes d'interface ; si ta machine affiche des menus
+anglais alors que tu la veux en francais, `lang = fr` dans le fichier de
+configuration tranche.
 
 ---
 
@@ -636,11 +683,10 @@ le journal ne sait pas lire est ignore sans bruit.
 2026-09-06 19:24:10  FIN DU MATCH [Premier League] Arsenal 2 - 1 Chelsea - Arsenal : B. Saka 12', M. Odegaard 50' ; Chelsea : C. Palmer 74' (FT)
 ```
 
-Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi, les fins
-de match, les expulsions et les annonces d'avant match - meme celles dont la
-carte est coupee a l'ecran.
-Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi et les
-fins de match. C'est cette trace que `butbutbut --today` relit.
+Chemin : `butbutbut --paths`. Le daemon y ecrit aussi les coups d'envoi, les
+mi-temps, les fins de match, les expulsions et les annonces d'avant match -
+meme celles dont la carte est passee inapercue a l'ecran. C'est cette trace que
+`butbutbut --today` relit.
 
 ---
 
@@ -742,7 +788,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**459 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**496 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

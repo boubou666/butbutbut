@@ -1,6 +1,6 @@
 import unittest
 
-from butbutbut import espn, leagues, teams, watcher
+from butbutbut import espn, i18n, leagues, teams, watcher
 
 from helpers import (FakeClock, bump, event, goal_detail, in_minutes,
                      opener_for, payload, red_card_detail)
@@ -11,6 +11,12 @@ LIGUE1 = leagues.BY_SLUG["fra.1"]
 def make_watcher(state, **kwargs):
     return watcher.Watcher([LIGUE1], opener=opener_for(state), **kwargs)
 
+
+def setUpModule():
+    # Ces tests affirment des formulations francaises. Sans cet epinglage ils
+    # passeraient sur une machine francaise et echoueraient sur la CI, dont les
+    # machines sont anglaises.
+    i18n.use("fr")
 
 class TestDetection(unittest.TestCase):
     def setUp(self):
