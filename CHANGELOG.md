@@ -7,6 +7,18 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **La publication PyPI ne pouvait pas se declencher.** Elle vivait dans un
+  workflow separe ecoutant `release: published`, or Actions refuse qu'un
+  evenement produit par le `GITHUB_TOKEN` declenche un autre workflow : une
+  release creee par `github-actions[bot]` ne reveille personne. Constate en
+  poussant `v1.3.0`, ou le workflow `pypi` n'a meme pas eu de run. La
+  publication est desormais le second job de `release.yml`, declenche par le
+  push du tag - un evenement humain, qui declenche bien. `pypi.yml` ne garde
+  que le declenchement manuel, comme rattrapage, et le README ne promet plus un
+  automatisme qui n'existait pas.
+
 ## [1.3.0] - 2026-09-06
 
 Sept chantiers menes en parallele, chacun dans sa branche, fusionnes ensemble.

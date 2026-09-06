@@ -691,11 +691,12 @@ automatiquement, avec le paquet en piece jointe.
 
 ### Publication sur PyPI
 
-Le workflow
-[`pypi.yml`](https://github.com/boubou666/butbutbut/blob/main/.github/workflows/pypi.yml)
-envoie sur PyPI les paquets attaches a une release GitHub, en **Trusted
-Publishing** : PyPI fait confiance au workflow lui-meme via un jeton OIDC, il
-n'y a donc **aucun jeton d'API a stocker** dans le depot.
+La publication est le second job de
+[`release.yml`](https://github.com/boubou666/butbutbut/blob/main/.github/workflows/release.yml) :
+il part avec le tag, juste apres la release, et envoie sur PyPI **exactement**
+le wheel et le sdist attaches a celle-ci. En **Trusted Publishing** : PyPI fait
+confiance au workflow lui-meme via un jeton OIDC, il n'y a donc **aucun jeton
+d'API a stocker** dans le depot.
 
 Le workflow est **inerte par defaut**. Tant que les etapes ci-dessous ne sont
 pas faites, le job est saute : pousser un tag continue de produire la release
@@ -715,7 +716,7 @@ ces etapes, et une seule fois :
    | PyPI Project Name | `butbutbut` |
    | Owner | `boubou666` |
    | Repository name | `butbutbut` |
-   | Workflow name | `pypi.yml` |
+   | Workflow name | `release.yml` |
    | Environment name | `pypi` |
 
    Attention : un *pending publisher* ne reserve pas le nom, il ne fait
@@ -738,12 +739,29 @@ ces etapes, et une seule fois :
    git tag -a v1.2.1 -m "1.2.1" && git push --tags
    ```
 
-   `release.yml` construit le paquet et cree la release ; `pypi.yml` prend le
-   relais et envoie ce meme paquet sur PyPI. Le *pending publisher* devient
+   `release.yml` verifie le tag, construit le paquet, cree la release, puis son
+   second job envoie ce meme paquet sur PyPI. Le *pending publisher* devient
    alors un publisher normal, et le projet existe.
 
-Pour rejouer un envoi sans creer de tag : onglet `Actions`, workflow **pypi**,
-`Run workflow`, en donnant le tag d'une release deja publiee.
+Pour rattraper un envoi sans creer de nouveau tag : onglet `Actions`, workflow
+**pypi**, `Run workflow`, en donnant le tag d'une release deja publiee. C'est
+la porte de sortie quand la publication a ete sautee - variable pas encore
+armee au moment du tag, panne de PyPI, jeton refuse.
+
+> Attention : un publisher de confiance est lie a **un** nom de fichier de
+> workflow. Celui de l'etape 2 autorise `release.yml`, donc le rattrapage par
+> `pypi.yml` sera refuse a l'echange OIDC tant qu'on ne l'a pas autorise lui
+> aussi. Pour l'activer, une fois le projet cree sur PyPI : page du projet,
+> `Manage`, `Publishing`, ajouter un second publisher identique au premier mais
+> avec `pypi.yml` comme workflow. Inutile si le chemin normal suffit.
+
+> **Pourquoi la publication n'est pas un workflow separe.** Elle l'a ete, et ca
+> ne pouvait pas marcher : Actions refuse qu'un evenement produit par le
+> `GITHUB_TOKEN` declenche un autre workflow, pour eviter les boucles. Une
+> release creee par `github-actions[bot]` ne reveille donc aucun workflow
+> ecoutant `release: published`. Constate en poussant `v1.3.0` : le workflow
+> `pypi` n'a meme pas eu de run. Le push du tag, lui, vient d'un humain, donc il
+> declenche - d'ou un seul workflow avec deux jobs.
 
 ## Licence
 

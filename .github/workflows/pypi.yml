@@ -1,16 +1,23 @@
 name: pypi
 
-# Envoie sur PyPI les paquets deja attaches a une release GitHub par le
-# workflow `release`. Rien n'est reconstruit ici : ce qui part sur PyPI est
-# exactement le wheel et le sdist qu'on peut telecharger depuis la release.
+# Le rattrapage manuel : envoyer sur PyPI les paquets d'une release DEJA
+# publiee. Rien n'est reconstruit ici, ce qui part est exactement le wheel et
+# le sdist qu'on peut telecharger depuis la release.
 #
-# Ce workflow est volontairement separe de `release.yml` : une publication
-# PyPI mal configuree ne peut donc pas faire echouer la creation de la
-# release GitHub. Il est de plus inerte tant que la variable de depot
-# PYPI_PUBLISH ne vaut pas "true" (voir README, "Publication sur PyPI").
+# La publication normale, elle, est le second job de `release.yml` : elle part
+# avec le tag. Ce workflow-ci sert quand elle a ete sautee - variable pas
+# encore armee au moment du tag, panne de PyPI, jeton OIDC refuse.
+#
+# Il n'a volontairement PAS de declencheur `release: published` : un evenement
+# produit par le GITHUB_TOKEN ne declenche aucun autre workflow, donc ce
+# declencheur-la ne se serait jamais produit. Promettre un automatisme qui
+# n'existe pas est pire que de ne rien promettre.
+#
+# A savoir : un publisher de confiance PyPI est lie a UN nom de fichier de
+# workflow. Celui que le README fait declarer autorise `release.yml` ; ce
+# workflow-ci a donc besoin de son propre publisher (meme valeurs, workflow
+# `pypi.yml`) pour que l'echange OIDC passe.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
