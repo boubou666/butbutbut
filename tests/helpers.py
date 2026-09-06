@@ -2,6 +2,7 @@
 
 import copy
 import json
+from datetime import datetime, timedelta, timezone
 
 
 def goal_detail(team_id, minute="35'", scorer="C. Arcus", own_goal=False,
@@ -17,6 +18,25 @@ def goal_detail(team_id, minute="35'", scorer="C. Arcus", own_goal=False,
         "shootout": False,
         "athletesInvolved": [{"id": "9" + str(index), "shortName": scorer}],
     }
+
+
+def red_card_detail(team_id, minute="62'", player="J. Lefort", index=0):
+    """Un carton rouge : meme tableau `details` qu'un but, autre drapeau."""
+    return {
+        "type": {"id": "94", "text": "Red Card"},
+        "clock": {"value": 60.0 * index, "displayValue": minute},
+        "team": {"id": team_id},
+        "scoringPlay": False,
+        "yellowCard": False,
+        "redCard": True,
+        "athletesInvolved": [{"id": "7" + str(index), "shortName": player}],
+    }
+
+
+def in_minutes(minutes) -> str:
+    """Une date ISO a N minutes d'ici : pour les annonces d'avant-match."""
+    when = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def team(name):

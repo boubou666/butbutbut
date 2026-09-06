@@ -17,6 +17,10 @@ Trois garde-fous :
     heures d'avance sur nous, la comparer a notre derniere photo n'a plus de
     sens.
 
+Autour du but viennent des evenements plus discrets, tous muets : les temps
+forts du match (coup d'envoi, mi-temps, reprise, fin), les expulsions et
+l'annonce d'un coup d'envoi imminent. Les deux derniers sont a la demande.
+
 La cadence s'adapte : rapide quand un match est en cours, lente quand il n'y a
 rien a regarder. Chaque championnat a son propre rythme, donc on n'interroge
 pas la Bundesliga toutes les 25 s un mardi soir de Ligue 1.
@@ -43,9 +47,18 @@ KICKOFF = "kickoff"
 HALFTIME = "halftime"
 RESTART = "restart"
 FULLTIME = "fulltime"
+RED_CARD = "red_card"
+PREMATCH = "prematch"
 
 # Les cartes de deroulement du match : meme carte, mais jamais de son.
 PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
+
+# Les cartes au ton discret : titre gris, aucune equipe mise en avant, et
+# surtout aucun son. Seul un but fait du bruit, c'est ce qui le distingue.
+# L'expulsion et l'avant-match rejoignent les phases sur ce point, mais pas
+# sur --no-phase-cards : chacune a son propre interrupteur, et couper les
+# temps forts ne doit pas couper ce qu'on a explicitement demande.
+SOBER = PHASES + (RED_CARD, PREMATCH)
 
 TITLES = {
     GOAL: "BUT !",
@@ -54,6 +67,8 @@ TITLES = {
     HALFTIME: "MI-TEMPS",
     RESTART: "REPRISE",
     FULLTIME: "FIN DU MATCH",
+    RED_CARD: "CARTON ROUGE",
+    PREMATCH: "LE MATCH VA COMMENCER",
 }
 
 # Ce qui declenche une carte de phase : (phase precedente, phase actuelle).
@@ -69,14 +84,37 @@ TRANSITIONS = {
 }
 
 
+def _scorer_text(play) -> str:
+    """Un buteur en quelques signes : Kalimuendo 58', Lefort (csc) 17'.
+
+    Volontairement plus court que Play.summary() : la carte de fin de match en
+    aligne plusieurs sur une ligne, "But de " repete trois fois mangerait la
+    place des noms.
+    """
+    who = play.scorer or play.prefix()
+    if play.own_goal:
+        who += " (csc)"
+    elif play.penalty:
+        who += " (sp)"
+    return (who + " " + play.minute) if play.minute else who
+
+
+def _countdown(seconds: float) -> str:
+    """Le compte a rebours d'avant match, arrondi a la minute superieure."""
+    minutes = int(seconds // 60) + 1
+    if minutes <= 1:
+        return "Coup d'envoi dans moins d'une minute"
+    return "Coup d'envoi dans {} min".format(minutes)
+
+
 class Event:
-    """Ce qui vient de se passer : un but, ou un but retire par la VAR."""
+    """Ce qui vient de se passer : un but, une expulsion, un temps fort."""
 
     __slots__ = ("kind", "match", "side", "team", "opponent", "home_score",
-                 "away_score", "delta", "play", "at")
+                 "away_score", "delta", "play", "at", "note")
 
     def __init__(self, kind, match, side, team, opponent, home_score,
-                 away_score, delta, play, at=None):
+                 away_score, delta, play, at=None, note=""):
         self.kind = kind
         self.match = match
         self.side = side              # "home" ou "away"
@@ -87,6 +125,9 @@ class Event:
         self.delta = delta            # +1, +2 (doublon rattrape), -1...
         self.play = play              # espn.Play ou None
         self.at = at or time.time()
+        # Texte fige au moment de l'evenement : le compte a rebours d'avant
+        # match vieillirait si on le recalculait a l'affichage.
+        self.note = note
 
     @property
     def league(self):
@@ -102,6 +143,11 @@ class Event:
         return self.kind in PHASES
 
     @property
+    def sober(self) -> bool:
+        """Vrai pour une carte discrete : titre gris, et jamais de son."""
+        return self.kind in SOBER
+
+    @property
     def title(self) -> str:
         if self.kind == GOAL and self.play is not None:
             if self.play.own_goal:
@@ -113,6 +159,10 @@ class Event:
     @property
     def minute(self) -> str:
         """La minute du but, sinon l'horloge du match."""
+        if self.kind == PREMATCH:
+            # Rien n'a commence : l'horloge d'un match a venir ne dit rien, et
+            # la date complete que la source y met deborde de l'en-tete.
+            return ""
         if self.play is not None and self.play.minute:
             return self.play.minute
         return self.match.clock or self.match.detail or ""
@@ -130,6 +180,15 @@ class Event:
         """
         if self.kind == CANCELLED:
             return [("Score corrige", False)]
+        if self.kind == PREMATCH:
+            return [(self.note, False)] if self.note else []
+        if self.kind == RED_CARD:
+            # L'equipe se lit ici plutot que dans la couleur du score : voir
+            # une equipe passer en couleur, sur cette carte, ressemblerait a
+            # une bonne nouvelle.
+            if self.play is not None and self.play.scorer:
+                return [(self.team + " : ", False), (self.play.scorer, True)]
+            return [(self.team, False)] if self.team else []
         if self.phase:
             # Le titre dit tout : pas de troisieme ligne, la carte est plus
             # basse et se distingue d'un but au premier coup d'oeil.
@@ -149,6 +208,29 @@ class Event:
         """La meme ligne, d'un bloc : journal, tests, mode --no-overlay."""
         return "".join(text for text, _ in self.detail_parts())
 
+    def extra_parts(self) -> list:
+        """Les lignes supplementaires de la carte, en morceaux.
+
+        Seule la fin du match en a : le score seul ne dit pas qui a marque,
+        alors que c'est la premiere chose qu'on cherche quand on n'a pas vu le
+        match. Un camp sans but n'a pas de ligne du tout.
+        """
+        if self.kind != FULLTIME:
+            return []
+
+        match = self.match
+        lines = []
+        for team, team_id in ((match.home, match.home_id),
+                              (match.away, match.away_id)):
+            scorers = [_scorer_text(play) for play in match.plays_for(team_id)]
+            if scorers:
+                lines.append([(team + " : ", False), (", ".join(scorers), True)])
+        return lines
+
+    def extra_lines(self) -> list:
+        """Les memes lignes, chacune d'un bloc : journal et tests."""
+        return ["".join(text for text, _ in line) for line in self.extra_parts()]
+
     def log_line(self) -> str:
         head = TITLES.get(self.kind, self.kind.upper()).rstrip(" !")
         parts = ["{} [{}] {}".format(head, self.league.name, self.score_line)]
@@ -157,6 +239,9 @@ class Event:
         detail = self.detail_line()
         if detail:
             parts.append("- " + detail)
+        extra = self.extra_lines()
+        if extra:
+            parts.append("- " + " ; ".join(extra))
         if self.minute:
             parts.append("(" + self.minute + ")")
         return " ".join(parts)
@@ -168,13 +253,20 @@ class Event:
 class _Snapshot:
     """Ce qu'on retient d'un match entre deux passages."""
 
-    __slots__ = ("home_score", "away_score", "phase", "seen_plays", "last_seen")
+    __slots__ = ("home_score", "away_score", "phase", "seen_plays",
+                 "seen_cards", "announced", "last_seen")
 
-    def __init__(self, home_score, away_score, phase, seen_plays, last_seen):
+    def __init__(self, home_score, away_score, phase, seen_plays, last_seen,
+                 seen_cards=None):
         self.home_score = home_score
         self.away_score = away_score
         self.phase = phase
         self.seen_plays = seen_plays
+        self.seen_cards = seen_cards or set()
+        # L'avant-match n'est annonce qu'une fois : la fenetre reste ouverte
+        # pendant plusieurs releves, sans ce drapeau la carte reviendrait
+        # toutes les minutes jusqu'au coup d'envoi.
+        self.announced = False
         self.last_seen = last_seen
 
 
@@ -184,11 +276,16 @@ class Watcher:
     def __init__(self, leagues, interval=DEFAULT_INTERVAL,
                  idle_interval=DEFAULT_IDLE_INTERVAL,
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
-                 opener=None, on_log=None, teams=None, clock=None):
+                 opener=None, on_log=None, teams=None, clock=None,
+                 red_cards=False, before_kickoff=0.0):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
         self.teams = teams
+        # Les deux options a la demande : une expulsion et une annonce d'avant
+        # match n'interessent pas tout le monde, elles ne s'invitent pas.
+        self.red_cards = bool(red_cards)
+        self.before_kickoff = max(0.0, float(before_kickoff))   # en secondes
         self.interval = max(5.0, float(interval))
         self.idle_interval = max(self.interval, float(idle_interval))
         self.kickoff_window = float(kickoff_window)
@@ -265,7 +362,10 @@ class Watcher:
             if soonest is None or remaining < soonest:
                 soonest = remaining
 
-        if soonest is not None and soonest <= self.kickoff_window:
+        # Une annonce d'avant match reglee sur une heure n'aurait aucun sens si
+        # on ne relevait le championnat que toutes les cinq minutes.
+        window = max(self.kickoff_window, self.before_kickoff)
+        if soonest is not None and soonest <= window:
             return min(KICKOFF_INTERVAL, self.idle_interval)
         return self.idle_interval
 
@@ -362,10 +462,13 @@ class Watcher:
         stamp = time.time()
         previous = self._snapshots.get(match.id)
         keys = {play.key for play in match.plays}
+        card_keys = {play.key for play in match.red_cards}
 
         if previous is None:
+            # Premier coup d'oeil sur ce match : on photographie, on se tait.
             self._snapshots[match.id] = _Snapshot(
-                match.home_score, match.away_score, match.phase, keys, stamp)
+                match.home_score, match.away_score, match.phase, keys, stamp,
+                seen_cards=card_keys)
             return []
 
         events = []
@@ -393,6 +496,28 @@ class Watcher:
                 play=play,
             ))
 
+        # Une expulsion se detecte comme un but : une action qu'on n'avait pas
+        # encore vue. La cle est stable, donc elle ne ressort jamais deux fois.
+        if self.red_cards:
+            sides = {"home": (match.home, match.away),
+                     "away": (match.away, match.home)}
+            for play in match.red_cards:
+                if play.key in previous.seen_cards:
+                    continue
+                side = match.side_of(play.team_id)
+                team, opponent = sides.get(side, ("", ""))
+                events.append(Event(
+                    kind=RED_CARD,
+                    match=match,
+                    side=side or None,
+                    team=team,
+                    opponent=opponent,
+                    home_score=match.home_score,
+                    away_score=match.away_score,
+                    delta=0,
+                    play=play,
+                ))
+
         # Deroulement du match : coup d'envoi, mi-temps, reprise, fin.
         kind = TRANSITIONS.get((previous.phase, match.phase))
         if kind is not None:
@@ -408,10 +533,31 @@ class Watcher:
                 play=None,
             ))
 
+        # Le match va commencer : une seule fois, meme si la fenetre reste
+        # ouverte pendant plusieurs releves.
+        remaining = self._prematch_countdown(match, previous)
+        if remaining is not None:
+            previous.announced = True
+            events.append(Event(
+                kind=PREMATCH,
+                match=match,
+                side=None,
+                team="",
+                opponent="",
+                home_score=match.home_score,
+                away_score=match.away_score,
+                delta=0,
+                play=None,
+                note=_countdown(remaining),
+            ))
+
+        # La photo est mise a jour avant tout filtrage : un evenement tu par le
+        # filtre par equipe, ou par le premier releve, reste un evenement vu.
         previous.home_score = match.home_score
         previous.away_score = match.away_score
         previous.phase = match.phase
         previous.seen_plays = keys
+        previous.seen_cards = card_keys
         previous.last_seen = stamp
 
         if not alert:
@@ -419,6 +565,19 @@ class Watcher:
         if self.teams is not None and not self.teams.matches(match):
             return []
         return events
+
+    def _prematch_countdown(self, match, previous):
+        """Secondes restantes s'il faut annoncer ce match, sinon None."""
+        if not self.before_kickoff or previous.announced:
+            return None
+        if match.phase != espn.SCHEDULED:
+            return None
+        remaining = match.seconds_until_kickoff()
+        # Une heure de coup d'envoi deja passee alors que le match n'a pas
+        # demarre, c'est un retard : annoncer "ca va commencer" serait faux.
+        if remaining is None or remaining <= 0 or remaining > self.before_kickoff:
+            return None
+        return remaining
 
     @staticmethod
     def _pick_play(match, team_id, seen_keys):

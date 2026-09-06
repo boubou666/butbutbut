@@ -6,6 +6,13 @@ Trois lignes par carte, toujours les memes :
     Angers        1 - 2        Stade Rennais
     But de C. Arcus
 
+La fin du match en ajoute quelques-unes, une par camp qui a marque :
+
+    FIN DU MATCH   LIGUE 1                                  90'+4'
+    Angers        1 - 2        Stade Rennais
+    Angers : M. Lopez 12'
+    Stade Rennais : A. Kalimuendo 58', L. Blas 77'
+
 L'equipe qui vient de marquer et son chiffre sont ecrits dans la couleur du
 championnat, le nom du buteur ressort en clair. On sait donc d'un coup d'oeil
 qui a marque, ou en est le match et dans quel championnat il se joue.
@@ -46,7 +53,9 @@ BAR_WIDTH = 7
 RADIUS = 14
 GAP = 26                 # espace entre un nom d'equipe et le score
 LINE_GAP = 12
+EXTRA_GAP = 6            # espace entre deux lignes supplementaires
 STACK_GAP = 10           # espace entre deux cartes empilees
+MAX_EXTRA_LINES = 4      # au-dela, la carte serait plus haute qu'utile
 
 MIN_WIDTH = 420          # largeur de confort : les cartes empilees s'alignent
 MAX_WIDTH = 720
@@ -93,10 +102,11 @@ class Card:
     """Le contenu a afficher, independamment de tkinter."""
 
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
-                 "away_score", "side", "parts", "accent", "title_color")
+                 "away_score", "side", "parts", "accent", "title_color",
+                 "extra")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
-                 side, detail, accent, title_color=None):
+                 side, detail, accent, title_color=None, extra=()):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -106,6 +116,9 @@ class Card:
         self.away_score = away_score
         self.side = side                # "home", "away" ou None
         self.parts = tuple(detail)      # [(texte, mis_en_valeur)] : le buteur
+        # Les lignes qui suivent, decoupees pareil : les buteurs, a la fin du
+        # match. Vide pour toutes les autres cartes.
+        self.extra = tuple(tuple(line) for line in extra)
         self.accent = accent            # filet vertical + equipe qui marque
         # Le titre : la couleur du championnat pour un but, gris pour une carte
         # de deroulement. Un but doit sauter aux yeux, une mi-temps non.
@@ -122,8 +135,10 @@ class Card:
         accent = event.league.accent
         title_color = accent
 
-        if event.phase:
-            title_color = MUTED       # coup d'envoi, mi-temps, reprise, fin
+        if event.sober:
+            # Temps forts, expulsion, avant-match : rien de tout ca ne doit
+            # sauter aux yeux comme un but.
+            title_color = MUTED
         elif not event.goal:
             accent = title_color = CANCEL_ACCENT    # but annule
 
@@ -135,10 +150,13 @@ class Card:
             away=event.match.away,
             home_score=event.home_score,
             away_score=event.away_score,
-            side=event.side,
+            # Aucune equipe n'est mise en couleur sur une carte discrete : sur
+            # un carton rouge, ca ressemblerait a une bonne nouvelle.
+            side=None if event.sober else event.side,
             detail=event.detail_parts(),
             accent=accent,
             title_color=title_color,
+            extra=event.extra_parts(),
         )
 
     @classmethod
@@ -293,6 +311,31 @@ def _fit(font, text: str, limit: float) -> str:
     return (trimmed + "...") if trimmed else text[:1]
 
 
+def _fit_parts(fonts, parts, limit: float) -> list:
+    """Raccourcit une ligne en morceaux pour qu'elle tienne dans `limit`.
+
+    Les morceaux entiers sont gardes tant qu'ils rentrent, celui qui deborde
+    est coupe, et la suite est abandonnee : une liste de buteurs qui grandit ne
+    doit jamais pousser du texte hors de la carte.
+    """
+    fitted = []
+    room = float(limit)
+    for text, strong in parts:
+        font = _detail_font(fonts, strong)
+        width = font.measure(text)
+        if width <= room:
+            fitted.append((text, strong))
+            room -= width
+            continue
+        shortened = _fit(font, text, room)
+        # `_fit` rend au moins un caractere : s'il ne rentre toujours pas, ce
+        # morceau saute plutot que de mordre sur le bord.
+        if shortened and font.measure(shortened) <= room:
+            fitted.append((shortened, strong))
+        break
+    return fitted
+
+
 def _layout(card: Card, fonts):
     """Mesure la carte : largeur, hauteur et abscisse de chaque morceau.
 
@@ -318,8 +361,17 @@ def _layout(card: Card, fonts):
     detail_w = sum(_detail_font(fonts, strong).measure(text)
                    for text, strong in card.parts)
 
-    content_w = max(middle_w, header_w, detail_w)
+    extra = [list(line) for line in card.extra[:MAX_EXTRA_LINES] if line]
+    extra_w = max([sum(_detail_font(fonts, strong).measure(text)
+                       for text, strong in line) for line in extra] or [0])
+
+    content_w = max(middle_w, header_w, detail_w, extra_w)
     width = int(min(MAX_WIDTH, max(MIN_WIDTH, content_w + margins)))
+
+    # Une liste de buteurs n'a pas de longueur maximale : elle est coupee sur
+    # la largeur reelle de la carte, comme les noms d'equipes juste apres.
+    extra = [_fit_parts(fonts, line, width - margins) for line in extra]
+    extra = [line for line in extra if line]
 
     # Plafond atteint (des noms a rallonge) : on raccourcit plutot que de
     # deborder. La carte reste dans ses bords, quoi qu'on lui donne.
@@ -336,12 +388,22 @@ def _layout(card: Card, fonts):
     detail_h = max(fonts["detail"].metrics("linespace"),
                    fonts["scorer"].metrics("linespace")) if card.parts else 0
 
-    height = int(2 * PAD_Y + header_h + LINE_GAP + score_h
-                 + ((LINE_GAP - 2 + detail_h) if card.parts else 0))
+    extra_h = max(fonts["detail"].metrics("linespace"),
+                  fonts["scorer"].metrics("linespace")) if extra else 0
+
+    # Le bas du bloc de base : les lignes supplementaires se posent dessous.
+    bottom = (PAD_Y + header_h + LINE_GAP + score_h
+              + ((LINE_GAP - 2 + detail_h) if card.parts else 0))
+    extra_y = [bottom + EXTRA_GAP + index * (EXTRA_GAP + extra_h) + extra_h / 2.0
+               for index in range(len(extra))]
+
+    height = int(bottom + PAD_Y + len(extra) * (EXTRA_GAP + extra_h))
 
     return {
         "width": width,
         "height": height,
+        "extra": extra,
+        "extra_y": extra_y,
         "left": BAR_WIDTH + PAD_X,
         "right": width - PAD_X,
         "home": home,
@@ -402,6 +464,16 @@ def _draw(canvas, card: Card, fonts, box, background):
         canvas.create_text(x, box["detail_y"], text=text,
                            fill=TEXT if strong else MUTED, font=font, anchor="w")
         x += font.measure(text)
+
+    # --- lignes suivantes : les buteurs, a la fin du match
+    for line, y in zip(box["extra"], box["extra_y"]):
+        x = box["left"]
+        for text, strong in line:
+            font = _detail_font(fonts, strong)
+            canvas.create_text(x, y, text=text,
+                               fill=TEXT if strong else MUTED, font=font,
+                               anchor="w")
+            x += font.measure(text)
 
 
 # ------------------------------------------------------------------ pile -----
