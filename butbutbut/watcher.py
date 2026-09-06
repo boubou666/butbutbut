@@ -172,6 +172,19 @@ class Event:
         return "{} {} - {} {}".format(self.match.home, self.home_score,
                                       self.away_score, self.match.away)
 
+    @property
+    def colors(self) -> tuple:
+        """(couleur, couleur secondaire) du club concerne, ou ("", "").
+
+        Une carte de deroulement ne designe aucune equipe : elle n'a donc pas
+        de couleur de club a prendre.
+        """
+        if self.side == "home":
+            return (self.match.home_color, self.match.home_alt)
+        if self.side == "away":
+            return (self.match.away_color, self.match.away_alt)
+        return ("", "")
+
     def detail_parts(self) -> list:
         """La troisieme ligne, en morceaux : (texte, mis_en_valeur).
 

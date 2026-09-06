@@ -2,6 +2,8 @@
 
 import copy
 import json
+import struct
+import zlib
 from datetime import datetime, timedelta, timezone
 
 
@@ -39,24 +41,35 @@ def in_minutes(minutes) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def team(name):
+def team(name, color="", alternate="", logo=""):
     """Un competiteur, tel que la source le decrit.
 
     `name` peut etre une chaine (on derive alors un nom court et une
     abreviation plausibles) ou un tuple (nom complet, nom court, abreviation)
     quand un test a besoin des vraies ecritures - "PSG" par exemple.
+
+    Les couleurs et l'ecusson ne sont poses que s'ils sont demandes : la source
+    les omet aussi, et le code doit tenir sans.
     """
     if isinstance(name, (tuple, list)):
         display, short, abbr = (list(name) + [None, None])[:3]
     else:
         display, short, abbr = name, name, name[:3].upper()
-    return {"displayName": display, "shortDisplayName": short or display,
-            "abbreviation": abbr or display[:3].upper()}
+    entry = {"displayName": display, "shortDisplayName": short or display,
+             "abbreviation": abbr or display[:3].upper()}
+    if color:
+        entry["color"] = color
+    if alternate:
+        entry["alternateColor"] = alternate
+    if logo:
+        entry["logo"] = logo
+    return entry
 
 
 def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
           away_score=0, state="in", detail="35'", clock="35'",
-          date="2026-09-06T15:15Z", details=(), status_name=""):
+          date="2026-09-06T15:15Z", details=(), status_name="",
+          home_colors=(), away_colors=(), home_logo="", away_logo=""):
     return {
         "id": match_id,
         "competitions": [{
@@ -64,9 +77,11 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
             "date": date,
             "competitors": [
                 {"homeAway": "home", "score": str(home_score),
-                 "team": dict(team(home), id="H" + match_id)},
+                 "team": dict(team(home, *home_colors, logo=home_logo),
+                              id="H" + match_id)},
                 {"homeAway": "away", "score": str(away_score),
-                 "team": dict(team(away), id="A" + match_id)},
+                 "team": dict(team(away, *away_colors, logo=away_logo),
+                              id="A" + match_id)},
             ],
             "status": {"displayClock": clock,
                        "type": {"state": state, "shortDetail": detail,
@@ -113,6 +128,22 @@ class FakeClock:
 
     def jump(self, seconds):
         self.now += float(seconds)
+def png_bytes(width=8, height=8):
+    """Un vrai PNG, fabrique ici plutot que range en binaire dans le depot.
+
+    Le cache d'ecussons refuse ce qui n'a pas la signature d'un PNG : il faut
+    donc de quoi lui donner l'un et l'autre.
+    """
+    def chunk(tag, data):
+        body = tag + data
+        return (struct.pack(">I", len(data)) + body
+                + struct.pack(">I", zlib.crc32(body) & 0xffffffff))
+
+    rows = b"".join(b"\x00" + b"\xff\x00\x00" * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows))
+            + chunk(b"IEND", b""))
 
 
 class FakeFont:

@@ -17,10 +17,11 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-from . import __version__
+from . import __version__, crests
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
 TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams"
+LOGO_URL = "https://a.espncdn.com/i/teamlogos/soccer/500/{id}.png"
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
@@ -118,11 +119,14 @@ class Match:
     __slots__ = ("id", "league", "home", "away", "home_id", "away_id",
                  "home_names", "away_names", "home_score", "away_score",
                  "state", "status_name", "detail", "clock", "start", "plays",
-                 "red_cards")
+                 "red_cards", "home_logo", "away_logo", "home_color",
+                 "away_color", "home_alt", "away_alt")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
-                 status_name="", home_names=(), away_names=(), red_cards=()):
+                 status_name="", home_names=(), away_names=(), red_cards=(),
+                 home_logo="", away_logo="", home_color="", away_color="",
+                 home_alt="", away_alt=""):
         self.id = id
         self.league = league
         self.home = home
@@ -144,6 +148,14 @@ class Match:
         # Les expulsions sont tenues a part : `plays` habille les buts, et un
         # carton rouge n'a jamais decrit un but.
         self.red_cards = list(red_cards)
+        # L'habillage du club : l'URL de son ecusson et ses deux couleurs, en
+        # #rrggbb. Vides quand la source ne les donne pas.
+        self.home_logo = home_logo
+        self.away_logo = away_logo
+        self.home_color = home_color
+        self.away_color = away_color
+        self.home_alt = home_alt
+        self.away_alt = away_alt
 
     @property
     def phase(self) -> str:
@@ -252,6 +264,39 @@ def team_names(competitor) -> tuple:
     names = (team.get("displayName"), team.get("shortDisplayName"),
              team.get("name"), team.get("location"), team.get("abbreviation"))
     return tuple(str(name).strip() for name in names if name)
+
+
+def team_colors(competitor) -> tuple:
+    """(couleur, couleur secondaire) d'une equipe, en "#rrggbb".
+
+    ESPN les ecrit sans le diese ("0000bf"), et pas toujours : une chaine vide
+    signale simplement qu'on ne sait pas.
+    """
+    team = competitor.get("team") or {}
+    return (crests.normalize(team.get("color")) or "",
+            crests.normalize(team.get("alternateColor")) or "")
+
+
+def team_logo(competitor) -> str:
+    """URL du PNG de l'ecusson, ou une chaine vide.
+
+    Seul http(s) est accepte : ce qui sortira de la est telecharge sans qu'on
+    le regarde de plus pres.
+    """
+    team = competitor.get("team") or {}
+    url = team.get("logo")
+    if not url:
+        for entry in team.get("logos") or []:
+            if isinstance(entry, dict) and entry.get("href"):
+                url = entry["href"]
+                break
+    url = str(url or "").strip()
+    return url if url.lower().startswith(("http://", "https://")) else ""
+
+
+def logo_url(team_id) -> str:
+    """L'ecusson d'une equipe a partir de son seul numero ESPN."""
+    return LOGO_URL.format(id=team_id)
 
 
 def _parse_date(value) -> datetime | None:
@@ -371,6 +416,8 @@ def parse(payload: dict, league) -> list:
             continue
 
         goals, red_cards = _parse_details(competition)
+        home_color, home_alt = team_colors(home)
+        away_color, away_alt = team_colors(away)
 
         matches.append(Match(
             id=match_id,
@@ -390,6 +437,12 @@ def parse(payload: dict, league) -> list:
             start=_parse_date(competition.get("date") or event.get("date")),
             plays=goals,
             red_cards=red_cards,
+            home_logo=team_logo(home),
+            away_logo=team_logo(away),
+            home_color=home_color,
+            away_color=away_color,
+            home_alt=home_alt,
+            away_alt=away_alt,
         ))
     return matches
 

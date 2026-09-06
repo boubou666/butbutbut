@@ -13,8 +13,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import (__version__, config, espn, fullscreen, journal, leagues,
-               screens, sound, state, teams, watcher)
+from . import (__version__, config, crests, espn, fullscreen, journal,
+               leagues, screens, sound, state, teams, watcher)
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -42,6 +42,7 @@ def paths() -> dict:
     return {
         "data": root,
         "sound": root / "sound",
+        "logos": root / "logos",
         "wav": root / "but.wav",
         "log": root / "butbutbut.log",
         "pid": root / "butbutbut.pid",
@@ -159,6 +160,16 @@ def play_goal_sound(path, min_gap: float = 2.0):
         return None
     _last_sound_at = now
     return sound.play_async(path)
+
+
+def crest_cache(args, on_log=None):
+    """Le cache d'ecussons, ou un cache eteint avec --no-logos.
+
+    Toujours un objet, jamais None : c'est lui qui decide de ne rien faire,
+    l'appelant n'a pas a s'en soucier a chaque but.
+    """
+    return crests.Cache(paths()["logos"], enabled=not args.no_logos,
+                        on_log=on_log or (lambda message: None))
 
 
 def team_filter(args):
@@ -304,17 +315,20 @@ def do_daemon(args) -> int:
             log(str(exc), quiet=args.quiet)
             log("pas de carte : on continue au son et au journal", quiet=args.quiet)
 
+    crest = crest_cache(args, on_log=lambda message: log(message, quiet=args.quiet))
+
     try:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter)
         else:
-            _watch_with_cards(guard, args, stopping, stack, reporter)
+            _watch_with_cards(guard, args, stopping, stack, reporter, crest)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
         stopping.set()
         if stack is not None:
             stack.close()
+        crest.join(2.0)
         sound.stop_all()
         release_pid_file()
         # L'etat s'en va avec le pid : garde, il ferait croire a des matchs en
@@ -343,7 +357,7 @@ def _watch_headless(guard, args, stopping, reporter) -> None:
         stopping.wait(guard.plan_wait())
 
 
-def _watch_with_cards(guard, args, stopping, stack, reporter) -> None:
+def _watch_with_cards(guard, args, stopping, stack, reporter, crest=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -382,13 +396,13 @@ def _watch_with_cards(guard, args, stopping, stack, reporter) -> None:
                         continue    # le journal garde la trace, pas l'ecran
                     # Temps forts, expulsion, avant-match : carte seule, pas de
                     # son. La duree ne depend donc pas de celle du jingle.
-                    stack.push(overlay.Card.from_event(event),
+                    stack.push(overlay.Card.from_event(event, crest),
                                duration=args.duration or PHASE_DURATION)
                     continue
 
                 if media is None:
                     media = resolve_sound(args)
-                stack.push(overlay.Card.from_event(event), duration=media[1])
+                stack.push(overlay.Card.from_event(event, crest), duration=media[1])
                 if event.goal:
                     play_goal_sound(media[0])
             except Exception as exc:
@@ -422,7 +436,11 @@ def do_test(args) -> int:
 
     selection = leagues.resolve(args.leagues, args.exclude)
     count = max(1, int(args.test))
-    cards = [overlay.Card.demo(selection[i % len(selection)]) for i in range(count)]
+    # Les ecussons qui manquent partent se telecharger : le prochain --test les
+    # aura. Celui-ci s'affiche sans attendre, exactement comme un vrai but.
+    crest = crest_cache(args)
+    cards = [overlay.Card.demo(selection[i % len(selection)], crest)
+             for i in range(count)]
 
     for card in cards:
         print("butbutbut : demo - [{}] {} - {}".format(
@@ -445,6 +463,10 @@ def do_test(args) -> int:
     except overlay.TkinterMissing as exc:
         print(str(exc), file=sys.stderr)
         return 4
+    finally:
+        # On laisse finir les ecussons partis en fond : sinon la demo,
+        # toujours tuee juste apres, ne les aurait jamais.
+        crest.join(3.0)
     return 0
 
 
@@ -623,6 +645,11 @@ def do_status(args) -> int:
         origin = "fourni" if chosen == sound.BUNDLED_SOUND else "corne synthetisee"
         print("  son         : {} ({})".format(chosen.name, origin))
     print("  sons perso  : {}  ({} fichier(s))".format(p["sound"], len(sounds)))
+
+    cached = crest_cache(args).cached()
+    print("  ecussons    : {}".format(
+        "desactives (--no-logos)" if args.no_logos
+        else "{}  ({} en cache)".format(p["logos"], len(cached))))
 
     found = screens.monitors()
     print("  ecrans      : {} -> carte en {} sur {}".format(
@@ -809,6 +836,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="annonce le match ce nombre de minutes avant le "
                              "coup d'envoi, une seule fois et sans son "
                              "(0 = desactive, defaut)")
+    parser.add_argument("--no-logos", action="store_true", dest="no_logos",
+                        help="pas d'ecusson sur les cartes, et rien de "
+                             "telecharge (les couleurs des clubs restent)")
     parser.add_argument("--no-sound", action="store_true", dest="no_sound",
                         help="mode muet")
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
@@ -863,6 +893,7 @@ def main(argv=None) -> int:
     try:
         p["data"].mkdir(parents=True, exist_ok=True)
         p["sound"].mkdir(parents=True, exist_ok=True)
+        p["logos"].mkdir(parents=True, exist_ok=True)
     except Exception as exc:
         print("butbutbut : dossier de donnees inutilisable : {}".format(exc),
               file=sys.stderr)
