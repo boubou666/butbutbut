@@ -20,13 +20,18 @@ Multiplateforme, comme doot :
     "click-through" qui ne volent jamais le focus (styles etendus Win32) ;
   - macOS   : fenetres sans bordure, absentes du Dock ;
   - Linux   : fenetres de type "splash", posees au-dessus, sans decoration.
+
+Une carte reste une fenetre `topmost` : une application en plein ecran lui
+passe devant. `fullscreen` sait le dire sous Windows ; la pile le note alors
+dans le journal, et peut reproposer la carte plus tard (voir `push`).
 """
 
 from __future__ import annotations
 
 import sys
+import time
 
-from . import screens, sound
+from . import fullscreen, screens, sound
 
 TRANSPARENT_KEY = "#ff00fe"
 CARD_BG = "#0d1017"
@@ -52,6 +57,8 @@ FADE_STEPS = 12
 PUMP_MS = 120            # cadence des petites taches de la boucle tkinter
 
 MAX_VISIBLE = 5          # au-dela, la plus ancienne carte cede sa place
+
+RETRY_POLL_MS = 2000     # cadence a laquelle on regarde si le plein ecran a cesse
 
 FONT_CANDIDATES = {
     "win32": ("Segoe UI", "Tahoma", "Arial"),
@@ -498,12 +505,17 @@ class Stack:
     """
 
     def __init__(self, screen=None, position="bottom-right", opacity=1.0,
-                 scale=1.0, max_visible=MAX_VISIBLE):
+                 scale=1.0, max_visible=MAX_VISIBLE, retry_fullscreen=0.0,
+                 on_log=None):
         self.screen = screen
         self.position = (position or "bottom-right").strip().lower()
         self.opacity = max(0.05, min(1.0, float(opacity)))
         self.scale = float(scale)
         self.max_visible = max(1, int(max_visible))
+        # Secondes pendant lesquelles une carte masquee par une application en
+        # plein ecran attend son tour. 0 : elle ne repasse pas.
+        self.retry_fullscreen = max(0.0, float(retry_fullscreen or 0.0))
+        self.on_log = on_log
 
         self.tk = None
         self.root = None
@@ -595,7 +607,79 @@ class Stack:
     # ------------------------------------------------------------ cartes ----
 
     def push(self, card: Card, duration: float = 6.0) -> None:
-        """Ajoute une carte au coin, en decalant celles deja affichees."""
+        """Ajoute une carte au coin, en decalant celles deja affichees.
+
+        Si une application en plein ecran occupe l'ecran vise, la carte partira
+        quand meme - la detection peut se tromper, et une carte peut-etre
+        visible vaut mieux qu'un but retenu pour rien - mais le journal garde
+        la trace du but probablement manque, et l'option de repli le remet en
+        file d'attente jusqu'a ce que l'ecran se libere.
+        """
+        self.open()
+
+        if self.hidden_by_fullscreen():
+            self._log("une application en plein ecran occupe {} : la carte y est"
+                      " probablement invisible".format(self._screen_name()))
+            if self.retry_fullscreen > 0:
+                self._retry_later(card, duration,
+                                  time.monotonic() + self.retry_fullscreen)
+
+        self._show(card, duration)
+
+    def hidden_by_fullscreen(self) -> bool:
+        """Vrai si une fenetre plein ecran masque l'ecran ou va la carte.
+
+        Toujours faux hors de Windows : voir `fullscreen`. Ne leve jamais et ne
+        coute qu'une poignee d'appels Win32 (0,1 ms mesuree), donc le cas
+        normal ne perd rien.
+        """
+        monitor = self._monitor or self.refresh_monitor()
+        return fullscreen.covers(monitor)
+
+    def _screen_name(self) -> str:
+        monitor = self._monitor or self.refresh_monitor()
+        return monitor.name
+
+    def _log(self, message: str) -> None:
+        if self.on_log is None:
+            return
+        try:
+            self.on_log(message)
+        except Exception:
+            pass
+
+    def _retry_later(self, card: Card, duration: float, deadline: float) -> None:
+        """Represente la carte des que l'ecran se libere, jusqu'a `deadline`.
+
+        La carte compte comme "en attente" : `run_until_idle` ne rend donc pas
+        la main avant que la question soit tranchee, dans un sens ou l'autre.
+        """
+        self._pending += 1
+
+        def again():
+            if self.root is None:
+                return
+            if not self.hidden_by_fullscreen():
+                self._pending -= 1
+                self._log("l'ecran s'est libere : la carte repasse")
+                try:
+                    self._show(card, duration)
+                except Exception as exc:
+                    # Personne n'attend cet appel : sans ce filet, l'echec
+                    # partirait dans la sortie d'erreur de tkinter.
+                    self._log("carte non reaffichee : {}".format(exc))
+                return
+            if time.monotonic() >= deadline:
+                self._pending -= 1
+                self._log("toujours en plein ecran apres {:.0f}s : carte"
+                          " abandonnee".format(self.retry_fullscreen))
+                return
+            self.root.after(RETRY_POLL_MS, again)
+
+        self.root.after(RETRY_POLL_MS, again)
+
+    def _show(self, card: Card, duration: float) -> None:
+        """Cree la fenetre de la carte et la fait apparaitre."""
         self.open()
 
         # Trop de cartes : la plus ancienne s'en va tout de suite.
@@ -643,7 +727,7 @@ class Stack:
 
 def show(cards, duration: float = 6.0, sound_path=None, screen=None,
          position="bottom-right", opacity: float = 1.0, scale: float = 1.0,
-         stagger: float = 0.9) -> None:
+         stagger: float = 0.9, retry_fullscreen: float = 0.0, on_log=None) -> None:
     """Affiche une ou plusieurs cartes, et rend la main quand tout est efface.
 
     Bloquant : pratique pour `--test`. Le daemon, lui, garde une Stack ouverte
@@ -652,7 +736,8 @@ def show(cards, duration: float = 6.0, sound_path=None, screen=None,
     if isinstance(cards, Card):
         cards = [cards]
 
-    stack = Stack(screen=screen, position=position, opacity=opacity, scale=scale)
+    stack = Stack(screen=screen, position=position, opacity=opacity, scale=scale,
+                  retry_fullscreen=retry_fullscreen, on_log=on_log)
     stack.open()
     try:
         for index, card in enumerate(cards):

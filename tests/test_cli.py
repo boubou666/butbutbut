@@ -28,6 +28,16 @@ class TestParser(unittest.TestCase):
         self.assertFalse(args.no_overlay)
         self.assertFalse(args.no_phase_cards)
         self.assertFalse(args.quiet)
+        self.assertEqual(args.retry_fullscreen, 0.0)
+
+    def test_retry_fullscreen_is_opt_in(self):
+        # Sans valeur : la duree par defaut. Avec : celle qu'on donne.
+        self.assertEqual(
+            self.parser.parse_args(["--retry-fullscreen"]).retry_fullscreen,
+            cli.RETRY_FULLSCREEN)
+        self.assertEqual(
+            self.parser.parse_args(["--retry-fullscreen", "45"]).retry_fullscreen,
+            45.0)
 
     def test_flags(self):
         args = self.parser.parse_args(

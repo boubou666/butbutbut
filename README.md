@@ -331,6 +331,43 @@ minutes. En cas de coupure reseau, l'attente double a chaque echec (plafond
 L'affichage vit dans le fil principal (tkinter y tient), la surveillance reseau
 dans un fil a part : une requete lente ne fige jamais une carte a l'ecran.
 
+### Quand une appli est en plein ecran
+
+Une carte est une fenetre *toujours au-dessus*, mais un jeu ou un lecteur video
+en **plein ecran** lui passe devant : le but tombe alors dans le vide. Avant
+chaque carte, butbutbut regarde donc si la fenetre au premier plan couvre toute
+la dalle visee (`GetForegroundWindow` + `GetWindowRect` compares au `rcMonitor`
+du moniteur - la dalle entiere, pas la zone de travail - et absence de
+`WS_CAPTION` / `WS_THICKFRAME`, qui distingue un plein ecran d'une fenetre
+simplement maximisee). La carte part quand meme, la detection pouvant se
+tromper, mais le journal garde la trace du but probablement manque :
+
+```
+2026-09-06 21:07:02  BUT [Ligue 1] Marseille 2 - 1 Paris FC pour Marseille - But de M. Greenwood (67')
+2026-09-06 21:07:02  une application en plein ecran occupe \\.\DISPLAY1 : la carte y est probablement invisible
+```
+
+Le son, lui, part comme d'habitude.
+
+```bash
+butbutbut --retry-fullscreen        # repasser la carte plus tard (120 s au plus)
+butbutbut --retry-fullscreen 300    # ... pendant 5 minutes
+```
+
+Avec cette option, la carte masquee reste en file d'attente et **repasse des que
+l'ecran se libere** (jeu quitte, sortie du plein ecran) ; si l'ecran est toujours
+pris au bout du delai, elle est abandonnee, la aussi avec une ligne de journal.
+
+Une notification systeme Windows a ete ecartee : Windows retient justement les
+toasts pendant qu'une application est en plein ecran, la promesse aurait donc
+ete tenue exactement quand elle ne servait a rien.
+
+> **Windows uniquement.** X11, Wayland et macOS ne repondent pas de facon fiable
+> et portable a la question "une fenetre plein ecran occupe-t-elle cet ecran ?".
+> Plutot qu'une heuristique qui se trompe, butbutbut n'y detecte rien : les
+> cartes s'affichent comme avant, sans ligne de journal supplementaire, et
+> `--retry-fullscreen` y est refuse avec un avertissement.
+
 ---
 
 ## Journal
