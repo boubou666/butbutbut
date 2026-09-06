@@ -1,0 +1,7 @@
+# Ce que setuptools embarque dans le sdist en plus du paquet lui-meme.
+#
+# Sans cette ligne, setuptools ramasse tests/test_*.py mais pas
+# tests/helpers.py : les tests du sdist ne demarraient meme pas.
+recursive-include tests *.py
+
+include CHANGELOG.md

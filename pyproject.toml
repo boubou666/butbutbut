@@ -9,15 +9,31 @@ description = "Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga 
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
-keywords = ["football", "soccer", "livescore", "ligue1", "premier-league", "desktop", "overlay"]
+authors = [{ name = "boubou666" }]
+keywords = [
+    "football", "soccer", "livescore", "scores", "ligue1", "premier-league",
+    "laliga", "serie-a", "bundesliga", "espn", "desktop", "overlay", "daemon",
+]
+# La liste officielle : https://pypi.org/classifiers/
 classifiers = [
+    "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications",
     "Environment :: Win32 (MS Windows)",
     "Environment :: MacOS X",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: French",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Games/Entertainment",
+    "Topic :: Multimedia :: Sound/Audio",
 ]
 dependencies = []
 
@@ -27,6 +43,9 @@ but = "butbutbut.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/boubou666/butbutbut"
+Source = "https://github.com/boubou666/butbutbut"
+Changelog = "https://github.com/boubou666/butbutbut/blob/main/CHANGELOG.md"
+Releases = "https://github.com/boubou666/butbutbut/releases"
 Issues = "https://github.com/boubou666/butbutbut/issues"
 
 [tool.setuptools]
