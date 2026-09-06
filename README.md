@@ -1,5 +1,7 @@
 ![Deux supporters ahuris pointent du doigt cinq ecrans qui affichent tous un but](https://raw.githubusercontent.com/boubou666/butbutbut/main/docs/banniere.png)
 
+*Ce projet est aussi documente en [anglais](README.en.md).*
+
 # butbutbut
 
 [![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
