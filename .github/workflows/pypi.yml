@@ -1,0 +1,63 @@
+name: pypi
+
+# Envoie sur PyPI les paquets deja attaches a une release GitHub par le
+# workflow `release`. Rien n'est reconstruit ici : ce qui part sur PyPI est
+# exactement le wheel et le sdist qu'on peut telecharger depuis la release.
+#
+# Ce workflow est volontairement separe de `release.yml` : une publication
+# PyPI mal configuree ne peut donc pas faire echouer la creation de la
+# release GitHub. Il est de plus inerte tant que la variable de depot
+# PYPI_PUBLISH ne vaut pas "true" (voir README, "Publication sur PyPI").
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag d'une release deja publiee (ex. v1.2.0)"
+        required: true
+
+permissions: {}
+
+jobs:
+  pypi:
+    name: publication sur PyPI
+    # L'interrupteur. Tant que le proprietaire du depot n'a pas declare le
+    # publisher de confiance sur pypi.org puis cree cette variable, le job
+    # est saute - il n'echoue pas, et la release GitHub reste verte.
+    if: vars.PYPI_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/butbutbut
+
+    permissions:
+      contents: read     # lire les pieces jointes de la release
+      id-token: write    # obligatoire : c'est le jeton OIDC que PyPI verifie
+
+    steps:
+      - name: les paquets de la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.whl' --pattern '*.tar.gz' --dir dist
+          ls -l dist
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Un dernier filet : des metadonnees illisibles par PyPI seraient
+      # refusees a l'envoi, autant s'en apercevoir avant.
+      - name: les metadonnees sont lisibles par PyPI
+        run: |
+          python -m pip install --upgrade twine
+          python -m twine check dist/*
+
+      # Trusted Publishing : aucun jeton dans le depot, l'action echange le
+      # jeton OIDC de ce job contre un jeton d'envoi a usage unique.
+      - name: PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

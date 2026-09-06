@@ -1,17 +1,18 @@
-![Deux supporters ahuris pointent du doigt cinq ecrans qui affichent tous un but](docs/banniere.png)
+![Deux supporters ahuris pointent du doigt cinq ecrans qui affichent tous un but](https://raw.githubusercontent.com/boubou666/butbutbut/main/docs/banniere.png)
 
 # butbutbut
 
 [![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/boubou666/butbutbut)](https://github.com/boubou666/butbutbut/releases)
 [![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+[![pypi](https://img.shields.io/pypi/v/butbutbut)](https://pypi.org/project/butbutbut/)
+[![licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/boubou666/butbutbut/blob/main/LICENSE)
 
 Un but tombe en **Ligue 1**, **Premier League**, **LaLiga**, **Serie A** ou
 **Bundesliga** : le son part, et une carte s'affiche en bas a droite de ton
 ecran avec le score et le buteur.
 
-![Trois cartes empilees en bas a droite de l'ecran](docs/cartes.png)
+![Trois cartes empilees en bas a droite de l'ecran](https://raw.githubusercontent.com/boubou666/butbutbut/main/docs/cartes.png)
 
 L'equipe qui vient de marquer et son chiffre sont dans la couleur du
 championnat, le nom du buteur ressort en clair. Deux buts en meme temps ne se
@@ -25,6 +26,24 @@ la bibliotheque standard de Python, et ca tourne sur Windows, macOS et Linux.
 ---
 
 ## Installation
+
+### Avec pipx, sans cloner (tous systemes)
+
+```bash
+pipx install butbutbut
+butbutbut
+```
+
+`pip install --user butbutbut` fait la meme chose. Les deux commandes
+`butbutbut` et `but` arrivent dans le PATH, et le son est embarque dans le
+paquet : zero dependance, rien d'autre a telecharger.
+
+Ce que pipx ne fait pas, en revanche : le **demarrage automatique** a
+l'ouverture de session. Pour l'avoir, ce sont les scripts ci-dessous.
+
+> Cette methode ne marchera qu'a partir de la premiere version envoyee sur
+> PyPI. Le depot est pret, il reste une manipulation cote pypi.org :
+> [Publication sur PyPI](#publication-sur-pypi).
 
 ### Linux (Arch, Debian/Ubuntu, Fedora, openSUSE...) et macOS
 
@@ -340,11 +359,68 @@ une police factice, donc sans tkinter.
 
 ## Versions
 
-Les evolutions sont consignees dans [CHANGELOG.md](CHANGELOG.md), au format
-[Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque version porte
-un tag `vX.Y.Z` et une
+Les evolutions sont consignees dans
+[CHANGELOG.md](https://github.com/boubou666/butbutbut/blob/main/CHANGELOG.md),
+au format [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque
+version porte un tag `vX.Y.Z` et une
 [release](https://github.com/boubou666/butbutbut/releases) construite
 automatiquement, avec le paquet en piece jointe.
+
+### Publication sur PyPI
+
+Le workflow
+[`pypi.yml`](https://github.com/boubou666/butbutbut/blob/main/.github/workflows/pypi.yml)
+envoie sur PyPI les paquets attaches a une release GitHub, en **Trusted
+Publishing** : PyPI fait confiance au workflow lui-meme via un jeton OIDC, il
+n'y a donc **aucun jeton d'API a stocker** dans le depot.
+
+Le workflow est **inerte par defaut**. Tant que les etapes ci-dessous ne sont
+pas faites, le job est saute : pousser un tag continue de produire la release
+GitHub comme avant, sans echec rouge. Seul le proprietaire du depot peut faire
+ces etapes, et une seule fois :
+
+1. **Avoir un compte sur [pypi.org](https://pypi.org/)**, avec la double
+   authentification activee (elle est obligatoire pour publier).
+
+2. **Declarer le publisher de confiance.** Le projet `butbutbut` n'existe pas
+   encore sur PyPI : il faut donc passer par un *pending publisher*. Dans le
+   menu du compte, `Publishing`, puis `Add a new pending publisher`, onglet
+   `GitHub`. Remplir exactement :
+
+   | Champ | Valeur |
+   | --- | --- |
+   | PyPI Project Name | `butbutbut` |
+   | Owner | `boubou666` |
+   | Repository name | `butbutbut` |
+   | Workflow name | `pypi.yml` |
+   | Environment name | `pypi` |
+
+   Attention : un *pending publisher* ne reserve pas le nom, il ne fait
+   qu'autoriser le workflow a le creer. Mieux vaut ne pas trop laisser trainer
+   entre cette etape et la premiere publication.
+
+3. **Creer l'environnement GitHub.** Depot, `Settings`, `Environments`,
+   `New environment`, nomme **`pypi`** - le meme mot qu'a l'etape 2. C'est
+   aussi l'endroit ou ajouter, si on veut, une approbation manuelle avant
+   chaque envoi sur PyPI.
+
+4. **Armer la publication.** Depot, `Settings`, `Secrets and variables`,
+   `Actions`, onglet `Variables`, `New repository variable` : nom
+   **`PYPI_PUBLISH`**, valeur **`true`**. C'est l'interrupteur ; sans lui le
+   job reste saute.
+
+5. **Pousser un tag**, comme d'habitude :
+
+   ```bash
+   git tag -a v1.2.1 -m "1.2.1" && git push --tags
+   ```
+
+   `release.yml` construit le paquet et cree la release ; `pypi.yml` prend le
+   relais et envoie ce meme paquet sur PyPI. Le *pending publisher* devient
+   alors un publisher normal, et le projet existe.
+
+Pour rejouer un envoi sans creer de tag : onglet `Actions`, workflow **pypi**,
+`Run workflow`, en donnant le tag d'une release deja publiee.
 
 ## Licence
 

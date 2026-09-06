@@ -1,6 +1,11 @@
 name: release
 
 # Se declenche sur un tag de version : `git tag -a v1.2.3 && git push --tags`.
+#
+# La release creee ici declenche a son tour `pypi.yml`, qui envoie les memes
+# fichiers sur PyPI - mais seulement une fois que le proprietaire du depot a
+# arme la publication (README, section "Publication sur PyPI"). Tant que ce
+# n'est pas fait, ce workflow-ci se comporte exactement comme avant.
 on:
   push:
     tags:
