@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from butbutbut import espn, leagues
 
-from helpers import event, goal_detail, opener_for, payload
+from helpers import event, goal_detail, opener_for, payload, red_card_detail
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
@@ -104,6 +104,45 @@ class TestPlays(unittest.TestCase):
         second = espn.parse(raw, LIGUE1)[0]
         self.assertEqual([p.key for p in first.plays],
                          [p.key for p in second.plays])
+
+
+class TestRedCards(unittest.TestCase):
+    """Les expulsions vivent dans le meme tableau `details` que les buts."""
+
+    def test_red_cards_are_kept_apart_from_the_goals(self):
+        details = (goal_detail("H1", "35'", "C. Arcus", index=1),
+                   red_card_detail("A1", "62'", "J. Lefort", index=2),
+                   {"type": {"text": "Yellow Card"}, "scoringPlay": False})
+        match = espn.parse(payload(event(details=details)), LIGUE1)[0]
+
+        self.assertEqual([p.scorer for p in match.plays], ["C. Arcus"])
+        self.assertEqual([p.scorer for p in match.red_cards], ["J. Lefort"])
+        card = match.red_cards[0]
+        self.assertTrue(card.red_card)
+        self.assertEqual(card.minute, "62'")
+        self.assertEqual(card.prefix(), "Carton rouge")
+        self.assertEqual(card.summary(), "Carton rouge pour J. Lefort (62')")
+
+    def test_a_match_without_expulsion_has_an_empty_list(self):
+        match = espn.parse(payload(event(details=(goal_detail("H1"),))), LIGUE1)[0]
+        self.assertEqual(match.red_cards, [])
+
+    def test_keys_are_stable_across_two_reads(self):
+        raw = payload(event(details=(goal_detail("H1", index=1),
+                                     red_card_detail("A1", index=2))))
+        first = espn.parse(raw, LIGUE1)[0]
+        second = espn.parse(raw, LIGUE1)[0]
+        self.assertEqual([p.key for p in first.red_cards],
+                         [p.key for p in second.red_cards])
+        # Un but et une expulsion de la meme equipe ne partagent pas de cle.
+        self.assertNotEqual(first.plays[0].key, first.red_cards[0].key)
+
+    def test_the_side_of_a_red_card_is_found_from_its_team(self):
+        match = espn.parse(payload(event(
+            details=(red_card_detail("A1"),))), LIGUE1)[0]
+        self.assertEqual(match.side_of(match.red_cards[0].team_id), "away")
+        self.assertEqual(match.side_of("H1"), "home")
+        self.assertEqual(match.side_of(""), "")
 
 
 class TestPhase(unittest.TestCase):

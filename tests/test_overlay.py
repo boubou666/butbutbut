@@ -5,7 +5,8 @@ from unittest import mock
 
 from butbutbut import fullscreen, leagues, overlay, screens, watcher
 
-from helpers import bump, event, fake_fonts, goal_detail, opener_for, payload
+from helpers import (bump, event, fake_fonts, goal_detail, in_minutes,
+                     opener_for, payload, red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
@@ -15,6 +16,37 @@ def one_goal(**bump_kwargs):
     guard = watcher.Watcher([LIGUE1], opener=opener_for(state))
     guard.prime()
     state["payload"] = bump(state["payload"], **bump_kwargs)
+    return guard.refresh(LIGUE1)[0]
+
+
+def one_red_card(**card_kwargs):
+    """L'evenement produit par une expulsion, option activee."""
+    state = {"payload": payload(event(home_score=1, away_score=1))}
+    guard = watcher.Watcher([LIGUE1], opener=opener_for(state), red_cards=True)
+    guard.prime()
+    state["payload"] = bump(state["payload"], "home", by=0,
+                            details=(red_card_detail(**card_kwargs),))
+    return guard.refresh(LIGUE1)[0]
+
+
+def one_prematch():
+    """L'evenement d'avant match, option activee."""
+    state = {"payload": payload(event(state="pre", clock="0'",
+                                      date=in_minutes(5)))}
+    guard = watcher.Watcher([LIGUE1], opener=opener_for(state),
+                            before_kickoff=10 * 60.0)
+    guard.prime()
+    return guard.refresh(LIGUE1)[0]
+
+
+def one_fulltime(*details):
+    """Le sifflet final d'un match suivi depuis la premiere periode."""
+    state = {"payload": payload(event(state="in", home_score=1, away_score=2,
+                                      details=details))}
+    guard = watcher.Watcher([LIGUE1], opener=opener_for(state))
+    guard.prime()
+    state["payload"] = payload(event(state="post", clock="90'+4'", home_score=1,
+                                     away_score=2, details=details))
     return guard.refresh(LIGUE1)[0]
 
 
@@ -115,6 +147,68 @@ class TestPhaseCards(unittest.TestCase):
         self.assertLess(phase["height"], goal["height"])
 
 
+class TestRedCardAndPrematchCards(unittest.TestCase):
+    """Deux cartes de plus, aussi discretes qu'un temps fort."""
+
+    def test_a_red_card_is_as_quiet_as_a_phase_card(self):
+        card = overlay.Card.from_event(one_red_card(team_id="A1"))
+        self.assertEqual(card.title, "CARTON ROUGE")
+        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.accent, LIGUE1.accent)
+        # Aucune equipe en couleur : la carte n'est pas une bonne nouvelle.
+        self.assertIsNone(card.side)
+
+    def test_a_red_card_names_the_team_and_the_player(self):
+        card = overlay.Card.from_event(
+            one_red_card(team_id="A1", minute="62'", player="J. Lefort"))
+        self.assertEqual(card.detail, "Stade Rennais : J. Lefort")
+        self.assertEqual([t for t, strong in card.parts if strong], ["J. Lefort"])
+        self.assertEqual(card.minute, "62'")
+
+    def test_the_prematch_card_counts_down(self):
+        card = overlay.Card.from_event(one_prematch())
+        self.assertEqual(card.title, "LE MATCH VA COMMENCER")
+        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.minute, "")
+        self.assertEqual(card.detail, "Coup d'envoi dans 5 min")
+        self.assertIsNone(card.side)
+
+    def test_neither_carries_extra_lines(self):
+        for card in (overlay.Card.from_event(one_red_card(team_id="H1")),
+                     overlay.Card.from_event(one_prematch())):
+            self.assertEqual(card.extra, ())
+
+
+class TestFullTimeCard(unittest.TestCase):
+    """La carte de fin de match liste les buteurs, sous le score."""
+
+    def card(self, *details):
+        return overlay.Card.from_event(one_fulltime(*details))
+
+    def test_one_line_per_camp_that_scored(self):
+        card = self.card(goal_detail("H1", "12'", "M. Lopez", index=1),
+                         goal_detail("A1", "58'", "A. Kalimuendo", index=2),
+                         goal_detail("A1", "77'", "L. Blas", index=3))
+        box = overlay._layout(card, fake_fonts())
+        self.assertEqual(["".join(t for t, _ in line) for line in box["extra"]],
+                         ["Angers : M. Lopez 12'",
+                          "Stade Rennais : A. Kalimuendo 58', L. Blas 77'"])
+
+    def test_the_card_grows_with_its_scorers(self):
+        fonts = fake_fonts()
+        bare = overlay._layout(self.card(), fonts)
+        listed = overlay._layout(
+            self.card(goal_detail("H1", "12'", "M. Lopez", index=1)), fonts)
+        self.assertEqual(bare["extra"], [])
+        self.assertGreater(listed["height"], bare["height"])
+
+    def test_a_goalless_final_stays_a_plain_phase_card(self):
+        fonts = fake_fonts()
+        box = overlay._layout(self.card(), fonts)
+        goal = overlay._layout(overlay.Card.demo(), fonts)
+        self.assertLess(box["height"], goal["height"])
+
+
 class TestLayoutStaysInsideTheCard(unittest.TestCase):
     """Le bug du screenshot : "Eintracht Frankfurt" depassait a gauche."""
 
@@ -134,6 +228,13 @@ class TestLayoutStaysInsideTheCard(unittest.TestCase):
         # Les noms ne mordent pas sur le score.
         self.assertLessEqual(box["home_x"], box["score_x"])
         self.assertGreaterEqual(box["away_x"], box["score_x"] + box["score_w"])
+
+        # Les lignes de buteurs non plus ne sortent pas de la carte.
+        for line in box["extra"]:
+            width = sum(overlay._detail_font(fonts, strong).measure(text)
+                        for text, strong in line)
+            self.assertLessEqual(round(left + width, 3), right,
+                                 "une ligne de buteurs sort de la carte")
         return box
 
     def test_the_case_from_the_screenshot(self):
@@ -171,6 +272,37 @@ class TestLayoutStaysInsideTheCard(unittest.TestCase):
     def test_every_demo_card_fits(self):
         for league in leagues.LEAGUES:
             self.check(overlay.Card.demo(league))
+
+    def test_a_long_list_of_scorers_is_trimmed(self):
+        # Un 7-0 avec des noms a rallonge : la ligne est coupee, pas etalee.
+        scorers = ", ".join("{}. Kalimuendo-Delacroix {}'".format(letter, 10 + i)
+                            for i, letter in enumerate("ABCDEFG"))
+        box = self.check(overlay.Card(
+            title="FIN DU MATCH", league="LIGUE 1", minute="90'+4'",
+            home="Angers", away="Stade Rennais", home_score=7, away_score=0,
+            side=None, detail=[], accent="#f2e34c",
+            extra=[[("Angers : ", False), (scorers, True)]]))
+        self.assertLessEqual(box["width"], overlay.MAX_WIDTH)
+        self.assertTrue(box["extra"][0][-1][0].endswith("..."))
+
+    def test_the_number_of_extra_lines_is_capped(self):
+        box = self.check(overlay.Card(
+            title="FIN DU MATCH", league="LIGUE 1", minute="90'",
+            home="Lens", away="Lille", home_score=1, away_score=1,
+            side=None, detail=[], accent="#f2e34c",
+            extra=[[("ligne {} ".format(i), False)] for i in range(12)]))
+        self.assertEqual(len(box["extra"]), overlay.MAX_EXTRA_LINES)
+
+    def test_an_unbreakable_scorer_line_is_dropped_not_overflowed(self):
+        # Une police enorme : rien ne rentre, la ligne saute entierement.
+        box = self.check(
+            overlay.Card(
+                title="FIN DU MATCH", league="LIGUE 1", minute="90'",
+                home="Lens", away="Lille", home_score=1, away_score=0,
+                side=None, detail=[], accent="#f2e34c",
+                extra=[[("Lens : ", False), ("Un Nom Interminable 12'", True)]]),
+            fake_fonts(detail=800, scorer=800))
+        self.assertEqual(box["extra"], [])
 
     def test_a_wide_score_still_fits(self):
         self.check(overlay.Card(

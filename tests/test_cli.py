@@ -27,6 +27,9 @@ class TestParser(unittest.TestCase):
         self.assertFalse(args.no_sound)
         self.assertFalse(args.no_overlay)
         self.assertFalse(args.no_phase_cards)
+        # Les deux nouvelles cartes ne s'invitent pas : il faut les demander.
+        self.assertFalse(args.red_cards)
+        self.assertEqual(args.before_kickoff, 0)
         self.assertFalse(args.quiet)
         self.assertEqual(args.retry_fullscreen, 0.0)
 
@@ -39,12 +42,23 @@ class TestParser(unittest.TestCase):
             self.parser.parse_args(["--retry-fullscreen", "45"]).retry_fullscreen,
             45.0)
 
+    def test_the_new_cards_are_opt_in(self):
+        args = self.parser.parse_args(["--red-cards", "--before-kickoff", "5"])
+        self.assertTrue(args.red_cards)
+        self.assertEqual(args.before_kickoff, 5)
+
+    def test_a_negative_countdown_is_read_as_disabled(self):
+        with mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
+            cli.main(["--before-kickoff", "-3", "--leagues", "l1"])
+        self.assertEqual(daemon.call_args[0][0].before_kickoff, 0)
+
     def test_flags(self):
         args = self.parser.parse_args(
             ["--leagues", "l1,pl", "--exclude", "pl",
              "--interval", "10", "--idle-interval", "120",
              "--position", "top-left", "--screen", "1", "--duration", "8",
-             "--no-sound", "--no-overlay", "--no-phase-cards", "--quiet"])
+             "--no-sound", "--no-overlay", "--no-phase-cards", "--red-cards",
+             "--before-kickoff", "10", "--quiet"])
         self.assertEqual(args.leagues, "l1,pl")
         self.assertEqual(args.exclude, "pl")
         self.assertEqual(args.interval, 10)
@@ -54,6 +68,8 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.duration, 8.0)
         self.assertTrue(args.no_sound and args.no_overlay and args.quiet)
         self.assertTrue(args.no_phase_cards)
+        self.assertTrue(args.red_cards)
+        self.assertEqual(args.before_kickoff, 10)
 
 
 class TestMainGuards(unittest.TestCase):

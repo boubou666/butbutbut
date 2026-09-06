@@ -217,15 +217,31 @@ butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 
 En plus des buts, une carte signale le **coup d'envoi**, la **mi-temps**, la
 **reprise** et la **fin du match**. Elles sont volontairement plus sobres : le
-titre est gris au lieu de la couleur du championnat, il n'y a pas de troisieme
-ligne, aucune equipe n'est mise en avant, et surtout **elles ne font aucun
-bruit**. Seul un but declenche le son.
+titre est gris au lieu de la couleur du championnat, aucune equipe n'est mise
+en avant, et surtout **elles ne font aucun bruit**. Seul un but declenche le
+son.
 
 ```bash
 butbutbut --no-phase-cards    # seulement les buts a l'ecran
 ```
 
 Le journal, lui, garde la trace de ces moments meme avec cette option.
+
+La carte de **fin de match** va un peu plus loin : elle liste les buteurs de
+chaque camp sous le score, parce qu'un `1 - 2` tout seul ne dit pas qui a
+marque, et que c'est justement la question quand on n'a pas vu le match.
+
+```
+FIN DU MATCH   LIGUE 1                                        90'+4'
+Angers              1 - 2              Stade Rennais
+Angers : M. Lopez 12'
+Stade Rennais : A. Kalimuendo 58', L. Blas 77'
+```
+
+Un camp qui n'a pas marque n'a pas de ligne, un csc est note `(csc)` et un
+penalty `(sp)`. La carte gagne une ligne par camp buteur, mais jamais un pixel
+de plus que sa largeur maximale : une liste trop longue est coupee par des
+points de suspension plutot que de deborder.
 
 Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux il faut
 un lecteur : `mpv` ou `ffmpeg` pour le mp3 ; avec seulement `aplay`/`paplay`,
@@ -296,6 +312,54 @@ est le cas normal et silencieux, et un fichier illisible, mal forme, ou
 porteur d'une cle inconnue ou d'une valeur impossible (`interval = beaucoup`,
 `position = milieu`) est signale sur la sortie d'erreur - la cle fautive est
 ignoree, le reste s'applique.
+### Les cartons rouges
+
+```bash
+butbutbut --red-cards
+```
+
+A la demande, une expulsion a droit a sa carte. Elle se **detecte** comme un
+but - la source la publie dans le meme tableau d'actions, avec une cle stable,
+donc elle ne sort qu'une fois et une expulsion deja affichee au demarrage du
+daemon n'est jamais rejouee - mais elle **s'affiche** comme un temps fort :
+titre gris, aucune equipe en couleur (ce serait lui donner l'air d'une bonne
+nouvelle), et **aucun son**.
+
+```
+CARTON ROUGE   LIGUE 1                                           62'
+Angers              1 - 2              Stade Rennais
+Stade Rennais : J. Lefort
+```
+
+Elle ne depend pas de `--no-phase-cards` : couper les temps forts du match ne
+doit pas couper ce qu'on a explicitement demande. C'est `--red-cards` qui
+l'allume, et rien d'autre qui l'eteint.
+
+### L'annonce d'avant match
+
+```bash
+butbutbut --before-kickoff 5     # 5 minutes avant, une fois (0 = desactive)
+```
+
+Une carte discrete quelques minutes avant le coup d'envoi, avec le compte a
+rebours, et sans son. **Une seule par match** : la fenetre reste ouverte
+plusieurs releves d'affilee, la carte ne revient pas a chacun d'eux. Un match en
+retard (l'heure est passee, rien n'a commence) ne declenche rien : annoncer un
+match qui aurait deja du debuter serait faux.
+
+```
+LE MATCH VA COMMENCER   LIGUE 1
+Angers              0 - 0              Stade Rennais
+Coup d'envoi dans 5 min
+```
+
+Comme le carton rouge, cette carte a son propre interrupteur et ne depend pas de
+`--no-phase-cards`. Reglee plus tot qu'un quart d'heure, elle accelere aussi la
+cadence des releves pour que l'heure demandee soit tenue.
+
+Le **filtre par equipe** s'applique a ces trois cartes comme aux buts : avec
+`--teams om`, seules les expulsions, annonces et fins de match de l'OM
+remontent.
 
 ---
 
@@ -442,10 +506,13 @@ ete tenue exactement quand elle ne servait a rien.
 2026-09-06 18:41:21  demarrage (pid 3752) - les 5 championnats - releve toutes les 25s en direct, 300s au repos
 2026-09-06 18:41:21  15 match(s) au programme, 6 en cours, 3 a venir
 2026-09-06 18:43:27  BUT [Premier League] Arsenal 2 - 1 Chelsea pour Arsenal - But de M. Odegaard (50')
+2026-09-06 18:51:04  CARTON ROUGE [Premier League] Arsenal 2 - 1 Chelsea pour Chelsea - Chelsea : M. Caicedo (58')
+2026-09-06 19:24:10  FIN DU MATCH [Premier League] Arsenal 2 - 1 Chelsea - Arsenal : B. Saka 12', M. Odegaard 50' ; Chelsea : C. Palmer 74' (FT)
 ```
 
-Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi et les
-fins de match.
+Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi, les fins
+de match, les expulsions et les annonces d'avant match - meme celles dont la
+carte est coupee a l'ecran.
 
 ---
 
@@ -481,6 +548,7 @@ PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
 **218 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+**225 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
 

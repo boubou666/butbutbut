@@ -1,8 +1,9 @@
 import unittest
 
-from butbutbut import espn, leagues, watcher
+from butbutbut import espn, leagues, teams, watcher
 
-from helpers import FakeClock, bump, event, goal_detail, opener_for, payload
+from helpers import (FakeClock, bump, event, goal_detail, in_minutes,
+                     opener_for, payload, red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
@@ -227,6 +228,258 @@ class TestMatchPhases(unittest.TestCase):
             self.assertTrue(line.startswith(head), line)
             self.assertIn("Ligue 1", line)
             self.assertIn("Angers 0 - 0 Stade Rennais", line)
+
+
+class TestOnlyAGoalMakesNoise(unittest.TestCase):
+    """Le son ne part que sur `event.goal` : rien d'autre ne doit l'etre."""
+
+    def test_no_sober_event_is_a_goal(self):
+        match = espn.parse(payload(event()), LIGUE1)[0]
+        for kind in watcher.SOBER:
+            moment = watcher.Event(kind=kind, match=match, side=None, team="",
+                                   opponent="", home_score=0, away_score=0,
+                                   delta=0, play=None)
+            self.assertFalse(moment.goal, kind)
+            self.assertTrue(moment.sober, kind)
+
+    def test_the_new_cards_do_not_hide_behind_no_phase_cards(self):
+        # --no-phase-cards coupe les temps forts, pas ce qu'on a demande
+        # explicitement avec --red-cards ou --before-kickoff.
+        self.assertNotIn(watcher.RED_CARD, watcher.PHASES)
+        self.assertNotIn(watcher.PREMATCH, watcher.PHASES)
+
+
+class TestRedCards(unittest.TestCase):
+    """L'expulsion : detectee comme un but, affichee comme un temps fort."""
+
+    def setUp(self):
+        self.state = {"payload": payload(event(home_score=1, away_score=1))}
+
+    def guard(self, **kwargs):
+        guard = make_watcher(self.state, red_cards=True, **kwargs)
+        guard.prime()
+        return guard
+
+    def send(self, guard, *details):
+        self.state["payload"] = bump(self.state["payload"], "home", by=0,
+                                     details=details)
+        return guard.refresh(LIGUE1)
+
+    def test_nothing_without_the_option(self):
+        guard = make_watcher(self.state)
+        guard.prime()
+        self.assertEqual(self.send(guard, red_card_detail("H1")), [])
+
+    def test_a_red_card_is_signalled_once_and_only_once(self):
+        guard = self.guard()
+        events = self.send(guard, red_card_detail("H1", "62'", "J. Lefort"))
+        self.assertEqual([e.kind for e in events], [watcher.RED_CARD])
+
+        # La cle est stable : la meme expulsion relue ne ressort pas.
+        self.assertEqual(guard.refresh(LIGUE1), [])
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_a_red_card_already_there_at_the_first_pass_stays_quiet(self):
+        # Demarrer le daemon a la 70e minute ne doit pas rejouer l'expulsion
+        # de la 20e, exactement comme pour les buts.
+        self.state["payload"] = payload(event(
+            details=(red_card_detail("H1", "20'"),)))
+        guard = self.guard()
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_the_card_names_the_team_and_the_player(self):
+        guard = self.guard()
+        expulsion = self.send(guard, red_card_detail("A1", "62'", "J. Lefort"))[0]
+        self.assertEqual(expulsion.title, "CARTON ROUGE")
+        self.assertEqual(expulsion.team, "Stade Rennais")
+        self.assertEqual(expulsion.minute, "62'")
+        self.assertEqual(expulsion.detail_line(), "Stade Rennais : J. Lefort")
+        self.assertEqual([t for t, strong in expulsion.detail_parts() if strong],
+                         ["J. Lefort"])
+
+    def test_a_red_card_without_a_player_still_names_the_team(self):
+        guard = self.guard()
+        detail = red_card_detail("H1")
+        detail["athletesInvolved"] = []
+        expulsion = self.send(guard, detail)[0]
+        self.assertEqual(expulsion.detail_line(), "Angers")
+
+    def test_a_red_card_is_discreet_and_never_a_goal(self):
+        guard = self.guard()
+        expulsion = self.send(guard, red_card_detail("H1"))[0]
+        self.assertFalse(expulsion.goal)
+        self.assertFalse(expulsion.phase)     # --no-phase-cards ne la coupe pas
+        self.assertTrue(expulsion.sober)      # donc : titre gris, aucun son
+        self.assertEqual(expulsion.delta, 0)
+
+    def test_the_team_filter_applies(self):
+        guard = self.guard(teams=teams.Filter("lens"))
+        self.assertEqual(self.send(guard, red_card_detail("H1")), [])
+
+    def test_a_red_card_never_describes_a_goal(self):
+        # Les deux vivent dans le meme tableau `details` : une expulsion ne
+        # doit jamais finir en "But de ..." sur la carte du but suivant.
+        guard = self.guard()
+        self.state["payload"] = bump(
+            self.state["payload"], "away",
+            details=(red_card_detail("A1", "60'", "J. Lefort", index=1),
+                     goal_detail("A1", "63'", "A. Kalimuendo", index=2)))
+
+        events = guard.refresh(LIGUE1)
+        self.assertEqual([e.kind for e in events],
+                         [watcher.GOAL, watcher.RED_CARD])
+        self.assertEqual(events[0].play.scorer, "A. Kalimuendo")
+        self.assertEqual(events[0].detail_line(), "But de A. Kalimuendo")
+        self.assertEqual(len(events[0].match.plays), 1)
+
+    def test_log_line_names_the_expulsion(self):
+        guard = self.guard()
+        line = self.send(guard, red_card_detail("H1", "62'", "J. Lefort"))[0].log_line()
+        for piece in ("CARTON ROUGE", "Ligue 1", "Angers", "J. Lefort", "62'"):
+            self.assertIn(piece, line)
+
+
+class TestPrematchCard(unittest.TestCase):
+    """Le match va commencer : une carte, une seule, par match."""
+
+    def setUp(self):
+        self.state = {"payload": payload(event(
+            state="pre", clock="0'", date=in_minutes(5)))}
+
+    def guard(self, before_kickoff=10 * 60.0, **kwargs):
+        guard = make_watcher(self.state, before_kickoff=before_kickoff, **kwargs)
+        guard.prime()
+        return guard
+
+    def test_nothing_without_the_option(self):
+        self.assertEqual(self.guard(before_kickoff=0).refresh(LIGUE1), [])
+
+    def test_the_card_fires_once_inside_the_window(self):
+        guard = self.guard()
+        events = guard.refresh(LIGUE1)
+        self.assertEqual([e.kind for e in events], [watcher.PREMATCH])
+        self.assertEqual(events[0].title, "LE MATCH VA COMMENCER")
+
+        # Le piege : la fenetre reste ouverte, les releves s'enchainent, et la
+        # carte ne doit pas revenir a chacun d'eux.
+        for _ in range(5):
+            self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_the_first_pass_is_silent(self):
+        # prime() photographie : meme dans la fenetre, rien ne sort.
+        guard = make_watcher(self.state, before_kickoff=10 * 60.0)
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_a_match_too_far_away_says_nothing(self):
+        self.state["payload"] = payload(event(state="pre", date=in_minutes(45)))
+        self.assertEqual(self.guard().refresh(LIGUE1), [])
+
+    def test_a_match_already_under_way_says_nothing(self):
+        self.state["payload"] = payload(event(state="in", date=in_minutes(-20)))
+        self.assertEqual(self.guard().refresh(LIGUE1), [])
+
+    def test_a_kickoff_hour_already_passed_says_nothing(self):
+        # Match en retard : "ca va commencer" serait faux.
+        self.state["payload"] = payload(event(state="pre", date=in_minutes(-3)))
+        self.assertEqual(self.guard().refresh(LIGUE1), [])
+
+    def test_a_match_without_a_date_says_nothing(self):
+        self.state["payload"] = payload(event(state="pre", date=""))
+        self.assertEqual(self.guard().refresh(LIGUE1), [])
+
+    def test_the_card_counts_down_and_shows_no_minute(self):
+        announce = self.guard().refresh(LIGUE1)[0]
+        self.assertEqual(announce.minute, "")     # rien n'a commence
+        self.assertEqual(announce.detail_line(), "Coup d'envoi dans 5 min")
+        self.assertTrue(announce.sober)
+        self.assertFalse(announce.goal)
+        self.assertFalse(announce.phase)          # son propre interrupteur
+
+    def test_the_team_filter_applies(self):
+        self.assertEqual(self.guard(teams=teams.Filter("lens")).refresh(LIGUE1), [])
+
+    def test_the_announcement_does_not_replace_the_kickoff(self):
+        guard = self.guard()
+        self.assertEqual([e.kind for e in guard.refresh(LIGUE1)],
+                         [watcher.PREMATCH])
+        self.state["payload"] = payload(event(state="in", date=in_minutes(-1)))
+        self.assertEqual([e.kind for e in guard.refresh(LIGUE1)],
+                         [watcher.KICKOFF])
+
+    def test_the_window_speeds_up_the_cadence(self):
+        # Une annonce a 40 min n'a de sens que si on releve assez souvent.
+        self.state["payload"] = payload(event(state="pre", date=in_minutes(35)))
+        guard = make_watcher(self.state, interval=20, idle_interval=600,
+                             before_kickoff=40 * 60.0)
+        guard.refresh(LIGUE1, now=0.0)
+        self.assertEqual(guard._due["fra.1"], watcher.KICKOFF_INTERVAL)
+
+
+class TestFullTimeScorers(unittest.TestCase):
+    """La fin du match liste les buteurs : le score seul ne dit pas qui."""
+
+    def final(self, *details):
+        """Le sifflet final d'un match qu'on suivait, deja mene 1-2."""
+        state = {"payload": payload(event(
+            state="in", home_score=1, away_score=2, details=details))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = payload(event(
+            state="post", clock="90'+4'", home_score=1, away_score=2,
+            details=details))
+        return guard.refresh(LIGUE1)[0]
+
+    def test_each_camp_gets_its_line(self):
+        end = self.final(goal_detail("H1", "12'", "M. Lopez", index=1),
+                         goal_detail("A1", "58'", "A. Kalimuendo", index=2),
+                         goal_detail("A1", "77'", "L. Blas", index=3))
+        self.assertEqual(end.extra_lines(), [
+            "Angers : M. Lopez 12'",
+            "Stade Rennais : A. Kalimuendo 58', L. Blas 77'",
+        ])
+
+    def test_the_scorers_are_the_highlighted_part(self):
+        end = self.final(goal_detail("H1", "12'", "M. Lopez", index=1))
+        self.assertEqual([t for t, strong in end.extra_parts()[0] if strong],
+                         ["M. Lopez 12'"])
+
+    def test_a_camp_without_a_goal_has_no_line(self):
+        end = self.final(goal_detail("A1", "58'", "A. Kalimuendo", index=1))
+        self.assertEqual(end.extra_lines(), ["Stade Rennais : A. Kalimuendo 58'"])
+
+    def test_a_goalless_match_has_no_extra_line(self):
+        self.assertEqual(self.final().extra_lines(), [])
+
+    def test_own_goals_and_penalties_are_marked(self):
+        end = self.final(
+            goal_detail("H1", "12'", "J. Lefort", own_goal=True, index=1),
+            goal_detail("A1", "58'", "K. Mbappe", penalty=True, index=2))
+        self.assertEqual(end.extra_lines(), [
+            "Angers : J. Lefort (csc) 12'",
+            "Stade Rennais : K. Mbappe (sp) 58'",
+        ])
+
+    def test_a_goal_without_a_scorer_falls_back_on_its_nature(self):
+        detail = goal_detail("H1", "12'", "", index=1)
+        detail["athletesInvolved"] = []
+        self.assertEqual(self.final(detail).extra_lines(), ["Angers : But 12'"])
+
+    def test_only_the_end_of_the_match_lists_the_scorers(self):
+        state = {"payload": payload(event(state="in", home_score=0))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = bump(state["payload"], "home",
+                                details=(goal_detail("H1", "12'", "M. Lopez"),))
+        goal = guard.refresh(LIGUE1)[0]
+        self.assertEqual(goal.kind, watcher.GOAL)
+        self.assertEqual(goal.extra_parts(), [])
+
+    def test_log_line_carries_the_scorers(self):
+        line = self.final(goal_detail("H1", "12'", "M. Lopez", index=1),
+                          goal_detail("A1", "58'", "A. Kalimuendo", index=2)).log_line()
+        self.assertTrue(line.startswith("FIN DU MATCH"), line)
+        self.assertIn("Angers : M. Lopez 12'", line)
+        self.assertIn("Stade Rennais : A. Kalimuendo 58'", line)
 
 
 class TestCadence(unittest.TestCase):

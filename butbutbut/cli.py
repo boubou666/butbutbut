@@ -262,6 +262,8 @@ def do_daemon(args) -> int:
         idle_interval=args.idle_interval,
         on_log=lambda message: log(message, quiet=args.quiet),
         teams=chosen_teams,
+        red_cards=args.red_cards,
+        before_kickoff=args.before_kickoff * 60.0,
     )
 
     log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s au repos"
@@ -269,6 +271,11 @@ def do_daemon(args) -> int:
                 args.idle_interval), quiet=args.quiet)
     if chosen_teams is not None:
         log(chosen_teams.describe(), quiet=args.quiet)
+    if args.red_cards:
+        log("cartons rouges signales", quiet=args.quiet)
+    if args.before_kickoff:
+        log("annonce du coup d'envoi {} min avant".format(args.before_kickoff),
+            quiet=args.quiet)
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -355,11 +362,11 @@ def _watch_with_cards(guard, args, stopping, stack) -> None:
             except queue.Empty:
                 break
             try:
-                if event.phase:
-                    if args.no_phase_cards:
+                if event.sober:
+                    if event.phase and args.no_phase_cards:
                         continue    # le journal garde la trace, pas l'ecran
-                    # Coup d'envoi, mi-temps, reprise, fin : carte seule, pas
-                    # de son. La duree ne depend donc pas de celle du jingle.
+                    # Temps forts, expulsion, avant-match : carte seule, pas de
+                    # son. La duree ne depend donc pas de celle du jingle.
                     stack.push(overlay.Card.from_event(event),
                                duration=args.duration or PHASE_DURATION)
                     continue
@@ -684,6 +691,14 @@ def build_parser() -> argparse.ArgumentParser:
                              "libere, pendant SECONDES au plus (defaut {:.0f} ; "
                              "Windows uniquement, voir README)".format(
                                  RETRY_FULLSCREEN))
+    parser.add_argument("--red-cards", action="store_true", dest="red_cards",
+                        help="signale aussi les cartons rouges, par une carte "
+                             "discrete et sans son")
+    parser.add_argument("--before-kickoff", type=int, default=0,
+                        dest="before_kickoff", metavar="MINUTES",
+                        help="annonce le match ce nombre de minutes avant le "
+                             "coup d'envoi, une seule fois et sans son "
+                             "(0 = desactive, defaut)")
     parser.add_argument("--no-sound", action="store_true", dest="no_sound",
                         help="mode muet")
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
@@ -722,6 +737,7 @@ def main(argv=None) -> int:
         print("butbutbut : --retry-fullscreen ne sert que sous Windows, "
               "le plein ecran n'y est pas detectable ailleurs.", file=sys.stderr)
         args.retry_fullscreen = 0.0
+    args.before_kickoff = max(0, args.before_kickoff)
     if args.position.strip().lower() not in screens.CORNERS:
         print("butbutbut : position inconnue : {} (voir --help)".format(args.position),
               file=sys.stderr)

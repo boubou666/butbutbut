@@ -72,12 +72,13 @@ class SourceError(RuntimeError):
 # ---------------------------------------------------------------- modele -----
 
 class Play:
-    """Une action marquante d'un match (ici : un but)."""
+    """Une action marquante d'un match : un but, ou un carton rouge."""
 
     __slots__ = ("key", "team_id", "minute", "kind", "scorer", "own_goal",
-                 "penalty", "shootout")
+                 "penalty", "shootout", "red_card")
 
-    def __init__(self, key, team_id, minute, kind, scorer, own_goal, penalty, shootout):
+    def __init__(self, key, team_id, minute, kind, scorer, own_goal, penalty,
+                 shootout, red_card=False):
         self.key = key
         self.team_id = team_id
         self.minute = minute          # 35' ou vide
@@ -86,9 +87,12 @@ class Play:
         self.own_goal = own_goal
         self.penalty = penalty
         self.shootout = shootout
+        self.red_card = red_card
 
     def prefix(self) -> str:
-        """La nature du but, sans le buteur : But, Penalty, But contre son camp."""
+        """La nature de l'action, sans le joueur : But, Penalty, Carton rouge."""
+        if self.red_card:
+            return "Carton rouge"
         if self.own_goal:
             return "But contre son camp"
         if self.penalty:
@@ -99,7 +103,7 @@ class Play:
         """Une ligne en francais : But de C. Arcus (35')."""
         base = self.prefix()
         if self.scorer:
-            base += " de " + self.scorer
+            base += " pour " + self.scorer if self.red_card else " de " + self.scorer
         if self.minute:
             base += " (" + self.minute + ")"
         return base
@@ -113,11 +117,12 @@ class Match:
 
     __slots__ = ("id", "league", "home", "away", "home_id", "away_id",
                  "home_names", "away_names", "home_score", "away_score",
-                 "state", "status_name", "detail", "clock", "start", "plays")
+                 "state", "status_name", "detail", "clock", "start", "plays",
+                 "red_cards")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
-                 status_name="", home_names=(), away_names=()):
+                 status_name="", home_names=(), away_names=(), red_cards=()):
         self.id = id
         self.league = league
         self.home = home
@@ -135,7 +140,10 @@ class Match:
         self.detail = detail          # FT, 45+2', Sun 6 Sep at 17:00...
         self.clock = clock            # la minute, quand le match est en cours
         self.start = start            # datetime UTC, ou None
-        self.plays = plays            # list[Play]
+        self.plays = plays            # list[Play] : les buts, et rien d'autre
+        # Les expulsions sont tenues a part : `plays` habille les buts, et un
+        # carton rouge n'a jamais decrit un but.
+        self.red_cards = list(red_cards)
 
     @property
     def phase(self) -> str:
@@ -162,6 +170,14 @@ class Match:
 
     def plays_for(self, team_id) -> list:
         return [play for play in self.plays if play.team_id == team_id]
+
+    def side_of(self, team_id) -> str:
+        """"home", "away", ou "" quand la source ne nomme pas l'equipe."""
+        if team_id and team_id == self.home_id:
+            return "home"
+        if team_id and team_id == self.away_id:
+            return "away"
+        return ""
 
     def __repr__(self):
         return "<Match {} {} [{}]>".format(self.league.slug, self.score_line(), self.state)
@@ -259,14 +275,26 @@ def _parse_date(value) -> datetime | None:
     return None
 
 
-def _parse_plays(competition) -> list:
-    """Les buts inscrits dans le match, dans l'ordre ou ESPN les donne."""
-    plays = []
+def _parse_details(competition) -> tuple:
+    """(buts, cartons rouges) du match, dans l'ordre ou ESPN les donne.
+
+    Les deux vivent dans le meme tableau `details` : un but porte
+    `scoringPlay`, une expulsion porte `redCard`. Ils sont separes ici parce
+    qu'ils ne servent pas a la meme chose (un but est habille par un buteur,
+    une expulsion se signale pour elle-meme).
+    """
+    goals = []
+    red_cards = []
     for index, detail in enumerate(competition.get("details") or []):
-        if not isinstance(detail, dict) or not detail.get("scoringPlay"):
+        if not isinstance(detail, dict):
+            continue
+        scoring = bool(detail.get("scoringPlay"))
+        red = bool(detail.get("redCard"))
+        if not scoring and not red:
             continue
 
-        kind = ((detail.get("type") or {}).get("text") or "Goal").strip()
+        kind = ((detail.get("type") or {}).get("text")
+                or ("Goal" if scoring else "Red Card")).strip()
         clock = (detail.get("clock") or {}).get("displayValue") or ""
         team_id = str(((detail.get("team") or {}).get("id") or "")).strip()
 
@@ -278,10 +306,10 @@ def _parse_plays(competition) -> list:
                       or athletes[0].get("displayName") or "").strip()
             athlete_id = str(athletes[0].get("id") or "")
 
-        # Cle stable : le meme but relu dix fois garde la meme identite.
+        # Cle stable : la meme action relue dix fois garde la meme identite.
         key = "|".join((team_id, str(clock), kind, athlete_id, str(index)))
 
-        plays.append(Play(
+        play = Play(
             key=key,
             team_id=team_id,
             minute=str(clock).strip(),
@@ -290,8 +318,11 @@ def _parse_plays(competition) -> list:
             own_goal=bool(detail.get("ownGoal")),
             penalty=bool(detail.get("penaltyKick")),
             shootout=bool(detail.get("shootout")),
-        ))
-    return plays
+            red_card=red and not scoring,
+        )
+        # Un but reste un but, meme si la source colle les deux drapeaux.
+        (goals if scoring else red_cards).append(play)
+    return goals, red_cards
 
 
 def parse(payload: dict, league) -> list:
@@ -339,6 +370,8 @@ def parse(payload: dict, league) -> list:
         if not match_id:
             continue
 
+        goals, red_cards = _parse_details(competition)
+
         matches.append(Match(
             id=match_id,
             league=league,
@@ -355,7 +388,8 @@ def parse(payload: dict, league) -> list:
             detail=detail,
             clock=clock,
             start=_parse_date(competition.get("date") or event.get("date")),
-            plays=_parse_plays(competition),
+            plays=goals,
+            red_cards=red_cards,
         ))
     return matches
 
