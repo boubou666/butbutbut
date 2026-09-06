@@ -27,8 +27,41 @@ DEFAULT_TIMEOUT = 8.0
 # Etats renvoyes par ESPN.
 PRE, LIVE, POST = "pre", "in", "post"
 
+# Phases d'un match. ESPN les nomme dans status.type.name : STATUS_SCHEDULED,
+# STATUS_FIRST_HALF, STATUS_HALFTIME, STATUS_SECOND_HALF, STATUS_FULL_TIME...
+SCHEDULED = "scheduled"
+PLAYING = "playing"
+HALFTIME = "halftime"
+FINAL = "final"
+UNKNOWN = "unknown"      # reporte, abandonne, suspendu : on ne signale rien
+
+# Un match dans un de ces etats n'est pas "a venir" : il ne se joue pas du tout.
+_STOPPED = ("POSTPONED", "CANCELED", "CANCELLED", "ABANDONED", "SUSPENDED",
+            "DELAYED", "RESCHEDULED", "FORFEIT")
+
 # Au-dela, on prefere le nom court : "Borussia Monchengladbach" tient mal.
 NAME_LIMIT = 20
+
+
+def phase_of(state: str, status_name: str) -> str:
+    """La phase du match, a partir de l'etat et du nom d'etat d'ESPN.
+
+    La mi-temps des prolongations compte comme une mi-temps : le nom contient
+    HALFTIME dans les deux cas.
+    """
+    name = (status_name or "").upper()
+
+    if "HALFTIME" in name or "HALF_TIME" in name:
+        return HALFTIME
+    if any(word in name for word in _STOPPED):
+        return UNKNOWN
+    if state == LIVE:
+        return PLAYING
+    if state == POST:
+        return FINAL
+    if state == PRE:
+        return SCHEDULED
+    return UNKNOWN
 
 
 class SourceError(RuntimeError):
@@ -78,11 +111,12 @@ class Match:
     """Un match tel que le tableau de bord le decrit a l'instant T."""
 
     __slots__ = ("id", "league", "home", "away", "home_id", "away_id",
-                 "home_score", "away_score", "state", "detail", "clock",
-                 "start", "plays")
+                 "home_score", "away_score", "state", "status_name", "detail",
+                 "clock", "start", "plays")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
-                 away_score, state, detail, clock, start, plays):
+                 away_score, state, detail, clock, start, plays,
+                 status_name=""):
         self.id = id
         self.league = league
         self.home = home
@@ -92,10 +126,16 @@ class Match:
         self.home_score = home_score
         self.away_score = away_score
         self.state = state
+        self.status_name = status_name  # STATUS_SECOND_HALF, STATUS_FULL_TIME...
         self.detail = detail          # FT, 45+2', Sun 6 Sep at 17:00...
         self.clock = clock            # la minute, quand le match est en cours
         self.start = start            # datetime UTC, ou None
         self.plays = plays            # list[Play]
+
+    @property
+    def phase(self) -> str:
+        """scheduled / playing / halftime / final / unknown."""
+        return phase_of(self.state, self.status_name)
 
     @property
     def live(self) -> bool:
@@ -276,6 +316,7 @@ def parse(payload: dict, league) -> list:
         status = competition.get("status") or event.get("status") or {}
         status_type = status.get("type") or {}
         state = (status_type.get("state") or "").strip().lower() or PRE
+        status_name = str(status_type.get("name") or "").strip()
         detail = (status_type.get("shortDetail")
                   or status_type.get("detail")
                   or status_type.get("description") or "").strip()
@@ -295,6 +336,7 @@ def parse(payload: dict, league) -> list:
             home_score=_int(home.get("score")),
             away_score=_int(away.get("score")),
             state=state,
+            status_name=status_name,
             detail=detail,
             clock=clock,
             start=_parse_date(competition.get("date") or event.get("date")),

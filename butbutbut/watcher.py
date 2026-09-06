@@ -34,6 +34,34 @@ FORGET_AFTER = 12 * 3600.0     # on oublie un match vu il y a plus de 12 h
 
 GOAL = "goal"
 CANCELLED = "cancelled"
+KICKOFF = "kickoff"
+HALFTIME = "halftime"
+RESTART = "restart"
+FULLTIME = "fulltime"
+
+# Les cartes de deroulement du match : meme carte, mais jamais de son.
+PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
+
+TITLES = {
+    GOAL: "BUT !",
+    CANCELLED: "BUT ANNULE",
+    KICKOFF: "COUP D'ENVOI",
+    HALFTIME: "MI-TEMPS",
+    RESTART: "REPRISE",
+    FULLTIME: "FIN DU MATCH",
+}
+
+# Ce qui declenche une carte de phase : (phase precedente, phase actuelle).
+# Un match jamais vu en cours ne declenche pas de "fin du match" : on n'a rien
+# suivi, autant se taire.
+TRANSITIONS = {
+    (espn.SCHEDULED, espn.PLAYING): KICKOFF,
+    (espn.UNKNOWN, espn.PLAYING): KICKOFF,      # match retarde qui part enfin
+    (espn.PLAYING, espn.HALFTIME): HALFTIME,
+    (espn.HALFTIME, espn.PLAYING): RESTART,
+    (espn.PLAYING, espn.FINAL): FULLTIME,
+    (espn.HALFTIME, espn.FINAL): FULLTIME,
+}
 
 
 class Event:
@@ -64,14 +92,18 @@ class Event:
         return self.kind == GOAL
 
     @property
+    def phase(self) -> bool:
+        """Vrai pour une carte de deroulement (coup d'envoi, mi-temps...)."""
+        return self.kind in PHASES
+
+    @property
     def title(self) -> str:
-        if self.kind == CANCELLED:
-            return "BUT ANNULE"
-        if self.play is not None and self.play.own_goal:
-            return "BUT CONTRE SON CAMP"
-        if self.play is not None and self.play.penalty:
-            return "BUT SUR PENALTY"
-        return "BUT !"
+        if self.kind == GOAL and self.play is not None:
+            if self.play.own_goal:
+                return "BUT CONTRE SON CAMP"
+            if self.play.penalty:
+                return "BUT SUR PENALTY"
+        return TITLES.get(self.kind, self.kind.upper())
 
     @property
     def minute(self) -> str:
@@ -93,6 +125,10 @@ class Event:
         """
         if self.kind == CANCELLED:
             return [("Score corrige", False)]
+        if self.phase:
+            # Le titre dit tout : pas de troisieme ligne, la carte est plus
+            # basse et se distingue d'un but au premier coup d'oeil.
+            return []
 
         play = self.play
         if play is None:
@@ -109,7 +145,7 @@ class Event:
         return "".join(text for text, _ in self.detail_parts())
 
     def log_line(self) -> str:
-        head = "BUT" if self.goal else "ANNULE"
+        head = TITLES.get(self.kind, self.kind.upper()).rstrip(" !")
         parts = ["{} [{}] {}".format(head, self.league.name, self.score_line)]
         if self.team:
             parts.append("pour " + self.team)
@@ -127,11 +163,12 @@ class Event:
 class _Snapshot:
     """Ce qu'on retient d'un match entre deux passages."""
 
-    __slots__ = ("home_score", "away_score", "seen_plays", "last_seen")
+    __slots__ = ("home_score", "away_score", "phase", "seen_plays", "last_seen")
 
-    def __init__(self, home_score, away_score, seen_plays, last_seen):
+    def __init__(self, home_score, away_score, phase, seen_plays, last_seen):
         self.home_score = home_score
         self.away_score = away_score
+        self.phase = phase
         self.seen_plays = seen_plays
         self.last_seen = last_seen
 
@@ -265,7 +302,7 @@ class Watcher:
 
         if previous is None:
             self._snapshots[match.id] = _Snapshot(
-                match.home_score, match.away_score, keys, stamp)
+                match.home_score, match.away_score, match.phase, keys, stamp)
             return []
 
         events = []
@@ -293,8 +330,24 @@ class Watcher:
                 play=play,
             ))
 
+        # Deroulement du match : coup d'envoi, mi-temps, reprise, fin.
+        kind = TRANSITIONS.get((previous.phase, match.phase))
+        if kind is not None:
+            events.append(Event(
+                kind=kind,
+                match=match,
+                side=None,
+                team="",
+                opponent="",
+                home_score=match.home_score,
+                away_score=match.away_score,
+                delta=0,
+                play=None,
+            ))
+
         previous.home_score = match.home_score
         previous.away_score = match.away_score
+        previous.phase = match.phase
         previous.seen_plays = keys
         previous.last_seen = stamp
 

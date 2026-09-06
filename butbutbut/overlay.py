@@ -86,11 +86,11 @@ class Card:
     """Le contenu a afficher, independamment de tkinter."""
 
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
-                 "away_score", "side", "parts", "accent", "muted_title")
+                 "away_score", "side", "parts", "accent", "title_color")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
-                 side, detail, accent, muted_title=False):
-        self.title = title              # "BUT !", "BUT ANNULE"...
+                 side, detail, accent, title_color=None):
+        self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
         self.home = home
@@ -99,8 +99,10 @@ class Card:
         self.away_score = away_score
         self.side = side                # "home", "away" ou None
         self.parts = tuple(detail)      # [(texte, mis_en_valeur)] : le buteur
-        self.accent = accent            # couleur du championnat
-        self.muted_title = muted_title  # vrai pour un but annule
+        self.accent = accent            # filet vertical + equipe qui marque
+        # Le titre : la couleur du championnat pour un but, gris pour une carte
+        # de deroulement. Un but doit sauter aux yeux, une mi-temps non.
+        self.title_color = title_color or accent
 
     @property
     def detail(self) -> str:
@@ -110,7 +112,14 @@ class Card:
     @classmethod
     def from_event(cls, event):
         """Construit la carte a partir d'un evenement du watcher."""
-        cancelled = not event.goal
+        accent = event.league.accent
+        title_color = accent
+
+        if event.phase:
+            title_color = MUTED       # coup d'envoi, mi-temps, reprise, fin
+        elif not event.goal:
+            accent = title_color = CANCEL_ACCENT    # but annule
+
         return cls(
             title=event.title,
             league=event.league.label,
@@ -121,8 +130,8 @@ class Card:
             away_score=event.away_score,
             side=event.side,
             detail=event.detail_parts(),
-            accent=CANCEL_ACCENT if cancelled else event.league.accent,
-            muted_title=cancelled,
+            accent=accent,
+            title_color=title_color,
         )
 
     @classmethod
@@ -266,18 +275,36 @@ def _rounded(canvas, x0, y0, x1, y1, radius, **options):
     return canvas.create_polygon(points, smooth=True, **options)
 
 
+def _fit(font, text: str, limit: float) -> str:
+    """Raccourcit `text` avec des points de suspension pour tenir en `limit`."""
+    if not text or font.measure(text) <= limit:
+        return text
+    trimmed = text
+    while trimmed and font.measure(trimmed + "...") > limit:
+        trimmed = trimmed[:-1]
+    trimmed = trimmed.rstrip()
+    return (trimmed + "...") if trimmed else text[:1]
+
+
 def _layout(card: Card, fonts):
-    """Mesure la carte : largeur, hauteur et abscisses de chaque morceau."""
+    """Mesure la carte : largeur, hauteur et abscisse de chaque morceau.
+
+    Le score est centre dans la carte. La place reservee aux noms d'equipes est
+    donc la MEME de chaque cote, sinon le nom le plus long sort de la carte :
+    c'est exactement ce qui arrivait a "Eintracht Frankfurt 1 - 4 FC Augsburg",
+    ou le nom de gauche depassait le bord.
+    """
     # Le score est decoupe en trois pour pouvoir colorer le seul chiffre qui
     # vient de bouger.
     score_parts = (str(card.home_score), " - ", str(card.away_score))
     score_widths = [fonts["score"].measure(part) for part in score_parts]
     score_w = sum(score_widths)
 
-    home_w = fonts["team"].measure(card.home)
-    away_w = fonts["team"].measure(card.away)
+    margins = BAR_WIDTH + 2 * PAD_X
+    home, away = card.home, card.away
+    half = max(fonts["team"].measure(home), fonts["team"].measure(away))
 
-    middle_w = home_w + GAP + score_w + GAP + away_w
+    middle_w = 2 * half + 2 * GAP + score_w
     header_w = (fonts["title"].measure(card.title) + 18
                 + fonts["label"].measure(card.league) + 18
                 + fonts["label"].measure(card.minute))
@@ -285,7 +312,17 @@ def _layout(card: Card, fonts):
                    for text, strong in card.parts)
 
     content_w = max(middle_w, header_w, detail_w)
-    width = int(min(MAX_WIDTH, max(MIN_WIDTH, content_w + 2 * PAD_X + BAR_WIDTH)))
+    width = int(min(MAX_WIDTH, max(MIN_WIDTH, content_w + margins)))
+
+    # Plafond atteint (des noms a rallonge) : on raccourcit plutot que de
+    # deborder. La carte reste dans ses bords, quoi qu'on lui donne.
+    room = max(20.0, (width - margins - score_w - 2 * GAP) / 2.0)
+    if half > room:
+        home = _fit(fonts["team"], home, room)
+        away = _fit(fonts["team"], away, room)
+
+    center = BAR_WIDTH + (width - BAR_WIDTH) / 2.0
+    score_left = center - score_w / 2.0
 
     header_h = max(fonts["title"].metrics("linespace"), fonts["label"].metrics("linespace"))
     score_h = max(fonts["team"].metrics("linespace"), fonts["score"].metrics("linespace"))
@@ -300,7 +337,11 @@ def _layout(card: Card, fonts):
         "height": height,
         "left": BAR_WIDTH + PAD_X,
         "right": width - PAD_X,
-        "center": BAR_WIDTH + (width - BAR_WIDTH) / 2.0,
+        "home": home,
+        "away": away,
+        "home_x": score_left - GAP,                  # ancre "e"
+        "away_x": score_left + score_w + GAP,        # ancre "w"
+        "score_x": score_left,
         "score_parts": score_parts,
         "score_widths": score_widths,
         "score_w": score_w,
@@ -321,7 +362,7 @@ def _draw(canvas, card: Card, fonts, box, background):
 
     # --- ligne 1 : BUT ! / championnat / minute
     title = canvas.create_text(box["left"], box["header_y"], text=card.title,
-                               fill=card.accent, font=fonts["title"], anchor="w")
+                               fill=card.title_color, font=fonts["title"], anchor="w")
     title_end = canvas.bbox(title)[2]
     canvas.create_text(title_end + 14, box["header_y"], text=card.league,
                        fill=MUTED, font=fonts["label"], anchor="w")
@@ -334,20 +375,17 @@ def _draw(canvas, card: Card, fonts, box, background):
     home_color = card.accent if card.side == "home" else TEXT
     away_color = card.accent if card.side == "away" else TEXT
 
-    score_left = box["center"] - box["score_w"] / 2.0
-    score_right = box["center"] + box["score_w"] / 2.0
-
-    canvas.create_text(score_left - GAP, box["score_y"], text=card.home,
+    canvas.create_text(box["home_x"], box["score_y"], text=box["home"],
                        fill=home_color, font=fonts["team"], anchor="e")
 
-    x = score_left
+    x = box["score_x"]
     for part, part_width, color in zip(box["score_parts"], box["score_widths"],
                                        (home_color, MUTED, away_color)):
         canvas.create_text(x, box["score_y"], text=part, fill=color,
                            font=fonts["score"], anchor="w")
         x += part_width
 
-    canvas.create_text(score_right + GAP, box["score_y"], text=card.away,
+    canvas.create_text(box["away_x"], box["score_y"], text=box["away"],
                        fill=away_color, font=fonts["team"], anchor="w")
 
     # --- ligne 3 : le buteur, seul morceau en clair

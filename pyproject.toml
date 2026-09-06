@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "butbutbut"
-version = "1.0.1"
+version = "1.1.0"
 description = "Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : le son part et le score s'affiche sur ton ecran."
 readme = "README.md"
 requires-python = ">=3.8"

@@ -1,18 +1,21 @@
 # butbutbut
 
+[![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/boubou666/butbutbut)](https://github.com/boubou666/butbutbut/releases)
+[![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+
 Un but tombe en **Ligue 1**, **Premier League**, **LaLiga**, **Serie A** ou
 **Bundesliga** : le son part, et une carte s'affiche en bas a droite de ton
 ecran avec le score et le buteur.
 
-```
-BUT !   PREMIER LEAGUE                                              50'
-        Arsenal      2 - 1      Chelsea
-But de M. Odegaard
-```
+![Trois cartes empilees en bas a droite de l'ecran](docs/cartes.png)
 
 L'equipe qui vient de marquer et son chiffre sont dans la couleur du
 championnat, le nom du buteur ressort en clair. Deux buts en meme temps ne se
-marchent pas dessus : les cartes s'empilent depuis le coin.
+marchent pas dessus : les cartes s'empilent depuis le coin. Les temps forts du
+match (coup d'envoi, mi-temps, reprise, fin) ont droit a une carte plus
+discrete, sans son : c'est la troisieme ci-dessus.
 
 Comme [doot](https://github.com/boubou666/doot) : **zero dependance**, rien que
 la bibliotheque standard de Python, et ca tourne sur Windows, macOS et Linux.
@@ -155,6 +158,20 @@ butbutbut --no-overlay        # juste le son et le journal, pas de carte
 butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 ```
 
+### Les temps forts du match
+
+En plus des buts, une carte signale le **coup d'envoi**, la **mi-temps**, la
+**reprise** et la **fin du match**. Elles sont volontairement plus sobres : le
+titre est gris au lieu de la couleur du championnat, il n'y a pas de troisieme
+ligne, aucune equipe n'est mise en avant, et surtout **elles ne font aucun
+bruit**. Seul un but declenche le son.
+
+```bash
+butbutbut --no-phase-cards    # seulement les buts a l'ecran
+```
+
+Le journal, lui, garde la trace de ces moments meme avec cette option.
+
 Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux il faut
 un lecteur : `mpv` ou `ffmpeg` pour le mp3 ; avec seulement `aplay`/`paplay`,
 butbutbut retombe sur une **corne de stade synthetisee** en wav, generee par le
@@ -280,8 +297,9 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-Aucun reseau, aucun ecran requis : la source est simulee par un `opener`, et la
-geometrie de l'empilement est testee sans tkinter.
+**141 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
+une police factice, donc sans tkinter.
 
 ---
 

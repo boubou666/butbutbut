@@ -9,5 +9,5 @@ et n'importe quel code ESPN peut etre ajoute a la volee.
 Zero dependance : uniquement la bibliotheque standard de Python.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.1.0"
 __all__ = ["__version__"]

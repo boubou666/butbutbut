@@ -20,6 +20,7 @@ class TestParser(unittest.TestCase):
         self.assertIsNone(args.duration)
         self.assertFalse(args.no_sound)
         self.assertFalse(args.no_overlay)
+        self.assertFalse(args.no_phase_cards)
         self.assertFalse(args.quiet)
 
     def test_flags(self):
@@ -27,7 +28,7 @@ class TestParser(unittest.TestCase):
             ["--leagues", "l1,pl", "--exclude", "pl",
              "--interval", "10", "--idle-interval", "120",
              "--position", "top-left", "--screen", "1", "--duration", "8",
-             "--no-sound", "--no-overlay", "--quiet"])
+             "--no-sound", "--no-overlay", "--no-phase-cards", "--quiet"])
         self.assertEqual(args.leagues, "l1,pl")
         self.assertEqual(args.exclude, "pl")
         self.assertEqual(args.interval, 10)
@@ -36,6 +37,7 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.screen, "1")
         self.assertEqual(args.duration, 8.0)
         self.assertTrue(args.no_sound and args.no_overlay and args.quiet)
+        self.assertTrue(args.no_phase_cards)
 
 
 class TestMainGuards(unittest.TestCase):

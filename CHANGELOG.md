@@ -7,6 +7,41 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.1.0] - 2026-09-06
+
+### Ajoute
+
+- Cartes de deroulement du match : **coup d'envoi**, **mi-temps**, **reprise**
+  et **fin du match**. Volontairement plus sobres qu'un but (titre gris, pas de
+  troisieme ligne, aucune equipe mise en avant) et surtout **sans aucun son** :
+  seul un but declenche la corne. La phase est lue dans `status.type.name` de
+  la source (`STATUS_HALFTIME`, `STATUS_SECOND_HALF`, `STATUS_FULL_TIME`...),
+  et la mi-temps des prolongations compte comme une mi-temps.
+- `--no-phase-cards` pour n'avoir que les buts a l'ecran. Le journal continue
+  d'enregistrer ces moments.
+- Un match jamais vu en cours ne declenche pas de carte de fin, et un match
+  reporte ou abandonne reste muet.
+- Badges CI, release, Python et licence dans le README, plus une capture de
+  trois cartes empilees.
+
+### Corrige
+
+- **Le nom de l'equipe pouvait sortir de la carte par la gauche.** Le score est
+  centre dans la carte, mais la largeur reservee aux noms suivait la somme des
+  deux : des que l'un etait bien plus long que l'autre, il debordait
+  (`Eintracht Frankfurt 1 - 4 FC Augsburg`). La place reservee est desormais la
+  meme de chaque cote, ce qui rend le debordement impossible par construction ;
+  des noms a rallonge sont raccourcis avec des points de suspension plutot que
+  de sortir du cadre.
+- Un but annule ne declenchait plus de son que dans la documentation : le
+  daemon le jouait quand meme. Seul un vrai but fait du bruit.
+
+### Change
+
+- Les lignes de journal « coup d'envoi » et « fin du match », qui etaient
+  deduites d'une comparaison de listes dans la boucle, viennent maintenant des
+  memes evenements que les cartes. Un seul chemin, une seule verite.
+
 ## [1.0.1] - 2026-09-06
 
 ### Corrige
@@ -85,6 +120,7 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.0.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/boubou666/butbutbut/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/boubou666/butbutbut/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/boubou666/butbutbut/releases/tag/v1.0.0

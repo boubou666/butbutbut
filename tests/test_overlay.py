@@ -4,7 +4,7 @@ import unittest
 
 from butbutbut import leagues, overlay, screens, watcher
 
-from helpers import bump, event, goal_detail, opener_for, payload
+from helpers import bump, event, fake_fonts, goal_detail, opener_for, payload
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
@@ -14,6 +14,15 @@ def one_goal(**bump_kwargs):
     guard = watcher.Watcher([LIGUE1], opener=opener_for(state))
     guard.prime()
     state["payload"] = bump(state["payload"], **bump_kwargs)
+    return guard.refresh(LIGUE1)[0]
+
+
+def one_phase(first, second):
+    """L'evenement produit par le passage d'un etat de match a un autre."""
+    state = {"payload": payload(event(**first))}
+    guard = watcher.Watcher([LIGUE1], opener=opener_for(state))
+    guard.prime()
+    state["payload"] = payload(event(**second))
     return guard.refresh(LIGUE1)[0]
 
 
@@ -45,7 +54,7 @@ class TestCard(unittest.TestCase):
         card = overlay.Card.from_event(goal)
         self.assertEqual(card.title, "BUT ANNULE")
         self.assertEqual(card.accent, overlay.CANCEL_ACCENT)
-        self.assertTrue(card.muted_title)
+        self.assertEqual(card.title_color, overlay.CANCEL_ACCENT)
 
     def test_demo_card_for_each_league(self):
         for league in leagues.LEAGUES:
@@ -61,6 +70,113 @@ class TestCard(unittest.TestCase):
         card = overlay.Card.demo()
         self.assertTrue(card.parts)
         self.assertTrue(card.detail)
+
+
+class TestPhaseCards(unittest.TestCase):
+    """Coup d'envoi, mi-temps, reprise, fin : meme carte, ton plus discret."""
+
+    def test_kickoff(self):
+        event = one_phase({"state": "pre", "clock": "0'"},
+                          {"state": "in", "clock": "1'"})
+        card = overlay.Card.from_event(event)
+        self.assertEqual(card.title, "COUP D'ENVOI")
+        self.assertEqual(card.minute, "1'")
+        self.assertEqual((card.home_score, card.away_score), (0, 0))
+
+    def test_halftime_restart_and_fulltime(self):
+        for first, second, title in (
+                ({"state": "in"}, {"state": "in", "status_name": "STATUS_HALFTIME"},
+                 "MI-TEMPS"),
+                ({"state": "in", "status_name": "STATUS_HALFTIME"}, {"state": "in"},
+                 "REPRISE"),
+                ({"state": "in"}, {"state": "post", "clock": "90'+4'"},
+                 "FIN DU MATCH")):
+            card = overlay.Card.from_event(one_phase(first, second))
+            self.assertEqual(card.title, title)
+
+    def test_a_phase_card_is_quieter_than_a_goal(self):
+        card = overlay.Card.from_event(
+            one_phase({"state": "in"}, {"state": "post"}))
+        # Le titre est gris, mais le filet garde la couleur du championnat.
+        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.accent, LIGUE1.accent)
+        # Aucune equipe mise en avant, et pas de troisieme ligne.
+        self.assertIsNone(card.side)
+        self.assertEqual(card.parts, ())
+        self.assertEqual(card.detail, "")
+
+    def test_a_phase_card_is_shorter_than_a_goal_card(self):
+        fonts = fake_fonts()
+        phase = overlay._layout(
+            overlay.Card.from_event(one_phase({"state": "in"}, {"state": "post"})),
+            fonts)
+        goal = overlay._layout(overlay.Card.demo(), fonts)
+        self.assertLess(phase["height"], goal["height"])
+
+
+class TestLayoutStaysInsideTheCard(unittest.TestCase):
+    """Le bug du screenshot : "Eintracht Frankfurt" depassait a gauche."""
+
+    def check(self, card, fonts=None):
+        fonts = fonts or fake_fonts()
+        box = overlay._layout(card, fonts)
+        left = overlay.BAR_WIDTH + overlay.PAD_X
+        right = box["width"] - overlay.PAD_X
+
+        home_left = box["home_x"] - fonts["team"].measure(box["home"])
+        away_right = box["away_x"] + fonts["team"].measure(box["away"])
+
+        self.assertGreaterEqual(round(home_left, 3), left,
+                                "le nom de gauche sort de la carte")
+        self.assertLessEqual(round(away_right, 3), right,
+                             "le nom de droite sort de la carte")
+        # Les noms ne mordent pas sur le score.
+        self.assertLessEqual(box["home_x"], box["score_x"])
+        self.assertGreaterEqual(box["away_x"], box["score_x"] + box["score_w"])
+        return box
+
+    def test_the_case_from_the_screenshot(self):
+        box = self.check(overlay.Card(
+            title="BUT !", league="BUNDESLIGA", minute="89'",
+            home="Eintracht Frankfurt", away="FC Augsburg",
+            home_score=1, away_score=4, side="away",
+            detail=[("But de ", False), ("F. Rieder", True)],
+            accent="#ff5c5c"))
+        self.assertEqual(box["home"], "Eintracht Frankfurt")   # rien de tronque
+
+    def test_both_sides_long_or_short(self):
+        for home, away in (("Eintracht Frankfurt", "FC Augsburg"),
+                           ("FC Augsburg", "Eintracht Frankfurt"),
+                           ("Lens", "Lille"),
+                           ("A", "Borussia Monchengladbach"),
+                           ("Paris Saint-Germain", "Paris Saint-Germain")):
+            self.check(overlay.Card(
+                title="BUT !", league="LIGUE 1", minute="90'+5'",
+                home=home, away=away, home_score=10, away_score=0,
+                side="home", detail=[("But de ", False), ("X. Y", True)],
+                accent="#f2e34c"))
+
+    def test_absurd_names_are_shortened_not_overflowed(self):
+        fonts = fake_fonts()
+        box = self.check(overlay.Card(
+            title="BUT !", league="LIGUE 1", minute="12'",
+            home="Club Athletique et Sportif de la Vallee du Rhone Superieure",
+            away="Association Sportive des Amis Reunis du Nord de la France",
+            home_score=1, away_score=1, side="home",
+            detail=[("But de ", False), ("X. Y", True)], accent="#f2e34c"), fonts)
+        self.assertTrue(box["home"].endswith("..."))
+        self.assertLessEqual(box["width"], overlay.MAX_WIDTH)
+
+    def test_every_demo_card_fits(self):
+        for league in leagues.LEAGUES:
+            self.check(overlay.Card.demo(league))
+
+    def test_a_wide_score_still_fits(self):
+        self.check(overlay.Card(
+            title="BUT !", league="LIGUE 1", minute="90'",
+            home="Bayern Munich", away="Dinamo Zagreb",
+            home_score=19, away_score=17, side="home",
+            detail=[], accent="#f2e34c"))
 
 
 class TestStackPositions(unittest.TestCase):

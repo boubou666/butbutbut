@@ -134,6 +134,101 @@ class TestDetection(unittest.TestCase):
             self.assertIn(piece, line)
 
 
+class TestMatchPhases(unittest.TestCase):
+    """Coup d'envoi, mi-temps, reprise, fin : des cartes, jamais de son."""
+
+    def transition(self, first, second):
+        state = {"payload": payload(event(**first))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = payload(event(**second))
+        return guard.refresh(LIGUE1)
+
+    def test_kickoff(self):
+        events = self.transition({"state": "pre"}, {"state": "in"})
+        self.assertEqual([e.kind for e in events], [watcher.KICKOFF])
+        self.assertEqual(events[0].title, "COUP D'ENVOI")
+        self.assertTrue(events[0].phase)
+        self.assertFalse(events[0].goal)
+
+    def test_halftime(self):
+        events = self.transition(
+            {"state": "in"}, {"state": "in", "status_name": "STATUS_HALFTIME"})
+        self.assertEqual([e.kind for e in events], [watcher.HALFTIME])
+        self.assertEqual(events[0].title, "MI-TEMPS")
+
+    def test_restart(self):
+        events = self.transition(
+            {"state": "in", "status_name": "STATUS_HALFTIME"},
+            {"state": "in", "status_name": "STATUS_SECOND_HALF"})
+        self.assertEqual([e.kind for e in events], [watcher.RESTART])
+        self.assertEqual(events[0].title, "REPRISE")
+
+    def test_fulltime(self):
+        events = self.transition({"state": "in"}, {"state": "post"})
+        self.assertEqual([e.kind for e in events], [watcher.FULLTIME])
+        self.assertEqual(events[0].title, "FIN DU MATCH")
+
+    def test_fulltime_straight_from_halftime(self):
+        events = self.transition(
+            {"state": "in", "status_name": "STATUS_HALFTIME"}, {"state": "post"})
+        self.assertEqual([e.kind for e in events], [watcher.FULLTIME])
+
+    def test_a_delayed_match_that_finally_starts(self):
+        events = self.transition(
+            {"state": "pre", "status_name": "STATUS_DELAYED"}, {"state": "in"})
+        self.assertEqual([e.kind for e in events], [watcher.KICKOFF])
+
+    def test_nothing_when_the_phase_does_not_move(self):
+        self.assertEqual(self.transition({"state": "in"}, {"state": "in"}), [])
+        self.assertEqual(self.transition({"state": "post"}, {"state": "post"}), [])
+
+    def test_a_match_never_seen_live_says_nothing_at_full_time(self):
+        # Le daemon dormait : on n'a rien suivi, autant se taire.
+        self.assertEqual(self.transition({"state": "pre"}, {"state": "post"}), [])
+
+    def test_a_postponed_match_is_silent(self):
+        self.assertEqual(
+            self.transition({"state": "pre"},
+                            {"state": "pre", "status_name": "STATUS_POSTPONED"}),
+            [])
+
+    def test_first_sight_of_a_match_is_silent(self):
+        state = {"payload": payload(event(state="in"))}
+        guard = make_watcher(state)
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_a_phase_card_has_no_third_line_and_no_team(self):
+        event_ = self.transition({"state": "in"}, {"state": "post"})[0]
+        self.assertEqual(event_.detail_parts(), [])
+        self.assertEqual(event_.detail_line(), "")
+        self.assertIsNone(event_.side)
+        self.assertEqual(event_.delta, 0)
+
+    def test_a_goal_and_the_final_whistle_in_the_same_pass(self):
+        state = {"payload": payload(event(state="in", home_score=0))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = payload(event(state="post", home_score=1))
+
+        events = guard.refresh(LIGUE1)
+        # Le but d'abord, la fin ensuite : c'est l'ordre du match.
+        self.assertEqual([e.kind for e in events],
+                         [watcher.GOAL, watcher.FULLTIME])
+        self.assertTrue(events[0].goal)
+        self.assertFalse(events[1].goal)
+
+    def test_log_lines_name_the_moment(self):
+        for first, second, head in (({"state": "pre"}, {"state": "in"},
+                                     "COUP D'ENVOI"),
+                                    ({"state": "in"}, {"state": "post"},
+                                     "FIN DU MATCH")):
+            line = self.transition(first, second)[0].log_line()
+            self.assertTrue(line.startswith(head), line)
+            self.assertIn("Ligue 1", line)
+            self.assertIn("Angers 0 - 0 Stade Rennais", line)
+
+
 class TestCadence(unittest.TestCase):
     def test_live_match_gets_the_fast_cadence(self):
         state = {"payload": payload(event(state="in"))}

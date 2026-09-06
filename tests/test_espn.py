@@ -99,6 +99,44 @@ class TestPlays(unittest.TestCase):
                          [p.key for p in second.plays])
 
 
+class TestPhase(unittest.TestCase):
+    """La phase du match, lue dans status.type.name."""
+
+    def test_the_states_espn_actually_returns(self):
+        for state, name, expected in (
+                ("pre", "STATUS_SCHEDULED", espn.SCHEDULED),
+                ("in", "STATUS_FIRST_HALF", espn.PLAYING),
+                ("in", "STATUS_HALFTIME", espn.HALFTIME),
+                ("in", "STATUS_SECOND_HALF", espn.PLAYING),
+                ("post", "STATUS_FULL_TIME", espn.FINAL)):
+            self.assertEqual(espn.phase_of(state, name), expected, name)
+
+    def test_extra_time_halftime_counts_as_halftime(self):
+        self.assertEqual(espn.phase_of("in", "STATUS_EXTRA_TIME_HALFTIME"),
+                         espn.HALFTIME)
+
+    def test_shootout_is_still_playing(self):
+        self.assertEqual(espn.phase_of("in", "STATUS_SHOOTOUT"), espn.PLAYING)
+
+    def test_a_match_that_is_not_happening_is_unknown(self):
+        for name in ("STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_ABANDONED",
+                     "STATUS_DELAYED", "STATUS_SUSPENDED"):
+            self.assertEqual(espn.phase_of("pre", name), espn.UNKNOWN, name)
+
+    def test_missing_status_name_falls_back_on_the_state(self):
+        self.assertEqual(espn.phase_of("in", ""), espn.PLAYING)
+        self.assertEqual(espn.phase_of("pre", None), espn.SCHEDULED)
+        self.assertEqual(espn.phase_of("post", ""), espn.FINAL)
+        self.assertEqual(espn.phase_of("n'importe quoi", ""), espn.UNKNOWN)
+
+    def test_the_match_carries_its_phase(self):
+        match = espn.parse(payload(event(
+            state="in", status_name="STATUS_HALFTIME")), LIGUE1)[0]
+        self.assertEqual(match.status_name, "STATUS_HALFTIME")
+        self.assertEqual(match.phase, espn.HALFTIME)
+        self.assertTrue(match.live)      # la mi-temps, c'est toujours "in"
+
+
 class TestFetch(unittest.TestCase):
     def test_fetch_goes_through_the_opener(self):
         state = {"payload": payload(event())}
