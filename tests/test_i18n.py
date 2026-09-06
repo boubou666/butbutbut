@@ -126,9 +126,28 @@ class TestDetection(unittest.TestCase):
     def test_une_variable_dediee_absurde_est_ignoree(self):
         # On ne veut pas qu'une faute de frappe dans l'environnement fasse
         # tomber le daemon : elle est ignoree, la detection continue.
-        with mock.patch.dict(os.environ, {i18n.ENV: "klingon"}):
-            with mock.patch.object(i18n, "_from_windows", return_value="es"):
+        #
+        # La plateforme est imposee : hors Windows, _from_windows n'est meme pas
+        # consultee, et un test qui la surchargeait passait ici pour echouer sur
+        # la CI - c'est exactement ce qui s'est produit.
+        with mock.patch.object(i18n.sys, "platform", "linux"):
+            with mock.patch.dict(os.environ,
+                                 {i18n.ENV: "klingon", "LANG": "es_ES.UTF-8"},
+                                 clear=True):
                 self.assertEqual(i18n.detect(), "es")
+
+    def test_sous_windows_le_systeme_passe_avant_LANG(self):
+        # Git Bash pose LANG=en_US quoi qu'il arrive : le suivre rendrait la
+        # detection aveugle a la langue reelle de la machine.
+        with mock.patch.object(i18n.sys, "platform", "win32"):
+            with mock.patch.dict(os.environ, {"LANG": "en_US.UTF-8"}, clear=True):
+                with mock.patch.object(i18n, "_from_windows", return_value="fr"):
+                    self.assertEqual(i18n.detect(), "fr")
+
+    def test_hors_windows_ce_sont_les_variables_qui_parlent(self):
+        with mock.patch.object(i18n.sys, "platform", "linux"):
+            with mock.patch.dict(os.environ, {"LANG": "de_DE.UTF-8"}, clear=True):
+                self.assertEqual(i18n.detect(), "de")
 
     def test_le_francais_en_dernier_recours(self):
         with mock.patch.dict(os.environ, {}, clear=True):

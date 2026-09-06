@@ -51,7 +51,7 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   affirment une formulation epinglent la leur. Sans ca la suite passait sur une
   machine francaise et echouait sur la CI, dont les machines sont anglaises :
   elle tourne desormais a l'identique en fr, en, es, it et de.
-- 459 -> **496 tests**.
+- 459 -> **498 tests**.
 
 ## [1.4.0] - 2026-09-06
 
