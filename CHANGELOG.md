@@ -15,9 +15,11 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   release creee par `github-actions[bot]` ne reveille personne. Constate en
   poussant `v1.3.0`, ou le workflow `pypi` n'a meme pas eu de run. La
   publication est desormais le second job de `release.yml`, declenche par le
-  push du tag - un evenement humain, qui declenche bien. `pypi.yml` ne garde
-  que le declenchement manuel, comme rattrapage, et le README ne promet plus un
-  automatisme qui n'existait pas.
+  push du tag - un evenement humain, qui declenche bien. Les deux jobs vivent
+  dans `pypi.yml`, et `release.yml` disparait : un publisher de confiance PyPI
+  autorise UN nom de fichier de workflow, et c'est celui-la qui est declare
+  cote pypi.org. Le declenchement manuel du meme workflow sert de rattrapage.
+  Le README ne promet plus un automatisme qui n'existait pas.
 
 ## [1.3.0] - 2026-09-06
 
