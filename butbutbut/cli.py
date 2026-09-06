@@ -13,8 +13,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import (__version__, config, espn, fullscreen, leagues, screens, sound,
-               teams, watcher)
+from . import (__version__, config, espn, fullscreen, journal, leagues,
+               screens, sound, state, teams, watcher)
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -46,6 +46,7 @@ def paths() -> dict:
         "log": root / "butbutbut.log",
         "pid": root / "butbutbut.pid",
         "config": root / config.FILENAME,
+        "state": root / "butbutbut.json",
     }
 
 
@@ -281,6 +282,13 @@ def do_daemon(args) -> int:
     guard.prime()
     log(_startup_summary(guard), quiet=args.quiet)
 
+    # L'etat est publie des le premier releve : sinon un --status lance dans la
+    # foulee du demarrage annoncerait un daemon sans aucune activite.
+    reporter = state.Reporter(paths()["state"], leagues=selection,
+                              interval=args.interval,
+                              idle_interval=args.idle_interval)
+    reporter.update(guard.all_matches())
+
     stack = None
     if not args.no_overlay:
         try:
@@ -298,9 +306,9 @@ def do_daemon(args) -> int:
 
     try:
         if stack is None:
-            _watch_headless(guard, args, stopping)
+            _watch_headless(guard, args, stopping, reporter)
         else:
-            _watch_with_cards(guard, args, stopping, stack)
+            _watch_with_cards(guard, args, stopping, stack, reporter)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -309,15 +317,20 @@ def do_daemon(args) -> int:
             stack.close()
         sound.stop_all()
         release_pid_file()
+        # L'etat s'en va avec le pid : garde, il ferait croire a des matchs en
+        # cours des heures apres l'arret. Le journal, lui, reste.
+        state.clear(paths()["state"])
         log("arret.", quiet=args.quiet)
     return 0
 
 
-def _watch_headless(guard, args, stopping) -> None:
+def _watch_headless(guard, args, stopping, reporter) -> None:
     """Sans carte : un seul fil, le son et le journal."""
     while not stopping.is_set():
         media = None
-        for event in guard.tick():
+        events = guard.tick()
+        reporter.update(guard.all_matches(), events)
+        for event in events:
             log(event.log_line(), quiet=args.quiet)
             if not event.goal:
                 continue            # but annule et phases de match : muets
@@ -330,7 +343,7 @@ def _watch_headless(guard, args, stopping) -> None:
         stopping.wait(guard.plan_wait())
 
 
-def _watch_with_cards(guard, args, stopping, stack) -> None:
+def _watch_with_cards(guard, args, stopping, stack, reporter) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -344,7 +357,9 @@ def _watch_with_cards(guard, args, stopping, stack) -> None:
     def poll():
         while not stopping.is_set():
             try:
-                for event in guard.tick():
+                events = guard.tick()
+                reporter.update(guard.all_matches(), events)
+                for event in events:
                     log(event.log_line(), quiet=args.quiet)
                     pending.put(event)
             except Exception as exc:
@@ -457,15 +472,16 @@ def do_scores(args) -> int:
 
         for match in matches:
             total += 1
+            # 'note' et non 'state' : le module state est importe ici.
             if match.live:
-                mark, state = ">", match.detail or match.clock or "en cours"
+                mark, note = ">", match.detail or match.clock or "en cours"
             elif match.finished:
-                mark, state = " ", match.detail or "termine"
+                mark, note = " ", match.detail or "termine"
             else:
-                mark, state = " ", _kickoff_text(match, now)
+                mark, note = " ", _kickoff_text(match, now)
             print("  {} {:>22} {} - {} {:<22} {}".format(
                 mark, match.home, match.home_score, match.away_score,
-                match.away, state))
+                match.away, note))
             for play in match.plays:
                 side = match.home if play.team_id == match.home_id else match.away
                 print("      {:<22} {}".format(side, play.summary()))
@@ -486,6 +502,93 @@ def _kickoff_text(match, now) -> str:
     return "{:%d/%m %H:%M}".format(local)
 
 
+def _print_activity(pid) -> None:
+    """L'activite du daemon, relue dans le fichier d'etat.
+
+    Le fichier pid dit qu'un processus existe, jamais qu'il travaille : sans
+    ces lignes, un daemon bloque sur une requete est indistinguable d'un daemon
+    qui suit trois matchs.
+    """
+    data = state.read(paths()["state"])
+    if data is None:
+        print("  releve      : {}".format(
+            "aucun pour l'instant" if pid
+            else "aucun (le daemon efface son etat en s'arretant)"))
+        return
+
+    stale = state.is_stale(data)
+    line = state.describe_age(state.age(data))
+    stamp = data.get("updated_text")
+    if stamp:
+        line += "  ({})".format(stamp)
+    print("  releve      : {}".format(line))
+    if not pid:
+        print("                etat laisse par un daemon qui ne tourne plus")
+    elif stale:
+        print("                (!) plus rien depuis, alors que la cadence est "
+              "de {}s : daemon bloque ou source injoignable ?".format(
+                  _announced_cadence(data)))
+
+    if stale:
+        # Un etat perime decrit un match fini depuis longtemps : annoncer une
+        # mi-temps d'hier soir serait pire que de ne rien annoncer.
+        print("  en cours    : inconnu (le dernier releve est trop vieux)")
+    else:
+        matches = [row for row in (data.get("matches") or [])
+                   if isinstance(row, dict)]
+        summary = "{} match(s)".format(len(matches))
+        if isinstance(data.get("total_matches"), int):
+            summary += " sur {} au programme".format(data["total_matches"])
+        print("  en cours    : {}".format(summary))
+        for row in matches:
+            print("                [{}] {} {} - {} {}  {}".format(
+                row.get("league", "?"), row.get("home", "?"),
+                row.get("home_score", "?"), row.get("away_score", "?"),
+                row.get("away", "?"), row.get("clock", "")).rstrip())
+
+    goals = data.get("goals_today", 0) if data.get("day") == state.today() else 0
+    print("  buts du jour: {}  (le detail : butbutbut --today)".format(goals))
+
+
+def _announced_cadence(data):
+    key = "interval" if data.get("matches") else "idle_interval"
+    return data.get(key, "?")
+
+
+def do_today(args) -> int:
+    """Le recapitulatif de la journee, relu dans le journal."""
+    p = paths()
+    entries = journal.goals(p["log"])
+
+    print("butbutbut : buts signales le {:%d/%m/%Y}".format(datetime.now()))
+    if not entries:
+        print("\n  (aucun but pour l'instant)")
+        print("\nJournal : {}".format(p["log"]))
+        return 0
+
+    scored = 0
+    cancelled = 0
+    grouped = journal.by_league(entries)
+    for league, rows in grouped:
+        print("\n{}".format(league))
+        for entry in rows:
+            if entry.goal:
+                scored += 1
+            else:
+                cancelled += 1
+            detail = " ".join(part for part in (
+                entry.detail,
+                "({})".format(entry.minute) if entry.minute else "") if part)
+            print("  {} {}  {:<34} {}".format(
+                " " if entry.goal else "-", entry.time,
+                entry.score_line(), detail).rstrip())
+
+    print("\n{} but(s) dans {} competition(s).".format(scored, len(grouped)))
+    if cancelled:
+        print("'-' = but retire par la VAR ({}).".format(cancelled))
+    return 0
+
+
 def do_status(args) -> int:
     p = paths()
     pid = running_pid()
@@ -494,6 +597,7 @@ def do_status(args) -> int:
     print("butbutbut {}".format(__version__))
     print("  daemon      : {}".format(
         "actif (pid {})".format(pid) if pid else "arrete"))
+    _print_activity(pid)
     chosen = team_filter(args)
     if chosen is not None:
         print("  equipes     : {}".format(chosen.describe()))
@@ -601,6 +705,9 @@ def do_stop(args) -> int:
             os.kill(pid, signal.SIGTERM)
         print("butbutbut : daemon {} arrete.".format(pid))
         release_pid_file()
+        # Sous Windows le daemon est tue net : son finally ne tourne pas, et
+        # personne d'autre ne viendrait ramasser son etat.
+        state.clear(paths()["state"])
         return 0
     except Exception as exc:
         print("butbutbut : impossible d'arreter {} : {}".format(pid, exc))
@@ -625,7 +732,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scores", action="store_true",
                         help="affiche les matchs du jour dans le terminal puis quitte")
     parser.add_argument("--status", action="store_true",
-                        help="affiche l'etat (daemon, son, ecrans, connexion)")
+                        help="affiche l'etat (daemon, dernier releve, matchs "
+                             "en cours, son, ecrans, connexion)")
+    parser.add_argument("--today", action="store_true",
+                        help="recapitule les buts signales aujourd'hui")
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
     parser.add_argument("--screens", action="store_true", help="liste les ecrans detectes")
@@ -778,6 +888,8 @@ def main(argv=None) -> int:
         return do_stop(args)
     if args.status:
         return do_status(args)
+    if args.today:
+        return do_today(args)
     if args.scores:
         return do_scores(args)
     if args.test:

@@ -95,7 +95,8 @@ butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
 butbutbut --list              # les competitions surveillables
 butbutbut --list-teams        # les equipes des competitions suivies
-butbutbut --status            # daemon, son, ecrans, connexion a la source
+butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
+butbutbut --today             # les buts signales aujourd'hui
 butbutbut --stop              # arrete le daemon
 butbutbut --paths             # ou vivent les donnees et le journal
 butbutbut --write-config      # ecrit un fichier de configuration d'exemple
@@ -500,6 +501,75 @@ ete tenue exactement quand elle ne servait a rien.
 
 ---
 
+## Savoir si la surveillance tourne vraiment
+
+Un daemon vivant mais bloque ressemble a un daemon qui marche : le fichier pid
+dit qu'un processus existe, jamais qu'il travaille. Le daemon ecrit donc, a
+**chaque releve**, un petit fichier d'etat a cote du fichier pid
+(`butbutbut.json`, voir `butbutbut --paths`) : horodatage du releve, matchs en
+cours et leurs scores, compteur de buts du jour, competitions suivies, pid.
+
+`butbutbut --status` le relit :
+
+```
+butbutbut 1.2.0
+  daemon      : actif (pid 3752)
+  releve      : il y a 12 s  (2026-09-06 18:52:44)
+  en cours    : 2 match(s) sur 15 au programme
+                [Premier League] Arsenal 2 - 1 Chelsea  50'
+                [Ligue 1] Angers 1 - 0 Stade Rennais  61'
+  buts du jour: 3  (le detail : butbutbut --today)
+  ...
+```
+
+Si plus rien n'est arrive depuis longtemps, `--status` le dit au lieu de faire
+semblant :
+
+```
+  releve      : il y a 20 min  (2026-09-06 18:32:44)
+                (!) plus rien depuis, alors que la cadence est de 25s : daemon bloque ou source injoignable ?
+  en cours    : inconnu (le dernier releve est trop vieux)
+```
+
+Le seuil suit la cadence annoncee : quelques minutes quand un match est en
+cours, plus large au repos. Le fichier est ecrit d'un bloc (temporaire puis
+`os.replace()`), donc `--status` ne lit jamais un JSON coupe en deux ; et si le
+disque est plein ou le dossier en lecture seule, l'ecriture est abandonnee en
+silence : perdre l'etat n'a jamais tue un daemon en plein match. Le fichier
+disparait a l'arret du daemon.
+
+---
+
+## Le recapitulatif du jour
+
+```bash
+butbutbut --today
+```
+
+```
+butbutbut : buts signales le 06/09/2026
+
+Premier League
+    18:43:27  Arsenal 2 - 1 Chelsea              But de M. Odegaard (50')
+
+Ligue 1
+    18:51:10  Angers 1 - 0 Stade Rennais         Penalty de C. Arcus (61')
+  - 18:52:44  Angers 0 - 0 Stade Rennais         Score corrige (62')
+
+Bundesliga
+    19:02:00  Bayer 04 Leverkusen 1 - 1 Bayern   But de P. Schick (77')
+
+3 but(s) dans 3 competition(s).
+'-' = but retire par la VAR (1).
+```
+
+Les buts sont relus **dans le journal**, pas dans le fichier d'etat : le
+journal survit a un redemarrage, a un plantage et a l'arret du daemon, donc
+`--today` repond encore le lendemain matin, machine eteinte entre-temps. Ce que
+le journal ne sait pas lire est ignore sans bruit.
+
+---
+
 ## Journal
 
 ```
@@ -513,6 +583,8 @@ ete tenue exactement quand elle ne servait a rien.
 Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi, les fins
 de match, les expulsions et les annonces d'avant match - meme celles dont la
 carte est coupee a l'ecran.
+Chemin : `butbutbut --paths`. Le daemon ecrit aussi les coups d'envoi et les
+fins de match. C'est cette trace que `butbutbut --today` relit.
 
 ---
 
@@ -549,6 +621,7 @@ PYTHONPATH=".:tests" python -m unittest discover -s tests
 
 **218 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 **225 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+**222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
 
