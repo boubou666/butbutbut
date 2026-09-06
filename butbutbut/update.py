@@ -1,19 +1,21 @@
 """Mise a jour d'une installation existante, sur les trois plateformes.
 
 L'installeur laisse une fiche dans `<data_dir>/install.json` : d'ou le code
-vient, quel commit, avec quelles options. `butbutbut --update` la relit pour
-rafraichir la source puis rejouer l'installeur avec les memes reglages - les
-memes competitions, le meme coin, la meme cadence.
+vient, quelle version, avec quelles options. `butbutbut --update` la relit pour
+recuperer le code puis rejouer l'installeur avec les memes reglages.
 
-Deux facons de rafraichir la source, dans cet ordre :
+Par defaut, c'est la **derniere release** qui est installee, et son archive est
+depliee dans un dossier temporaire. Le depot clone, s'il en reste un, n'est pas
+touche : l'amener sur l'etiquette demanderait de le laisser en HEAD detachee,
+et il appartient a son proprietaire, pas a `--update`.
 
-  1. si le depot clone est toujours la, `git pull --ff-only` ;
-  2. sinon, l'archive de la branche principale est telechargee depuis GitHub
-     et depliee dans un dossier temporaire.
+`--dev` vise la pointe de la branche principale. La, le depot clone sert quand
+il est encore la (`git pull --ff-only`), et l'archive de `main` prend le relais
+sinon - une installation dont le dossier a ete efface se met a jour quand meme.
 
-La seconde voie ne demande ni git ni le clone d'origine : une installation
-faite il y a six mois, dont le dossier a ete efface depuis, se met a jour
-quand meme.
+`check()` et `update()` visent donc la meme chose dans chaque mode : des
+versions par defaut, des commits avec `--dev`. Annoncer une release et en
+installer une autre etait le defaut de la premiere mouture.
 
 Une installation qui ne vient pas des scripts - paquet de la distribution,
 pipx, pip - n'est pas ecrasee : `--update` renvoie vers l'outil qui la gere.
@@ -36,7 +38,8 @@ from . import cli
 
 DEPOT = "boubou666/butbutbut"
 BRANCHE = "main"
-ARCHIVE = "https://codeload.github.com/{}/zip/refs/heads/{}".format(DEPOT, BRANCHE)
+ARCHIVE_MAIN = "https://codeload.github.com/{}/zip/refs/heads/{}".format(DEPOT, BRANCHE)
+ARCHIVE_TAG = "https://codeload.github.com/{}/zip/refs/tags/{{}}".format(DEPOT)
 API_HEAD = "https://api.github.com/repos/{}/commits/{}".format(DEPOT, BRANCHE)
 API_LATEST = "https://api.github.com/repos/{}/releases/latest".format(DEPOT)
 DELAI = 30
@@ -81,6 +84,29 @@ def local_sha():
     source = fiche.get("source")
     if source:
         return git_sha(Path(source))
+    return None
+
+
+def local_version():
+    """Version installee : celle notee par l'installeur, sinon celle du paquet."""
+    from . import __version__
+
+    return read_record().get("version") or __version__
+
+
+def source_version(source: Path):
+    """Version annoncee par le code qu'on vient de recuperer.
+
+    Lue dans le fichier plutot que deduite de l'etiquette : c'est le code en
+    place qui fait foi, pas le nom sous lequel on l'a telecharge.
+    """
+    fichier = Path(source) / "butbutbut" / "__init__.py"
+    try:
+        for ligne in fichier.read_text(encoding="utf-8").splitlines():
+            if ligne.startswith("__version__"):
+                return ligne.split("=", 1)[1].strip().strip("\"'") or None
+    except Exception:
+        return None
     return None
 
 
@@ -142,18 +168,18 @@ def remote_sha():
     return donnees.get("sha") if donnees else None
 
 
-def latest_release():
-    """Version de la derniere release, sans le v initial.
-
-    Sert aux installations faites depuis une release : elles n'ont pas de
-    depot git, donc pas de commit a comparer, mais elles ont un numero de
-    version.
-    """
+def latest_tag():
+    """Etiquette de la derniere release, telle qu'elle est publiee (vX.Y.Z)."""
     donnees = _api(API_LATEST)
     if not donnees:
         return None
-    etiquette = donnees.get("tag_name") or ""
-    return etiquette.lstrip("v") or None
+    return donnees.get("tag_name") or None
+
+
+def latest_release():
+    """Version de la derniere release, sans le v initial."""
+    etiquette = latest_tag()
+    return etiquette.lstrip("v") if etiquette else None
 
 
 def check_members(zip_, destination: Path) -> None:
@@ -172,11 +198,11 @@ def check_members(zip_, destination: Path) -> None:
                 "archive telechargee suspecte : {!r} sort du dossier".format(membre))
 
 
-def download_source(destination: Path) -> Path:
-    """Telecharge et deplie l'archive de la branche ; renvoie sa racine."""
+def download_source(destination: Path, url: str = ARCHIVE_MAIN) -> Path:
+    """Telecharge et deplie une archive GitHub ; renvoie sa racine."""
     destination.mkdir(parents=True, exist_ok=True)
     archive = destination / "butbutbut.zip"
-    requete = urllib.request.Request(ARCHIVE, headers={"User-Agent": AGENT})
+    requete = urllib.request.Request(url, headers={"User-Agent": AGENT})
     try:
         with urllib.request.urlopen(requete, timeout=DELAI) as reponse:
             archive.write_bytes(reponse.read())
@@ -196,8 +222,22 @@ def download_source(destination: Path) -> Path:
     return racines[0]
 
 
-def refresh_source(fiche: dict, travail: Path, verbose=print):
+def refresh_source(fiche: dict, travail: Path, verbose=print, dev: bool = False):
     """Rend une source a jour, et dit d'ou elle vient."""
+    if not dev:
+        etiquette = latest_tag()
+        if not etiquette:
+            raise UpdateError(
+                "aucune release publiee, ou GitHub injoignable. "
+                "`butbutbut --update --dev` prend la pointe de la branche "
+                "principale.")
+        verbose("  source      : release {} depuis GitHub".format(etiquette))
+        # Le depot clone est volontairement ignore ici. L'amener sur
+        # l'etiquette le laisserait en HEAD detachee, et c'est le dossier de
+        # quelqu'un qui travaille peut-etre dedans.
+        return (download_source(travail, ARCHIVE_TAG.format(etiquette)),
+                "la release {}".format(etiquette))
+
     source = fiche.get("source")
     if source:
         depot = Path(source)
@@ -213,29 +253,38 @@ def refresh_source(fiche: dict, travail: Path, verbose=print):
                 (out.stderr or "").strip().splitlines()[-1:]))
 
     verbose("  source      : archive {} depuis GitHub".format(BRANCHE))
-    return download_source(travail), "archive"
+    return download_source(travail, ARCHIVE_MAIN), "l'archive de {}".format(BRANCHE)
+
+
+def _reglages(fiche: dict):
+    """Les trois reglages de la fiche, vides quand ils n'ont pas ete passes."""
+    interval = fiche.get("interval")
+    return (
+        str(fiche.get("leagues") or ""),
+        str(fiche.get("position") or ""),
+        "" if interval in (None, "", 0) else str(interval),
+    )
 
 
 def installer_args(fiche: dict) -> list:
-    """Les options d'origine, retraduites pour l'installeur de la plateforme."""
-    position = str(fiche.get("position") or cli.DEFAULT_POSITION)
-    interval = str(fiche.get("interval") or cli.DEFAULT_INTERVAL)
-    leagues = str(fiche.get("leagues") or "")
-    autostart = fiche.get("autostart", True)
+    """Les options d'origine, retraduites pour l'installeur de la plateforme.
 
-    if sys.platform == "win32":
-        arguments = ["-Position", position, "-Interval", interval]
-        if leagues:
-            arguments += ["-Leagues", leagues]
-        if not autostart:
-            arguments.append("-NoAutostart")
-        return arguments
+    Seules celles que l'installeur avait recues sont rejouees. Materialiser un
+    defaut ici le reposerait dans le service de demarrage, ou il ecraserait la
+    meme cle du fichier de configuration.
+    """
+    leagues, position, interval = _reglages(fiche)
+    windows = sys.platform == "win32"
 
-    arguments = ["--position", position, "--interval", interval]
+    arguments = []
     if leagues:
-        arguments += ["--leagues", leagues]
-    if not autostart:
-        arguments.append("--no-autostart")
+        arguments += ["-Leagues" if windows else "--leagues", leagues]
+    if position:
+        arguments += ["-Position" if windows else "--position", position]
+    if interval:
+        arguments += ["-Interval" if windows else "--interval", interval]
+    if not fiche.get("autostart", True):
+        arguments.append("-NoAutostart" if windows else "--no-autostart")
     return arguments
 
 
@@ -284,13 +333,21 @@ def stop_daemon() -> bool:
 
 
 def daemon_args(fiche: dict) -> list:
-    """Les arguments du daemon, dans l'ordre ou l'installeur les pose."""
+    """Les arguments du daemon, dans l'ordre ou l'installeur les pose.
+
+    Meme regle que pour l'installeur, a une exception : --quiet est toujours
+    pose. Un daemon de session ecrit sur une sortie qui n'existe pas, et le
+    journal reste alimente de toute facon.
+    """
+    leagues, position, interval = _reglages(fiche)
+
     arguments = []
-    leagues = str(fiche.get("leagues") or "")
     if leagues:
         arguments += ["--leagues", leagues]
-    arguments += ["--position", str(fiche.get("position") or cli.DEFAULT_POSITION)]
-    arguments += ["--interval", str(fiche.get("interval") or cli.DEFAULT_INTERVAL)]
+    if position:
+        arguments += ["--position", position]
+    if interval:
+        arguments += ["--interval", interval]
     arguments.append("--quiet")
     return arguments
 
@@ -334,49 +391,51 @@ def start_daemon(fiche: dict) -> bool:
 
 # ----------------------------------------------------------------- API -------
 
-def check(verbose=print) -> int:
+def check(verbose=print, dev: bool = False) -> int:
     """Dit si une version plus recente existe.
 
-    Deux facons de comparer, selon ce qu'on sait de l'installation. Avec un
-    depot git derriere, on compare les commits, c'est le plus precis. Installe
-    depuis une release il n'y a pas de commit, mais il y a un numero de
-    version : on le compare alors a celui de la derniere release.
+    Par defaut on compare des versions, puisque c'est une release que
+    `--update` installera. Avec `--dev` on compare des commits, puisque c'est
+    la pointe de la branche qu'il ira chercher. Les deux commandes visent la
+    meme chose dans chaque mode : annoncer une release et en installer une
+    autre etait le defaut de la premiere mouture.
     """
-    from . import __version__
-
-    installe = local_sha()
-
-    if installe:
+    if dev:
+        installe = local_sha()
         publie = remote_sha()
+        if not installe:
+            verbose("  installe    : commit inconnu (installation sans depot git)")
+            verbose("  publie      : {}".format(publie[:8] if publie else "injoignable"))
+            verbose("\nRien a comparer en mode dev. `butbutbut --check-update` "
+                    "compare les versions publiees.")
+            return 2
         verbose("  installe    : {} (commit)".format(installe[:8]))
         if publie is None:
             verbose("  publie      : injoignable (pas de reseau ?)")
             return 2
         verbose("  publie      : {}".format(publie[:8]))
         if installe == publie:
-            verbose("\nbutbutbut est a jour.")
+            verbose("\nbutbutbut est a jour sur la pointe de {}.".format(BRANCHE))
             return 0
-        verbose("\nUne version plus recente existe : butbutbut --update")
+        verbose("\nUne version plus recente existe : butbutbut --update --dev")
         return 1
 
+    installee = local_version()
     publiee = latest_release()
-    verbose("  installe    : {} (version, pas de depot git)".format(__version__))
+    verbose("  installe    : {}".format(installee))
     if publiee is None:
         verbose("  publie      : injoignable (pas de reseau, ou aucune release)")
         return 2
     verbose("  publie      : {}".format(publiee))
-
-    if __version__ == publiee:
+    if installee == publiee:
         verbose("\nbutbutbut est a jour.")
-        verbose("(compare de version a version : `butbutbut --update` ira quand "
-                "meme chercher les derniers changements de la branche principale.)")
         return 0
     verbose("\nUne version plus recente existe : butbutbut --update")
     return 1
 
 
-def update(verbose=print) -> int:
-    """Rafraichit la source, rejoue l'installeur, relance le daemon."""
+def update(verbose=print, dev: bool = False) -> int:
+    """Recupere le code, rejoue l'installeur, relance le daemon."""
     gestionnaire = managed_elsewhere()
     if gestionnaire:
         verbose("butbutbut est installe par {}.".format(gestionnaire))
@@ -389,7 +448,7 @@ def update(verbose=print) -> int:
         verbose("install.sh ou install.ps1, ou elle a ete effacee.")
         verbose("On tente quand meme depuis GitHub.\n")
 
-    avant = local_sha()
+    avant = local_sha() if dev else local_version()
     tournait = daemon_pid() is not None
     if tournait:
         verbose("  daemon      : arret le temps de la mise a jour")
@@ -401,23 +460,27 @@ def update(verbose=print) -> int:
     # pendant tous les matchs de la soiree.
     try:
         with tempfile.TemporaryDirectory(prefix="butbutbut-update-") as travail:
-            source, voie = refresh_source(fiche, Path(travail), verbose)
+            source, voie = refresh_source(fiche, Path(travail), verbose, dev)
             run_installer(source, fiche, verbose)
-            apres = git_sha(source) or remote_sha()
-            source_durable = source if git_sha(source) else None
+            durable = git_sha(source)
+            apres_commit = durable or (remote_sha() if dev else None)
+            apres_version = source_version(source)
 
-        # L'installeur vient de reecrire la fiche. Par une archive il n'a pas
-        # de commit a y mettre, et il y laisse le dossier temporaire qu'on
-        # efface a l'instant : on rectifie, sans quoi la fiche pointerait un
-        # chemin mort et --check-update resterait muet jusqu'a la fin des
-        # temps. Par l'archive on ecrase le commit meme s'il y en avait un :
-        # celui qu'on vient de deplier est le seul qui decrive le code en place.
+        # L'installeur vient de reecrire la fiche, mais il ne sait pas tout.
+        # Depliee d'une archive, la source n'a pas de .git : il y laisse un
+        # commit vide et le chemin du dossier temporaire qu'on efface a
+        # l'instant. On rectifie, sans quoi la fiche pointerait un chemin mort
+        # et --check-update resterait muet jusqu'a la fin des temps.
         fraiche = read_record()
         if fraiche:
-            if apres and (not source_durable or not fraiche.get("commit")):
-                fraiche["commit"] = apres
-            if not source_durable:
+            if apres_version:
+                fraiche["version"] = apres_version
+            if durable:
+                if apres_commit and not fraiche.get("commit"):
+                    fraiche["commit"] = apres_commit
+            else:
                 fraiche["source"] = ""
+                fraiche["commit"] = apres_commit or ""
             write_record(fraiche)
     finally:
         if tournait:
@@ -429,12 +492,14 @@ def update(verbose=print) -> int:
                 verbose("  (relance automatique impossible, lance `butbutbut` toi-meme)")
 
     verbose("")
+    apres = apres_commit if dev else apres_version
+    court = (lambda v: v[:8]) if dev else (lambda v: v)
     if avant and apres and avant == apres:
         verbose("Deja a jour ({}), reinstalle par acquit de conscience.".format(
-            avant[:8]))
+            court(avant)))
     elif apres:
         verbose("Mis a jour : {} -> {} (via {}).".format(
-            avant[:8] if avant else "?", apres[:8], voie))
+            court(avant) if avant else "?", court(apres), voie))
     else:
-        verbose("Reinstalle depuis la source ({}).".format(voie))
+        verbose("Reinstalle depuis {}.".format(voie))
     return 0

@@ -8,14 +8,20 @@
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -Leagues "l1,pl" -Position top-right
 
 .NOTES
-    Les options choisies ici sont notees dans install.json, au chaud dans
-    %LOCALAPPDATA%\butbutbut : `butbutbut --update` les rejoue telles quelles.
+    Les options passees ici sont notees dans install.json, au chaud dans
+    %LOCALAPPDATA%\butbutbut, et `butbutbut --update` les rejoue telles
+    quelles. Celles qu'on ne passe pas ne sont pas posees non plus dans le
+    raccourci de demarrage : le fichier de configuration reste alors maitre
+    de ces reglages.
 #>
 [CmdletBinding()]
+# Vides tant qu'on ne les a pas recus. Materialiser un defaut en argument du
+# raccourci ecraserait silencieusement la meme cle du fichier de configuration,
+# que la ligne de commande l'emporte toujours sur le fichier.
 param(
     [string] $Leagues  = '',
-    [string] $Position = 'bottom-right',
-    [int]    $Interval = 25,
+    [string] $Position = '',
+    [int]    $Interval = 0,
     [switch] $NoAutostart
 )
 
@@ -56,8 +62,14 @@ $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\butbutbut'
 $AppDir     = Join-Path $InstallDir 'app'
 $BinDir     = Join-Path $InstallDir 'bin'
 
-$DaemonArgs = "--position $Position --interval $Interval --quiet"
-if ($Leagues) { $DaemonArgs = "--leagues $Leagues $DaemonArgs" }
+# Seul --quiet est pose sans condition : un daemon de session ecrit sur une
+# sortie qui n'existe pas, et le journal reste alimente de toute facon.
+$DaemonArgList = @()
+if ($Leagues)      { $DaemonArgList += @('--leagues', $Leagues) }
+if ($Position)     { $DaemonArgList += @('--position', $Position) }
+if ($Interval -gt 0) { $DaemonArgList += @('--interval', "$Interval") }
+$DaemonArgList += '--quiet'
+$DaemonArgs = $DaemonArgList -join ' '
 
 # ------------------------------------------------------------- python --------
 
@@ -213,12 +225,19 @@ if ((Test-Path (Join-Path $Src '.git')) -and (Get-Command git -ErrorAction Silen
     $commit = (& git -C $Src rev-parse HEAD 2>$null)
     if ($LASTEXITCODE -ne 0) { $commit = '' }
 }
+$version = ''
+$initFile = Join-Path $Src 'butbutbut\__init__.py'
+if (Test-Path $initFile) {
+    $trouve = Select-String -Path $initFile -Pattern '^__version__ = "(.+)"' | Select-Object -First 1
+    if ($trouve) { $version = $trouve.Matches[0].Groups[1].Value }
+}
 [ordered]@{
     source       = $Src
     commit       = "$commit".Trim()
+    version      = $version
     leagues      = $Leagues
     position     = $Position
-    interval     = $Interval
+    interval     = $(if ($Interval -gt 0) { $Interval } else { $null })
     autostart    = (-not $NoAutostart.IsPresent)
     app_dir      = $AppDir
     bin_dir      = $BinDir
@@ -231,10 +250,7 @@ Write-Item "fiche       : $RecordDir\install.json"
 
 if ($daemonTournait -and -not $NoAutostart) {
     $env:PYTHONPATH = "$AppDir;$env:PYTHONPATH"
-    $daemonArgList = @('-m', 'butbutbut')
-    if ($Leagues) { $daemonArgList += @('--leagues', $Leagues) }
-    $daemonArgList += @('--position', $Position, '--interval', "$Interval", '--quiet')
-    Start-Process -FilePath $pythonw -ArgumentList $daemonArgList `
+    Start-Process -FilePath $pythonw -ArgumentList (@('-m', 'butbutbut') + $DaemonArgList) `
         -WorkingDirectory $AppDir -WindowStyle Hidden
     Write-Item 'daemon      : redemarre avec le nouveau code'
 }

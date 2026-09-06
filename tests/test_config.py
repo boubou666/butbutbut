@@ -355,7 +355,7 @@ class TestNoOptionIsForgotten(unittest.TestCase):
     ACTIONS = {
         "test", "scores", "status", "stop", "paths", "screens", "today",
         "list_leagues", "list_teams", "regen_sound", "write_config", "config",
-        "update", "check_update",
+        "update", "check_update", "dev",
     }
 
     def test_every_lasting_option_has_its_key(self):

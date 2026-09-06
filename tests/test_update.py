@@ -87,108 +87,183 @@ class Fiche(UpdateTestCase):
 
 
 class Comparaison(UpdateTestCase):
-    """`--check-update`, sans reseau."""
+    """`--check-update`, sans reseau. Des versions par defaut, des commits en dev."""
 
     def test_a_jour(self):
-        update.write_record({"commit": "a" * 40})
-        with mock.patch.object(update, "remote_sha", lambda: "a" * 40):
+        update.write_record({"version": "1.3.0"})
+        with mock.patch.object(update, "latest_release", lambda: "1.3.0"):
             self.assertEqual(update.check(verbose=lambda *a: None), 0)
 
     def test_en_retard(self):
-        update.write_record({"commit": "a" * 40})
-        with mock.patch.object(update, "remote_sha", lambda: "b" * 40):
+        update.write_record({"version": "1.3.0"})
+        with mock.patch.object(update, "latest_release", lambda: "1.4.0"):
             self.assertEqual(update.check(verbose=lambda *a: None), 1)
 
     def test_reseau_injoignable(self):
-        update.write_record({"commit": "a" * 40})
-        with mock.patch.object(update, "remote_sha", lambda: None):
+        update.write_record({"version": "1.3.0"})
+        with mock.patch.object(update, "latest_release", lambda: None):
             self.assertEqual(update.check(verbose=lambda *a: None), 2)
 
-    def test_commit_inconnu_compare_les_versions(self):
-        """Installe depuis une release : pas de commit, mais un numero.
-
-        Sans ce recours, --check-update ne repondrait rien d'utile a qui a
-        installe depuis une release ou depuis PyPI, faute de depot git.
-        """
+    def test_sans_fiche_on_compare_la_version_du_paquet(self):
         from butbutbut import __version__
 
         with mock.patch.object(update, "latest_release", lambda: __version__):
             self.assertEqual(update.check(verbose=lambda *a: None), 0)
 
-    def test_version_en_retard(self):
-        with mock.patch.object(update, "latest_release", lambda: "99.0.0"):
-            self.assertEqual(update.check(verbose=lambda *a: None), 1)
-
-    def test_aucune_release_publiee(self):
-        with mock.patch.object(update, "latest_release", lambda: None):
-            self.assertEqual(update.check(verbose=lambda *a: None), 2)
-
-    def test_le_commit_prime_sur_la_version(self):
-        """Avec un commit connu, on compare les commits, c'est plus precis."""
-        update.write_record({"commit": "a" * 40})
+    def test_le_commit_n_est_pas_consulte_par_defaut(self):
+        """C'est une release qui sera installee : comparer un commit ferait
+        annoncer une chose et en installer une autre."""
+        update.write_record({"version": "1.3.0", "commit": "a" * 40})
         appels = []
-        with mock.patch.object(update, "remote_sha", lambda: "a" * 40), \
-             mock.patch.object(update, "latest_release",
-                               lambda: appels.append(1) or "0.0.1"):
+        with mock.patch.object(update, "latest_release", lambda: "1.3.0"), \
+             mock.patch.object(update, "remote_sha",
+                               lambda: appels.append(1) or "b" * 40):
             self.assertEqual(update.check(verbose=lambda *a: None), 0)
-        self.assertEqual(appels, [], "la version ne devrait pas etre interrogee")
+        self.assertEqual(appels, [], "le commit ne devrait pas etre interroge")
 
-    def test_etiquette_sans_v(self):
-        """tag_name vaut vX.Y.Z, la comparaison porte sur X.Y.Z."""
-        with mock.patch.object(update, "_api", lambda url: {"tag_name": "v1.2.3"}):
-            self.assertEqual(update.latest_release(), "1.2.3")
+    def test_dev_a_jour(self):
+        update.write_record({"commit": "a" * 40})
+        with mock.patch.object(update, "remote_sha", lambda: "a" * 40):
+            self.assertEqual(update.check(verbose=lambda *a: None, dev=True), 0)
+
+    def test_dev_en_retard(self):
+        update.write_record({"commit": "a" * 40})
+        with mock.patch.object(update, "remote_sha", lambda: "b" * 40):
+            self.assertEqual(update.check(verbose=lambda *a: None, dev=True), 1)
+
+    def test_dev_reseau_injoignable(self):
+        update.write_record({"commit": "a" * 40})
+        with mock.patch.object(update, "remote_sha", lambda: None):
+            self.assertEqual(update.check(verbose=lambda *a: None, dev=True), 2)
+
+    def test_dev_sans_commit_connu_ne_compare_rien(self):
+        """Installe depuis une release, il n'y a pas de commit a comparer.
+        On le dit, plutot que d'annoncer un retard invente."""
+        update.write_record({"version": "1.3.0"})
+        with mock.patch.object(update, "remote_sha", lambda: "b" * 40):
+            self.assertEqual(update.check(verbose=lambda *a: None, dev=True), 2)
 
     def test_release_injoignable(self):
         with mock.patch.object(update, "_api", lambda url: None):
             self.assertIsNone(update.latest_release())
+            self.assertIsNone(update.latest_tag())
 
 
 class ChoixDeLaVoie(UpdateTestCase):
-    """Depot git s'il est la, archive sinon."""
+    """Par defaut la derniere release ; le depot clone n'est vu qu'en --dev."""
 
-    def test_sans_source_on_telecharge(self):
-        appels = []
+    def _telechargements(self):
+        vus = []
 
-        def faux_telechargement(destination):
-            appels.append(destination)
-            return destination / "butbutbut-main"
+        def faux(destination, url=update.ARCHIVE_MAIN):
+            vus.append(url)
+            return destination / "butbutbut-x"
 
-        with mock.patch.object(update, "download_source", faux_telechargement):
-            _source, voie = update.refresh_source({}, self.root, verbose=lambda *a: None)
-        self.assertEqual(voie, "archive")
-        self.assertEqual(len(appels), 1)
+        return vus, faux
 
-    def test_source_sans_git_on_telecharge(self):
+    def test_par_defaut_on_prend_l_etiquette_de_la_derniere_release(self):
+        vus, faux = self._telechargements()
+        with mock.patch.object(update, "latest_tag", lambda: "v1.3.0"), \
+             mock.patch.object(update, "download_source", faux):
+            _source, voie = update.refresh_source({}, self.root,
+                                                  verbose=lambda *a: None)
+        self.assertEqual(vus, [update.ARCHIVE_TAG.format("v1.3.0")])
+        self.assertIn("1.3.0", voie)
+
+    def test_par_defaut_le_depot_clone_n_est_pas_touche(self):
+        """Le point du mode par defaut : l'amener sur l'etiquette le laisserait
+        en HEAD detachee, et il appartient a son proprietaire."""
+        depot = self.root / "clone"
+        (depot / ".git").mkdir(parents=True)
+        vus, faux = self._telechargements()
+        appels_git = []
+        with mock.patch.object(update, "latest_tag", lambda: "v1.3.0"), \
+             mock.patch.object(update, "download_source", faux), \
+             mock.patch.object(update.shutil, "which", lambda n: "/usr/bin/git"), \
+             mock.patch.object(update.subprocess, "run",
+                               lambda *a, **k: appels_git.append(a)):
+            source, voie = update.refresh_source({"source": str(depot)}, self.root,
+                                                 verbose=lambda *a: None)
+        self.assertEqual(appels_git, [], "git a ete appele en mode release")
+        self.assertNotEqual(source, depot)
+        self.assertEqual(len(vus), 1)
+
+    def test_sans_release_publiee_on_refuse_plutot_que_de_prendre_main(self):
+        with mock.patch.object(update, "latest_tag", lambda: None):
+            with self.assertRaises(update.UpdateError) as leve:
+                update.refresh_source({}, self.root, verbose=lambda *a: None)
+        self.assertIn("--dev", str(leve.exception))
+
+    def test_dev_sans_source_on_telecharge_main(self):
+        vus, faux = self._telechargements()
+        with mock.patch.object(update, "download_source", faux):
+            _source, voie = update.refresh_source({}, self.root,
+                                                  verbose=lambda *a: None, dev=True)
+        self.assertEqual(vus, [update.ARCHIVE_MAIN])
+        self.assertIn("main", voie)
+
+    def test_dev_source_sans_git_on_telecharge(self):
         depot = self.root / "clone_sans_git"
         depot.mkdir()
-        with mock.patch.object(update, "download_source",
-                               lambda d: d / "butbutbut-main"):
+        vus, faux = self._telechargements()
+        with mock.patch.object(update, "download_source", faux):
             _source, voie = update.refresh_source({"source": str(depot)}, self.root,
-                                                  verbose=lambda *a: None)
-        self.assertEqual(voie, "archive")
+                                                  verbose=lambda *a: None, dev=True)
+        self.assertEqual(vus, [update.ARCHIVE_MAIN])
 
-    def test_source_git_on_tire(self):
+    def test_dev_source_git_on_tire(self):
         depot = self.root / "clone"
         (depot / ".git").mkdir(parents=True)
         faux = mock.Mock(returncode=0, stdout="", stderr="")
         with mock.patch.object(update.shutil, "which", lambda n: "/usr/bin/git"), \
              mock.patch.object(update.subprocess, "run", return_value=faux):
             source, voie = update.refresh_source({"source": str(depot)}, self.root,
-                                                 verbose=lambda *a: None)
+                                                 verbose=lambda *a: None, dev=True)
         self.assertEqual(voie, "git pull")
         self.assertEqual(source, depot)
 
-    def test_git_en_echec_bascule_sur_l_archive(self):
+    def test_dev_git_en_echec_bascule_sur_l_archive(self):
         depot = self.root / "clone"
         (depot / ".git").mkdir(parents=True)
         faux = mock.Mock(returncode=1, stdout="", stderr="divergence")
+        vus, telecharge = self._telechargements()
         with mock.patch.object(update.shutil, "which", lambda n: "/usr/bin/git"), \
              mock.patch.object(update.subprocess, "run", return_value=faux), \
-             mock.patch.object(update, "download_source",
-                               lambda d: d / "butbutbut-main"):
+             mock.patch.object(update, "download_source", telecharge):
             _source, voie = update.refresh_source({"source": str(depot)}, self.root,
-                                                  verbose=lambda *a: None)
-        self.assertEqual(voie, "archive")
+                                                  verbose=lambda *a: None, dev=True)
+        self.assertEqual(vus, [update.ARCHIVE_MAIN])
+
+
+class Version(UpdateTestCase):
+    """La version installee, et celle du code qu'on vient de recuperer."""
+
+    def test_la_fiche_prime_sur_le_paquet(self):
+        update.write_record({"version": "9.9.9"})
+        self.assertEqual(update.local_version(), "9.9.9")
+
+    def test_sans_fiche_on_prend_celle_du_paquet(self):
+        from butbutbut import __version__
+
+        self.assertEqual(update.local_version(), __version__)
+
+    def test_lue_dans_le_code_recupere(self):
+        source = self.root / "src"
+        (source / "butbutbut").mkdir(parents=True)
+        (source / "butbutbut" / "__init__.py").write_text(
+            '"""doc."""\n\n__version__ = "4.5.6"\n__all__ = ["__version__"]\n',
+            encoding="utf-8")
+        self.assertEqual(update.source_version(source), "4.5.6")
+
+    def test_source_sans_version_ne_plante_pas(self):
+        source = self.root / "vide"
+        source.mkdir()
+        self.assertIsNone(update.source_version(source))
+
+    def test_etiquette_et_version_viennent_de_la_meme_release(self):
+        with mock.patch.object(update, "_api", lambda url: {"tag_name": "v1.2.3"}):
+            self.assertEqual(update.latest_tag(), "v1.2.3")
+            self.assertEqual(update.latest_release(), "1.2.3")
 
 
 class Installeur(UpdateTestCase):
@@ -228,10 +303,19 @@ class Installeur(UpdateTestCase):
         for interdit in ("--leagues", "-Leagues"):
             self.assertNotIn(interdit, commande)
 
-    def test_fiche_vide_reprend_les_defauts(self):
+    def test_fiche_vide_ne_pose_aucun_reglage(self):
+        """Le coeur du correctif : un defaut materialise en argument ecraserait
+        la meme cle du fichier de configuration."""
         commande = self.commande_pour({})
-        self.assertIn(cli.DEFAULT_POSITION, commande)
-        self.assertIn(str(cli.DEFAULT_INTERVAL), commande)
+        for interdit in ("--position", "--interval", "--leagues",
+                         "-Position", "-Interval", "-Leagues"):
+            self.assertNotIn(interdit, commande)
+
+    def test_un_interval_nul_compte_comme_absent(self):
+        """install.ps1 note 0 quand -Interval n'a pas ete passe."""
+        commande = self.commande_pour({"interval": 0})
+        for interdit in ("--interval", "-Interval"):
+            self.assertNotIn(interdit, commande)
 
     def test_sans_autostart(self):
         commande = self.commande_pour({"autostart": False})
@@ -269,46 +353,60 @@ class ArgumentsDuDaemon(UpdateTestCase):
         self.assertEqual(arguments, ["--leagues", "l1,pl,ucl", "--position",
                                      "top-left", "--interval", "40", "--quiet"])
 
-    def test_fiche_vide_reprend_les_defauts(self):
-        arguments = update.daemon_args({})
-        self.assertNotIn("--leagues", arguments)
-        self.assertIn(cli.DEFAULT_POSITION, arguments)
-        self.assertIn("--quiet", arguments)
+    def test_fiche_vide_ne_pose_que_quiet(self):
+        """--quiet est la seule exception : un daemon de session ecrit sur une
+        sortie qui n'existe pas."""
+        self.assertEqual(update.daemon_args({}), ["--quiet"])
+
+    def test_seuls_les_reglages_passes_sont_poses(self):
+        self.assertEqual(update.daemon_args({"position": "top-left"}),
+                         ["--position", "top-left", "--quiet"])
 
 
 class FicheRectifiee(UpdateTestCase):
     """Ce que `update()` remet dans la fiche que l'installeur vient d'ecrire."""
 
-    def _mise_a_jour(self, fiche, source_durable, apres):
-        update.write_record(fiche)
+    def _source(self, version="1.4.0"):
         source = self.root / "src"
-        source.mkdir(exist_ok=True)
+        (source / "butbutbut").mkdir(parents=True, exist_ok=True)
+        (source / "butbutbut" / "__init__.py").write_text(
+            '__version__ = "{}"\n'.format(version), encoding="utf-8")
+        return source
+
+    def _mise_a_jour(self, fiche, durable, commit_distant="c" * 40, dev=False):
+        update.write_record(fiche)
+        source = self._source()
         with mock.patch.object(update, "managed_elsewhere", lambda: None), \
              mock.patch.object(update, "daemon_pid", lambda: None), \
              mock.patch.object(update, "refresh_source",
-                               lambda f, t, verbose: (source, "archive")), \
+                               lambda f, t, verbose, d=False: (source, "la release v1.4.0")), \
              mock.patch.object(update, "run_installer", lambda *a, **k: None), \
              mock.patch.object(update, "git_sha",
-                               lambda d: apres if source_durable else None), \
-             mock.patch.object(update, "remote_sha", lambda: apres):
-            self.assertEqual(update.update(verbose=lambda *a: None), 0)
+                               lambda d: commit_distant if durable else None), \
+             mock.patch.object(update, "remote_sha", lambda: commit_distant):
+            self.assertEqual(update.update(verbose=lambda *a: None, dev=dev), 0)
         return update.read_record()
+
+    def test_la_version_installee_est_notee(self):
+        """C'est elle que --check-update comparera desormais."""
+        fiche = self._mise_a_jour({"version": "1.3.0"}, durable=False)
+        self.assertEqual(fiche["version"], "1.4.0")
 
     def test_le_chemin_temporaire_n_est_pas_conserve(self):
         """Sans depot durable, la source pointerait un dossier deja efface."""
-        fiche = self._mise_a_jour({"source": "/tmp/parti"}, False, "c" * 40)
+        fiche = self._mise_a_jour({"source": "/tmp/parti"}, durable=False)
         self.assertEqual(fiche["source"], "")
 
-    def test_l_archive_impose_son_commit(self):
-        """Par l'archive, l'installeur n'a aucun commit a noter : c'est celui
-        qu'on vient de deplier qui decrit le code en place, meme si la fiche en
-        portait deja un autre - sinon --check-update reste bloque dessus."""
-        fiche = self._mise_a_jour({"commit": "0" * 40}, False, "c" * 40)
-        self.assertEqual(fiche["commit"], "c" * 40)
+    def test_l_archive_d_une_release_n_a_pas_de_commit(self):
+        """Elle n'a pas de .git : garder l'ancien commit ferait mentir
+        --check-update --dev sur ce qui est reellement en place."""
+        fiche = self._mise_a_jour({"commit": "0" * 40}, durable=False,
+                                  commit_distant=None)
+        self.assertEqual(fiche["commit"], "")
 
     def test_le_depot_garde_ce_que_l_installeur_a_note(self):
         fiche = self._mise_a_jour({"commit": "d" * 40, "source": "/depot"},
-                                  True, "c" * 40)
+                                  durable=True, dev=True)
         self.assertEqual(fiche["commit"], "d" * 40)
         self.assertEqual(fiche["source"], "/depot")
 
@@ -331,7 +429,7 @@ class DaemonRendu(UpdateTestCase):
              mock.patch.object(update, "start_daemon",
                                lambda f: relances.append(f) or True), \
              mock.patch.object(update, "refresh_source",
-                               lambda f, t, verbose: (source, "archive")), \
+                               lambda f, t, verbose, d=False: (source, "l'archive de main")), \
              mock.patch.object(update, "run_installer", installeur), \
              mock.patch.object(update, "git_sha", lambda d: None), \
              mock.patch.object(update, "remote_sha", lambda: "c" * 40):
@@ -356,7 +454,7 @@ class DaemonRendu(UpdateTestCase):
              mock.patch.object(update, "start_daemon",
                                lambda f: relances.append(f) or True), \
              mock.patch.object(update, "refresh_source",
-                               lambda f, t, verbose: (source, "archive")), \
+                               lambda f, t, verbose, d=False: (source, "l'archive de main")), \
              mock.patch.object(update, "run_installer", casse):
             with self.assertRaises(update.UpdateError):
                 update.update(verbose=lambda *a: None)
@@ -372,7 +470,7 @@ class DaemonRendu(UpdateTestCase):
              mock.patch.object(update, "start_daemon",
                                lambda f: relances.append(f) or True), \
              mock.patch.object(update, "refresh_source",
-                               lambda f, t, verbose: (source, "archive")), \
+                               lambda f, t, verbose, d=False: (source, "l'archive de main")), \
              mock.patch.object(update, "run_installer", lambda *a, **k: None), \
              mock.patch.object(update, "git_sha", lambda d: None), \
              mock.patch.object(update, "remote_sha", lambda: "c" * 40):

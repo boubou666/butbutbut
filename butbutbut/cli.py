@@ -724,7 +724,7 @@ def do_check_update(args) -> int:
     from . import update
 
     print("butbutbut {}".format(__version__))
-    return update.check()
+    return update.check(dev=args.dev)
 
 
 def do_update(args) -> int:
@@ -732,7 +732,7 @@ def do_update(args) -> int:
 
     print("butbutbut {} - mise a jour".format(__version__))
     try:
-        return update.update()
+        return update.update(dev=args.dev)
     except update.UpdateError as exc:
         # Le message dit quoi faire a la main : une pile d'appels par-dessus
         # ne renseignerait personne.
@@ -791,6 +791,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-update", action="store_true",
                         dest="check_update",
                         help="dit si une version plus recente existe, sans rien installer")
+    parser.add_argument("--dev", action="store_true",
+                        help="avec --update ou --check-update : viser la pointe "
+                             "de la branche principale au lieu de la derniere release")
 
     parser.add_argument("--config", default=None, metavar="CHEMIN",
                         help="fichier de configuration a lire (defaut : {} dans "
