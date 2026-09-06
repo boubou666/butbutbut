@@ -13,7 +13,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, espn, fullscreen, leagues, sound, teams, watcher
+from . import (__version__, config, espn, fullscreen, leagues, screens, sound,
+               teams, watcher)
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -44,6 +45,7 @@ def paths() -> dict:
         "wav": root / "but.wav",
         "log": root / "butbutbut.log",
         "pid": root / "butbutbut.pid",
+        "config": root / config.FILENAME,
     }
 
 
@@ -497,6 +499,9 @@ def do_status(args) -> int:
     print("  cadence     : {}s en direct / {}s au repos".format(
         args.interval, args.idle_interval))
     print("  donnees     : {}".format(p["data"]))
+    settings = Path(getattr(args, "config", None) or p["config"])
+    print("  config      : {}{}".format(
+        settings, "" if settings.exists() else "  (absent, voir --write-config)"))
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -507,8 +512,6 @@ def do_status(args) -> int:
         origin = "fourni" if chosen == sound.BUNDLED_SOUND else "corne synthetisee"
         print("  son         : {} ({})".format(chosen.name, origin))
     print("  sons perso  : {}  ({} fichier(s))".format(p["sound"], len(sounds)))
-
-    from . import screens
 
     found = screens.monitors()
     print("  ecrans      : {} -> carte en {} sur {}".format(
@@ -561,8 +564,6 @@ def do_list(args) -> int:
 
 
 def do_screens(args) -> int:
-    from . import screens
-
     found = screens.monitors()
     print("butbutbut : {} ecran(s) detecte(s)".format(len(found)))
     for index, monitor in enumerate(found):
@@ -621,6 +622,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
     parser.add_argument("--screens", action="store_true", help="liste les ecrans detectes")
+
+    parser.add_argument("--config", default=None, metavar="CHEMIN",
+                        help="fichier de configuration a lire (defaut : {} dans "
+                             "le dossier de donnees, voir 'butbutbut --paths')"
+                        .format(config.FILENAME))
+    parser.add_argument("--write-config", action="store_true", dest="write_config",
+                        help="ecrit un fichier de configuration d'exemple, "
+                             "commente, puis quitte (n'ecrase rien)")
 
     parser.add_argument("--leagues", default=None, metavar="LISTE",
                         help="competitions suivies, separees par des virgules "
@@ -686,7 +695,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+
+    # Le fichier alimente les defauts du parseur avant l'analyse : la ligne de
+    # commande, analysee ensuite, l'emporte donc toujours. Voir config.apply().
+    chosen = config.path_from(argv, paths()["config"])
+    for warning in config.apply(parser, chosen).warnings:
+        print("butbutbut : {}".format(warning), file=sys.stderr)
+
+    args = parser.parse_args(argv)
+    args.config = chosen        # le chemin retenu, pour --status et --write-config
+
+    if args.write_config:
+        # Un parseur neuf : le fichier d'exemple annonce les vrais defauts du
+        # programme, pas ceux qu'un fichier deja present vient d'installer.
+        written, message = config.write_example(chosen, build_parser())
+        print("butbutbut : {}".format(message),
+              file=sys.stdout if written else sys.stderr)
+        return 0 if written else 1
 
     args.interval = max(5, args.interval)
     args.idle_interval = max(args.interval, args.idle_interval)
@@ -696,8 +722,7 @@ def main(argv=None) -> int:
         print("butbutbut : --retry-fullscreen ne sert que sous Windows, "
               "le plein ecran n'y est pas detectable ailleurs.", file=sys.stderr)
         args.retry_fullscreen = 0.0
-    if args.position.strip().lower() not in ("bottom-right", "bottom-left",
-                                             "top-right", "top-left", "center"):
+    if args.position.strip().lower() not in screens.CORNERS:
         print("butbutbut : position inconnue : {} (voir --help)".format(args.position),
               file=sys.stderr)
         return 2

@@ -138,7 +138,8 @@ class TestEveryCommandIsReachable(unittest.TestCase):
 class TestPaths(unittest.TestCase):
     def test_all_paths_live_under_the_data_dir(self):
         paths = cli.paths()
-        self.assertEqual(set(paths), {"data", "sound", "wav", "log", "pid"})
+        self.assertEqual(set(paths),
+                         {"data", "sound", "wav", "log", "pid", "config"})
         root = paths["data"]
         for key, value in paths.items():
             self.assertIsInstance(value, Path)
