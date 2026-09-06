@@ -1,8 +1,9 @@
 """La carte, testee sans tkinter : Card ne depend que de donnees."""
 
 import unittest
+from unittest import mock
 
-from butbutbut import leagues, overlay, screens, watcher
+from butbutbut import fullscreen, leagues, overlay, screens, watcher
 
 from helpers import bump, event, fake_fonts, goal_detail, opener_for, payload
 
@@ -232,6 +233,44 @@ class TestStackPositions(unittest.TestCase):
         places = overlay.stack_positions(second, self.sizes, "bottom-right")
         for x, _y in places:
             self.assertGreaterEqual(x, 1920)
+
+
+class TestStackFullscreen(unittest.TestCase):
+    """Le garde-fou plein ecran, sans ouvrir la moindre fenetre."""
+
+    def test_the_option_is_off_by_default(self):
+        self.assertEqual(overlay.Stack().retry_fullscreen, 0.0)
+        self.assertEqual(overlay.Stack(retry_fullscreen=30).retry_fullscreen, 30.0)
+        # Une duree negative ou absurde n'active rien.
+        self.assertEqual(overlay.Stack(retry_fullscreen=-5).retry_fullscreen, 0.0)
+        self.assertEqual(overlay.Stack(retry_fullscreen=None).retry_fullscreen, 0.0)
+
+    def test_the_question_is_asked_about_the_chosen_screen(self):
+        stack = overlay.Stack()
+        with mock.patch.object(fullscreen, "covers", return_value=True) as asked:
+            self.assertTrue(stack.hidden_by_fullscreen())
+        self.assertEqual(asked.call_args[0][0], stack._monitor)
+
+    def test_a_failing_detection_never_stops_a_card(self):
+        # fullscreen.covers() avale deja tout ; on verifie qu'aucune exception
+        # ne remonte jusqu'a l'affichage, meme si Win32 part en vrille.
+        stack = overlay.Stack()
+        with mock.patch.object(fullscreen, "_foreground_window",
+                               side_effect=OSError("boom")), \
+                mock.patch.object(fullscreen.sys, "platform", "win32"):
+            self.assertFalse(stack.hidden_by_fullscreen())
+
+    def test_the_journal_is_optional_and_a_broken_logger_is_harmless(self):
+        overlay.Stack()._log("rien ne se passe")
+
+        seen = []
+        overlay.Stack(on_log=seen.append)._log("note")
+        self.assertEqual(seen, ["note"])
+
+        def broken(_message):
+            raise RuntimeError("journal casse")
+
+        overlay.Stack(on_log=broken)._log("note")
 
 
 if __name__ == "__main__":

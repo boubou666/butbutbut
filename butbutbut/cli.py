@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, espn, leagues, sound, teams, watcher
+from . import __version__, espn, fullscreen, leagues, sound, teams, watcher
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -21,6 +21,7 @@ DEFAULT_DURATION = 6.0         # duree d'affichage minimale de la carte
 PHASE_DURATION = 5.0           # coup d'envoi, mi-temps, reprise, fin : sans son
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
+RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
 
 
 # --------------------------------------------------------------- chemins -----
@@ -274,8 +275,10 @@ def do_daemon(args) -> int:
     stack = None
     if not args.no_overlay:
         try:
-            stack = overlay.Stack(screen=args.screen, position=args.position,
-                                  opacity=args.opacity, scale=args.scale).open()
+            stack = overlay.Stack(
+                screen=args.screen, position=args.position, opacity=args.opacity,
+                scale=args.scale, retry_fullscreen=args.retry_fullscreen,
+                on_log=lambda message: log(message, quiet=args.quiet)).open()
             log("cartes empilees en {} de {}".format(
                 args.position,
                 "l'ecran principal" if args.screen is None
@@ -412,7 +415,9 @@ def do_test(args) -> int:
     try:
         overlay.show(cards, duration=duration, sound_path=path,
                      screen=args.screen, position=args.position,
-                     opacity=args.opacity, scale=args.scale)
+                     opacity=args.opacity, scale=args.scale,
+                     retry_fullscreen=args.retry_fullscreen,
+                     on_log=lambda message: print("butbutbut : {}".format(message)))
     except overlay.TkinterMissing as exc:
         print(str(exc), file=sys.stderr)
         return 4
@@ -509,6 +514,10 @@ def do_status(args) -> int:
     print("  ecrans      : {} -> carte en {} sur {}".format(
         screens.describe(found), args.position,
         "l'ecran principal" if args.screen is None else "ecran {}".format(args.screen)))
+    print("  plein ecran : {}".format(
+        "detecte (la carte masquee est notee au journal)"
+        if fullscreen.supported()
+        else "non detectable sur cette plateforme"))
     print("  journal     : {}".format(p["log"]))
 
     if sys.platform == "win32":
@@ -658,6 +667,14 @@ def build_parser() -> argparse.ArgumentParser:
                         dest="no_phase_cards",
                         help="pas de carte au coup d'envoi, a la mi-temps, a la "
                              "reprise ni a la fin du match (les buts, si)")
+    parser.add_argument("--retry-fullscreen", nargs="?", type=float,
+                        const=RETRY_FULLSCREEN, default=0.0, metavar="SECONDES",
+                        dest="retry_fullscreen",
+                        help="quand une application en plein ecran masque "
+                             "l'ecran, repasser la carte des que l'ecran se "
+                             "libere, pendant SECONDES au plus (defaut {:.0f} ; "
+                             "Windows uniquement, voir README)".format(
+                                 RETRY_FULLSCREEN))
     parser.add_argument("--no-sound", action="store_true", dest="no_sound",
                         help="mode muet")
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
@@ -673,6 +690,12 @@ def main(argv=None) -> int:
 
     args.interval = max(5, args.interval)
     args.idle_interval = max(args.interval, args.idle_interval)
+    args.retry_fullscreen = max(0.0, args.retry_fullscreen or 0.0)
+    if args.retry_fullscreen and not fullscreen.supported():
+        # Mieux vaut le dire que laisser croire a un filet de securite.
+        print("butbutbut : --retry-fullscreen ne sert que sous Windows, "
+              "le plein ecran n'y est pas detectable ailleurs.", file=sys.stderr)
+        args.retry_fullscreen = 0.0
     if args.position.strip().lower() not in ("bottom-right", "bottom-left",
                                              "top-right", "top-left", "center"):
         print("butbutbut : position inconnue : {} (voir --help)".format(args.position),
