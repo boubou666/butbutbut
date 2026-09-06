@@ -44,6 +44,11 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - L'installeur arrete le daemon avant de remplacer le code. Il continuait
   jusque-la sur des fichiers effaces, et ne reprenait le nouveau code qu'a la
   session suivante.
+- Une mise a jour interrompue rend le daemon. Le redemarrage vit desormais
+  dans un `finally` : un telechargement coupe ou un installeur en echec
+  laissait sinon la surveillance eteinte jusqu'a la session suivante, sans que
+  personne s'en apercoive.
+- `--update` explique ce qui a echoue au lieu d'imprimer une pile d'appels.
 
 ## [1.3.0] - 2026-09-06
 

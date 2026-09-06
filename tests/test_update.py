@@ -313,6 +313,101 @@ class FicheRectifiee(UpdateTestCase):
         self.assertEqual(fiche["source"], "/depot")
 
 
+class DaemonRendu(UpdateTestCase):
+    """Le daemon arrete pour la mise a jour doit repartir, meme en echec.
+
+    Sans le `finally`, un installeur qui rendait un code non nul laissait la
+    surveillance eteinte jusqu'a la session suivante - et c'est justement le
+    moment ou personne ne regarde son terminal.
+    """
+
+    def _mise_a_jour(self, installeur):
+        relances = []
+        source = self.root / "src"
+        source.mkdir(exist_ok=True)
+        with mock.patch.object(update, "managed_elsewhere", lambda: None), \
+             mock.patch.object(update, "daemon_pid", lambda: 4242), \
+             mock.patch.object(update, "stop_daemon", lambda: True), \
+             mock.patch.object(update, "start_daemon",
+                               lambda f: relances.append(f) or True), \
+             mock.patch.object(update, "refresh_source",
+                               lambda f, t, verbose: (source, "archive")), \
+             mock.patch.object(update, "run_installer", installeur), \
+             mock.patch.object(update, "git_sha", lambda d: None), \
+             mock.patch.object(update, "remote_sha", lambda: "c" * 40):
+            return relances, update.update(verbose=lambda *a: None)
+
+    def test_relance_apres_une_mise_a_jour_reussie(self):
+        relances, code = self._mise_a_jour(lambda *a, **k: None)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(relances), 1)
+
+    def test_la_relance_a_lieu_avant_que_l_erreur_ne_remonte(self):
+        relances = []
+        source = self.root / "src"
+        source.mkdir(exist_ok=True)
+
+        def casse(*a, **k):
+            raise update.UpdateError("telechargement impossible")
+
+        with mock.patch.object(update, "managed_elsewhere", lambda: None), \
+             mock.patch.object(update, "daemon_pid", lambda: 4242), \
+             mock.patch.object(update, "stop_daemon", lambda: True), \
+             mock.patch.object(update, "start_daemon",
+                               lambda f: relances.append(f) or True), \
+             mock.patch.object(update, "refresh_source",
+                               lambda f, t, verbose: (source, "archive")), \
+             mock.patch.object(update, "run_installer", casse):
+            with self.assertRaises(update.UpdateError):
+                update.update(verbose=lambda *a: None)
+        self.assertEqual(len(relances), 1, "le daemon n'a pas ete rendu")
+
+    def test_un_daemon_arrete_avant_ne_repart_pas_tout_seul(self):
+        """On rend l'etat d'avant, on ne demarre pas ce qui ne tournait pas."""
+        relances = []
+        source = self.root / "src"
+        source.mkdir(exist_ok=True)
+        with mock.patch.object(update, "managed_elsewhere", lambda: None), \
+             mock.patch.object(update, "daemon_pid", lambda: None), \
+             mock.patch.object(update, "start_daemon",
+                               lambda f: relances.append(f) or True), \
+             mock.patch.object(update, "refresh_source",
+                               lambda f, t, verbose: (source, "archive")), \
+             mock.patch.object(update, "run_installer", lambda *a, **k: None), \
+             mock.patch.object(update, "git_sha", lambda d: None), \
+             mock.patch.object(update, "remote_sha", lambda: "c" * 40):
+            update.update(verbose=lambda *a: None)
+        self.assertEqual(relances, [])
+
+
+class ArchiveSurveillee(UpdateTestCase):
+    """Ce qu'on accepte de deplier."""
+
+    def _zip(self, noms):
+        import zipfile
+
+        chemin = self.root / "archive.zip"
+        with zipfile.ZipFile(chemin, "w") as zip_:
+            for nom in noms:
+                zip_.writestr(nom, "x")
+        return zipfile.ZipFile(chemin)
+
+    def test_une_archive_normale_passe(self):
+        with self._zip(["butbutbut-main/README.md",
+                        "butbutbut-main/butbutbut/cli.py"]) as zip_:
+            update.check_members(zip_, self.root)      # ne leve pas
+
+    def test_un_membre_qui_remonte_est_refuse(self):
+        with self._zip(["butbutbut-main/ok.py", "../../.bashrc"]) as zip_:
+            with self.assertRaises(update.UpdateError):
+                update.check_members(zip_, self.root)
+
+    def test_un_membre_absolu_est_refuse(self):
+        with self._zip(["/etc/cron.d/piege"]) as zip_:
+            with self.assertRaises(update.UpdateError):
+                update.check_members(zip_, self.root)
+
+
 class InstallationSysteme(UpdateTestCase):
     """Une installation qu'on ne gere pas ne doit pas etre ecrasee."""
 

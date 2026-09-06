@@ -156,6 +156,22 @@ def latest_release():
     return etiquette.lstrip("v") or None
 
 
+def check_members(zip_, destination: Path) -> None:
+    """Refuse une archive qui pretendrait ecrire hors du dossier cible.
+
+    zipfile deplie deja sans sortir de la destination : il retire les `..` et
+    la barre initiale de chaque nom. On ne s'appuie pas dessus pour autant -
+    c'est un detail d'implementation de CPython, non promis par la
+    documentation, et `--update` exige que l'archive ne touche rien d'autre.
+    """
+    racine = Path(destination).resolve()
+    for membre in zip_.namelist():
+        cible = (racine / membre).resolve()
+        if cible != racine and racine not in cible.parents:
+            raise UpdateError(
+                "archive telechargee suspecte : {!r} sort du dossier".format(membre))
+
+
 def download_source(destination: Path) -> Path:
     """Telecharge et deplie l'archive de la branche ; renvoie sa racine."""
     destination.mkdir(parents=True, exist_ok=True)
@@ -169,6 +185,7 @@ def download_source(destination: Path) -> Path:
 
     try:
         with zipfile.ZipFile(archive) as zip_:
+            check_members(zip_, destination)
             zip_.extractall(destination)
     except zipfile.BadZipFile as erreur:
         raise UpdateError("archive telechargee illisible") from erreur
@@ -378,30 +395,38 @@ def update(verbose=print) -> int:
         verbose("  daemon      : arret le temps de la mise a jour")
         stop_daemon()
 
-    with tempfile.TemporaryDirectory(prefix="butbutbut-update-") as travail:
-        source, voie = refresh_source(fiche, Path(travail), verbose)
-        run_installer(source, fiche, verbose)
-        apres = git_sha(source) or remote_sha()
-        source_durable = source if git_sha(source) else None
+    # Le redemarrage est dans un finally : un telechargement coupe ou un
+    # installeur qui rend 2 laissait sinon le daemon eteint pour de bon, et
+    # personne ne s'en apercevait avant la session suivante - c'est-a-dire
+    # pendant tous les matchs de la soiree.
+    try:
+        with tempfile.TemporaryDirectory(prefix="butbutbut-update-") as travail:
+            source, voie = refresh_source(fiche, Path(travail), verbose)
+            run_installer(source, fiche, verbose)
+            apres = git_sha(source) or remote_sha()
+            source_durable = source if git_sha(source) else None
 
-    # L'installeur vient de reecrire la fiche. Par une archive il n'a pas de
-    # commit a y mettre, et il y laisse le dossier temporaire qu'on efface a
-    # l'instant : on rectifie, sans quoi la fiche pointerait un chemin mort et
-    # --check-update resterait muet jusqu'a la fin des temps. Par l'archive on
-    # ecrase le commit meme s'il y en avait un : celui qu'on vient de deplier
-    # est le seul qui decrive le code en place.
-    fraiche = read_record()
-    if fraiche:
-        if apres and (not source_durable or not fraiche.get("commit")):
-            fraiche["commit"] = apres
-        if not source_durable:
-            fraiche["source"] = ""
-        write_record(fraiche)
-
-    if tournait:
-        verbose("  daemon      : redemarrage")
-        if not start_daemon(read_record() or fiche):
-            verbose("  (relance automatique impossible, lance `butbutbut` toi-meme)")
+        # L'installeur vient de reecrire la fiche. Par une archive il n'a pas
+        # de commit a y mettre, et il y laisse le dossier temporaire qu'on
+        # efface a l'instant : on rectifie, sans quoi la fiche pointerait un
+        # chemin mort et --check-update resterait muet jusqu'a la fin des
+        # temps. Par l'archive on ecrase le commit meme s'il y en avait un :
+        # celui qu'on vient de deplier est le seul qui decrive le code en place.
+        fraiche = read_record()
+        if fraiche:
+            if apres and (not source_durable or not fraiche.get("commit")):
+                fraiche["commit"] = apres
+            if not source_durable:
+                fraiche["source"] = ""
+            write_record(fraiche)
+    finally:
+        if tournait:
+            verbose("  daemon      : redemarrage")
+            # read_record() plutot que la fiche de depart : l'installeur a pu
+            # la reecrire. En echec elle n'a pas bouge, et le daemon repart
+            # comme avant.
+            if not start_daemon(read_record() or fiche):
+                verbose("  (relance automatique impossible, lance `butbutbut` toi-meme)")
 
     verbose("")
     if avant and apres and avant == apres:

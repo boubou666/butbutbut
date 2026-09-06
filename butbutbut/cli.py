@@ -731,7 +731,13 @@ def do_update(args) -> int:
     from . import update
 
     print("butbutbut {} - mise a jour".format(__version__))
-    return update.update()
+    try:
+        return update.update()
+    except update.UpdateError as exc:
+        # Le message dit quoi faire a la main : une pile d'appels par-dessus
+        # ne renseignerait personne.
+        print("butbutbut : {}".format(exc), file=sys.stderr)
+        return 1
 
 
 def do_stop(args) -> int:
