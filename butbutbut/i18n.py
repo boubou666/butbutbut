@@ -386,6 +386,37 @@ def text(key: str, lang=None, **valeurs) -> str:
         return modele
 
 
+def tr(francais: str, *positions, lang=None, **valeurs) -> str:
+    """La prose de la ligne de commande, dont le francais est la cle.
+
+    Voir lang/__init__.py pour la raison de ce second mecanisme. Une phrase
+    absente du catalogue rend le francais : la ligne de commande reste lisible
+    meme a moitie traduite, ce qui vaut mieux qu'un texte manquant.
+
+    Les valeurs se passent comme a str.format(), nommees ou non ; `lang` est
+    donc reserve aux mots-cles, sans quoi une valeur positionnelle irait s'y
+    perdre - c'est arrive.
+    """
+    code = lang or language()
+    if code == FALLBACK:
+        traduit = francais
+    else:
+        from . import lang as catalogues
+
+        traduit = catalogues.CATALOGUES.get(code, {}).get(francais, francais)
+    if not positions and not valeurs:
+        return traduit
+    try:
+        return traduit.format(*positions, **valeurs)
+    except Exception:
+        # Une accolade perdue dans une traduction ne doit pas faire tomber la
+        # commande : on retombe sur le francais, qui a ses trous au complet.
+        try:
+            return francais.format(*positions, **valeurs)
+        except Exception:
+            return francais
+
+
 def all_texts(key: str) -> list:
     """Le libelle dans les cinq langues, sans doublon.
 

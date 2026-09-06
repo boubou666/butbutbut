@@ -2,7 +2,10 @@ import os
 import unittest
 from unittest import mock
 
-from butbutbut import espn, i18n, journal, leagues, overlay, watcher
+import pathlib
+
+from butbutbut import (cli, espn, i18n, journal, lang, leagues, overlay,
+                       watcher)
 
 from helpers import bump, event, goal_detail, opener_for, payload
 
@@ -329,6 +332,72 @@ class TestPlay(unittest.TestCase):
         self.assertEqual(rouge.summary(), "Rote Karte: J. Lefort (62')")
         i18n.use("fr")
         self.assertEqual(rouge.summary(), "Carton rouge pour J. Lefort (62')")
+
+
+class TestLaProseDeLaLigneDeCommande(unittest.TestCase):
+    """Le francais sert de cle : les catalogues doivent lui coller."""
+
+    def phrases(self):
+        """Les phrases que cli.py passe a tr(), extraites du code."""
+        import ast
+
+        source = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
+        trouvees = []
+        for noeud in ast.walk(ast.parse(source)):
+            if (isinstance(noeud, ast.Call)
+                    and getattr(noeud.func, "id", None) == "tr"
+                    and noeud.args
+                    and isinstance(noeud.args[0], ast.Constant)
+                    and isinstance(noeud.args[0].value, str)):
+                trouvees.append(noeud.args[0].value)
+        return trouvees
+
+    def test_il_y_a_de_la_prose_a_traduire(self):
+        # Garde-fou : si quelqu'un defait l'extraction, ce test le dit.
+        self.assertGreater(len(set(self.phrases())), 80)
+
+    def test_aucune_traduction_orpheline(self):
+        """Une cle qui ne correspond a aucune phrase du code est morte.
+
+        Elle vient d'une phrase reformulee depuis : la traduction ne sortira
+        jamais, et personne ne s'en apercevra.
+        """
+        connues = set(self.phrases()) | set(i18n.MESSAGES[i18n.FALLBACK])
+        for code, catalogue in lang.CATALOGUES.items():
+            orphelines = sorted(set(catalogue) - connues)
+            self.assertEqual(orphelines, [],
+                             "cles mortes dans le catalogue {}".format(code))
+
+    def test_les_trous_a_valeur_sont_preserves(self):
+        """Une traduction qui perd une accolade perd sa donnee."""
+        import re
+
+        trous = re.compile(r"\{[^}]*\}")
+        for code, catalogue in lang.CATALOGUES.items():
+            for francais, traduit in catalogue.items():
+                self.assertEqual(len(trous.findall(traduit)),
+                                 len(trous.findall(francais)),
+                                 "{} : {!r}".format(code, francais))
+
+    def test_les_colonnes_de_status_restent_alignees(self):
+        """Les etiquettes de --status forment une colonne : elle doit tenir.
+
+        Le gabarit entier est traduit, alignement compris. Une traduction plus
+        longue que le francais decalerait sa ligne, et --status deviendrait
+        illisible dans cette langue.
+        """
+        gabarits = [p for p in self.phrases()
+                    if p.startswith("  ") and " : " in p[:20]]
+        self.assertGreater(len(gabarits), 8)
+
+        for code, catalogue in lang.CATALOGUES.items():
+            for francais in gabarits:
+                traduit = catalogue.get(francais)
+                if traduit is None:
+                    continue
+                self.assertEqual(traduit.index(" : "), francais.index(" : "),
+                                 "{} : la colonne bouge sur {!r}".format(
+                                     code, francais))
 
 
 if __name__ == "__main__":
