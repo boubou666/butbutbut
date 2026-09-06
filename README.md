@@ -99,6 +99,8 @@ butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
 butbutbut --today             # les buts signales aujourd'hui
 butbutbut --stop              # arrete le daemon
+butbutbut --check-update      # une version plus recente existe-t-elle ?
+butbutbut --update            # recupere, reinstalle, relance le daemon
 butbutbut --paths             # ou vivent les donnees et le journal
 butbutbut --write-config      # ecrit un fichier de configuration d'exemple
 butbutbut --screens           # les ecrans detectes
@@ -652,6 +654,45 @@ fins de match. C'est cette trace que `butbutbut --today` relit.
 
 ---
 
+## Mettre a jour
+
+Une fois installe, butbutbut se met a jour tout seul, sur les trois systemes :
+
+```bash
+butbutbut --check-update    # dit si une version plus recente existe
+butbutbut --update          # recupere, reinstalle, relance le daemon
+```
+
+`--update` relit la fiche deposee par l'installeur (`install.json`, dans le
+dossier de donnees) pour retrouver d'ou le code vient et **avec quelles options
+il avait ete installe**, puis rejoue l'installeur avec les memes reglages : les
+memes competitions, le meme coin, la meme cadence. Une mise a jour ne te
+ramenera pas aux cinq grands championnats si tu suivais `l1,pl,ucl`. Le daemon
+est arrete le temps de l'operation et redemarre derriere, sur la meme
+selection.
+
+Deux facons de recuperer le code, dans cet ordre : si le depot clone est
+toujours la, un `git pull --ff-only` ; sinon l'archive de la branche
+principale est telechargee depuis GitHub. La seconde voie ne demande ni git ni
+le clone d'origine, donc une installation dont tu as efface le dossier depuis
+se met a jour quand meme.
+
+Tes sons, ton fichier de configuration et ton journal ne sont pas touches :
+ils vivent dans le dossier de donnees, l'installeur ne remplace que le code.
+
+Si butbutbut ne vient pas des scripts d'installation, `--update` refuse et te
+renvoie vers l'outil qui le gere plutot que d'ecraser des fichiers qui ne lui
+appartiennent pas :
+
+| Installe par | Mise a jour |
+| --- | --- |
+| `install.sh` / `install.ps1` | `butbutbut --update` |
+| `pipx install butbutbut` | `pipx upgrade butbutbut` |
+| `pip install --user butbutbut` | `pip install --upgrade butbutbut` |
+| le `PKGBUILD` d'Arch, un paquet de la distribution | `pacman -Syu`, `apt upgrade`... |
+
+---
+
 ## Desinstallation
 
 ```bash
@@ -670,7 +711,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**403 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**441 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

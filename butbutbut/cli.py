@@ -720,6 +720,20 @@ def do_paths(args) -> int:
     return 0
 
 
+def do_check_update(args) -> int:
+    from . import update
+
+    print("butbutbut {}".format(__version__))
+    return update.check()
+
+
+def do_update(args) -> int:
+    from . import update
+
+    print("butbutbut {} - mise a jour".format(__version__))
+    return update.update()
+
+
 def do_stop(args) -> int:
     pid = running_pid()
     if not pid:
@@ -766,6 +780,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop", action="store_true", help="arrete le daemon en cours")
     parser.add_argument("--paths", action="store_true", help="affiche les chemins utilises")
     parser.add_argument("--screens", action="store_true", help="liste les ecrans detectes")
+    parser.add_argument("--update", action="store_true",
+                        help="met a jour butbutbut depuis GitHub et rejoue l'installeur")
+    parser.add_argument("--check-update", action="store_true",
+                        dest="check_update",
+                        help="dit si une version plus recente existe, sans rien installer")
 
     parser.add_argument("--config", default=None, metavar="CHEMIN",
                         help="fichier de configuration a lire (defaut : {} dans "
@@ -915,6 +934,10 @@ def main(argv=None) -> int:
         return do_screens(args)
     if args.paths:
         return do_paths(args)
+    if args.check_update:
+        return do_check_update(args)
+    if args.update:
+        return do_update(args)
     if args.stop:
         return do_stop(args)
     if args.status:

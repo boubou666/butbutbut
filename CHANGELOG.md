@@ -7,6 +7,27 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Mise a jour automatique**, sur le modele de
+  [doot](https://github.com/boubou666/doot) : `butbutbut --update` recupere la
+  derniere version, rejoue l'installeur et relance le daemon ;
+  `butbutbut --check-update` se contente de dire si une version plus recente
+  existe.
+- L'installeur depose une fiche `install.json` dans le dossier de donnees :
+  d'ou vient le code, quel commit, et **avec quelles options**. `--update` la
+  relit, donc une mise a jour rejoue les memes competitions, le meme coin et la
+  meme cadence - qui suivait `l1,pl,ucl` ne se retrouve pas ramene aux cinq
+  grands championnats, ni le daemon relance sans sa selection.
+- Deux facons de recuperer le code : `git pull --ff-only` si le depot clone est
+  toujours la, sinon l'archive de la branche principale telechargee depuis
+  GitHub. La seconde ne demande ni git ni le clone d'origine : une installation
+  dont le dossier a ete efface depuis se met a jour quand meme.
+- `--update` refuse d'ecraser une installation qui ne vient pas des scripts et
+  renvoie vers l'outil qui la gere : `pipx upgrade butbutbut`,
+  `pip install --upgrade butbutbut`, ou le gestionnaire de paquets de la
+  distribution.
+
 ### Corrige
 
 - **La publication PyPI ne pouvait pas se declencher.** Elle vivait dans un
@@ -20,6 +41,9 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   autorise UN nom de fichier de workflow, et c'est celui-la qui est declare
   cote pypi.org. Le declenchement manuel du meme workflow sert de rattrapage.
   Le README ne promet plus un automatisme qui n'existait pas.
+- L'installeur arrete le daemon avant de remplacer le code. Il continuait
+  jusque-la sur des fichiers effaces, et ne reprenait le nouveau code qu'a la
+  session suivante.
 
 ## [1.3.0] - 2026-09-06
 
