@@ -4,15 +4,21 @@ import unittest
 from unittest import mock
 
 from butbutbut import fullscreen, leagues, overlay, screens, watcher
+from butbutbut import crests, leagues, overlay, screens, watcher
 
 from helpers import (bump, event, fake_fonts, goal_detail, in_minutes,
                      opener_for, payload, red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 
+# Un chemin d'ecusson n'a pas besoin d'exister pour que _layout lui reserve sa
+# place : la geometrie se calcule avant que tkinter n'ouvre quoi que ce soit.
+CREST = "ecusson.png"
 
-def one_goal(**bump_kwargs):
-    state = {"payload": payload(event(home_score=1, away_score=1))}
+
+def one_goal(event_kwargs=None, **bump_kwargs):
+    state = {"payload": payload(event(home_score=1, away_score=1,
+                                      **(event_kwargs or {})))}
     guard = watcher.Watcher([LIGUE1], opener=opener_for(state))
     guard.prime()
     state["payload"] = bump(state["payload"], **bump_kwargs)
@@ -48,6 +54,19 @@ def one_fulltime(*details):
     state["payload"] = payload(event(state="post", clock="90'+4'", home_score=1,
                                      away_score=2, details=details))
     return guard.refresh(LIGUE1)[0]
+def goal_card(side="home", crest=None, **event_kwargs):
+    """La carte d'un but marque par `side`, avec l'habillage demande."""
+    return overlay.Card.from_event(
+        one_goal(event_kwargs=event_kwargs, side=side), crest)
+
+
+def _card(home="Angers", away="Stade Rennais", home_logo=None, away_logo=None,
+          home_score=1, away_score=2):
+    return overlay.Card(
+        title="BUT !", league="LIGUE 1", minute="35'",
+        home=home, away=away, home_score=home_score, away_score=away_score,
+        side="home", detail=[("But de ", False), ("C. Arcus", True)],
+        accent="#f2e34c", home_logo=home_logo, away_logo=away_logo)
 
 
 def one_phase(first, second):
@@ -207,6 +226,220 @@ class TestFullTimeCard(unittest.TestCase):
         box = overlay._layout(self.card(), fonts)
         goal = overlay._layout(overlay.Card.demo(), fonts)
         self.assertLess(box["height"], goal["height"])
+class TestTeamColourOnTheCard(unittest.TestCase):
+    """L'equipe qui marque prend sa couleur, le filet garde celle du championnat."""
+
+    def test_a_readable_club_colour_wins_over_the_league(self):
+        card = goal_card("home", away_colors=("dc052d", "1a1a1a"),
+                         home_colors=("dc052d", "1a1a1a"))
+        self.assertEqual(card.team_accent, "#dc052d")
+        self.assertEqual(card.accent, LIGUE1.accent)      # le filet ne bouge pas
+
+    def test_an_unreadable_club_colour_takes_the_alternate(self):
+        # Troyes : 0000bf sur le fond de la carte, c'est du noir sur du noir.
+        card = goal_card("away", away_colors=("0000bf", "fafafc"))
+        self.assertEqual(card.team_accent, "#fafafc")
+
+    def test_two_unreadable_colours_keep_the_league_colour(self):
+        card = goal_card("away", away_colors=("000000", "000000"))
+        self.assertEqual(card.team_accent, LIGUE1.accent)
+
+    def test_a_club_without_colours_keeps_the_league_colour(self):
+        self.assertEqual(goal_card("home").team_accent, LIGUE1.accent)
+
+    def test_the_colour_taken_is_the_one_of_the_scoring_side(self):
+        card = goal_card("away", home_colors=("dc052d", "dc052d"),
+                         away_colors=("ffee00", "ffee00"))
+        self.assertEqual(card.team_accent, "#ffee00")
+
+    def test_a_cancelled_goal_ignores_the_club_colour(self):
+        card = overlay.Card.from_event(
+            one_goal(event_kwargs={"home_colors": ("dc052d", "dc052d")},
+                     side="home", by=-1))
+        self.assertEqual(card.team_accent, overlay.CANCEL_ACCENT)
+        self.assertEqual(card.accent, overlay.CANCEL_ACCENT)
+
+    def test_a_phase_card_has_no_club_colour(self):
+        card = overlay.Card.from_event(
+            one_phase({"state": "in"}, {"state": "post"}))
+        self.assertEqual(card.team_accent, LIGUE1.accent)
+
+    def test_the_colour_shown_is_always_readable_or_the_league_one(self):
+        for color, alternate in (("0000bf", "fafafc"), ("000000", "000000"),
+                                 ("144992", "ffffff"), ("ffee00", "272726"),
+                                 ("", ""), ("bidon", "pareil")):
+            card = goal_card("home", home_colors=(color, alternate))
+            self.assertTrue(
+                card.team_accent == LIGUE1.accent
+                or crests.readable(card.team_accent, overlay.CARD_BG),
+                (color, alternate, card.team_accent))
+
+
+class TestCrestsOnTheCard(unittest.TestCase):
+    """L'ecusson vient du cache, jamais du reseau."""
+
+    def test_without_a_cache_a_card_has_no_crest(self):
+        card = goal_card("home", home_logo="https://exemple/1.png")
+        self.assertIsNone(card.home_logo)
+        self.assertIsNone(card.away_logo)
+
+    def test_a_cached_crest_lands_on_the_card(self):
+        cache = _FakeCache({"https://exemple/1.png": CREST})
+        card = goal_card("home", crest=cache,
+                         home_logo="https://exemple/1.png",
+                         away_logo="https://exemple/2.png")
+        self.assertEqual(card.home_logo, CREST)
+        self.assertIsNone(card.away_logo)      # pas encore telecharge
+        self.assertEqual(cache.asked, ["https://exemple/1.png",
+                                       "https://exemple/2.png"])
+
+    def test_a_match_without_logos_asks_nothing(self):
+        cache = _FakeCache({})
+        goal_card("home", crest=cache)
+        self.assertEqual(cache.asked, [])
+
+    def test_a_cache_that_breaks_does_not_break_the_card(self):
+        card = goal_card("home", crest=_BrokenCache(),
+                         home_logo="https://exemple/1.png")
+        self.assertIsNone(card.home_logo)
+        self.assertEqual(card.home, "Angers")   # la carte est intacte
+
+    def test_a_demo_card_asks_for_both_crests(self):
+        cache = _FakeCache({})
+        overlay.Card.demo(LIGUE1, cache)
+        self.assertEqual(len(cache.asked), 2)
+        for url in cache.asked:
+            self.assertTrue(url.startswith("https://"), url)
+            self.assertTrue(url.endswith(".png"), url)
+
+
+class _FakeCache:
+    """Un cache d'ecussons sans disque ni reseau : il sait juste qui a demande quoi."""
+
+    def __init__(self, known):
+        self.known = known
+        self.asked = []
+
+    def get(self, url):
+        self.asked.append(url)
+        return self.known.get(url)
+
+
+class _BrokenCache:
+    """Le disque a disparu sous les pieds du daemon."""
+
+    def get(self, url):
+        raise OSError("plus de disque")
+
+
+class _FakeImage:
+    """Ce que tkinter rend d'un PNG : une taille, un zoom, un sous-echantillonnage."""
+
+    def __init__(self, size=500):
+        self.size = size
+        self.factors = []
+
+    def width(self):
+        return self.size
+
+    def height(self):
+        return self.size
+
+    def zoom(self, x, _y):
+        self.factors.append(("zoom", x))
+        self.size *= x
+        return self
+
+    def subsample(self, x, _y):
+        self.factors.append(("subsample", x))
+        self.size //= x
+        return self
+
+
+class _FakeTk:
+    """Le module tkinter, reduit a ce dont crests.photo a besoin."""
+
+    def __init__(self, size=500, broken=False):
+        self.size = size
+        self.broken = broken
+        self.opened = []
+
+    def PhotoImage(self, file=None, master=None):    # noqa: N802 - nom tkinter
+        self.opened.append(file)
+        if self.broken:
+            raise RuntimeError("couldn't recognize data in image file")
+        return _FakeImage(self.size)
+
+
+class TestCrestImages(unittest.TestCase):
+    """Le chargement des images, avec un tkinter factice : la CI n'a pas d'ecran."""
+
+    def box(self, card):
+        return overlay._layout(card, fake_fonts())
+
+    def test_each_crest_is_loaded_and_kept(self):
+        card = _card(home_logo=CREST, away_logo=CREST)
+        box = self.box(card)
+        tk = _FakeTk()
+        images = overlay.load_logos(tk, card, box)
+        # La reference est ce qui compte : sans elle, tkinter oublie l'image
+        # et l'ecusson disparait de la carte affichee.
+        self.assertEqual(sorted(images), ["away", "home"])
+        self.assertEqual(len(tk.opened), 2)
+        for image in images.values():
+            self.assertLessEqual(image.size, box["logo"])
+
+    def test_a_card_without_crest_loads_nothing(self):
+        card = _card()
+        tk = _FakeTk()
+        self.assertEqual(overlay.load_logos(tk, card, self.box(card)), {})
+        self.assertEqual(tk.opened, [])
+
+    def test_only_the_side_that_has_one(self):
+        card = _card(away_logo=CREST)
+        images = overlay.load_logos(_FakeTk(), card, self.box(card))
+        self.assertEqual(list(images), ["away"])
+
+    def test_a_corrupted_png_gives_no_image_and_no_error(self):
+        card = _card(home_logo=CREST, away_logo=CREST)
+        images = overlay.load_logos(_FakeTk(broken=True), card, self.box(card))
+        self.assertEqual(images, {})
+
+
+def check_inside(case, card, fonts=None):
+    """Verifie que rien de la carte ne sort de la carte. Rend la mise en page.
+
+    Partage par les deux classes ci-dessous : les ecussons doivent respecter
+    exactement les memes bornes que les noms d'equipes.
+    """
+    fonts = fonts or fake_fonts()
+    box = overlay._layout(card, fonts)
+    left = overlay.BAR_WIDTH + overlay.PAD_X
+    right = box["width"] - overlay.PAD_X
+
+    home_left = box["home_x"] - fonts["team"].measure(box["home"])
+    away_right = box["away_x"] + fonts["team"].measure(box["away"])
+
+    case.assertGreaterEqual(round(home_left, 3), left,
+                            "le nom de gauche sort de la carte")
+    case.assertLessEqual(round(away_right, 3), right,
+                         "le nom de droite sort de la carte")
+    # Les noms ne mordent pas sur le score.
+    case.assertLessEqual(box["home_x"], box["score_x"])
+    case.assertGreaterEqual(box["away_x"], box["score_x"] + box["score_w"])
+
+    # Les ecussons non plus : ils tiennent dans la carte, a l'exterieur des
+    # noms, sans jamais mordre dessus.
+    size = box["logo"]
+    if size and card.home_logo:
+        case.assertGreaterEqual(round(box["home_logo_x"] - size, 3), left,
+                                "l'ecusson de gauche sort de la carte")
+        case.assertLessEqual(round(box["home_logo_x"], 3), round(home_left, 3))
+    if size and card.away_logo:
+        case.assertLessEqual(round(box["away_logo_x"] + size, 3), right,
+                             "l'ecusson de droite sort de la carte")
+        case.assertGreaterEqual(round(box["away_logo_x"], 3), round(away_right, 3))
+    return box
 
 
 class TestLayoutStaysInsideTheCard(unittest.TestCase):
@@ -236,6 +469,7 @@ class TestLayoutStaysInsideTheCard(unittest.TestCase):
             self.assertLessEqual(round(left + width, 3), right,
                                  "une ligne de buteurs sort de la carte")
         return box
+        return check_inside(self, card, fonts)
 
     def test_the_case_from_the_screenshot(self):
         box = self.check(overlay.Card(
@@ -310,6 +544,58 @@ class TestLayoutStaysInsideTheCard(unittest.TestCase):
             home="Bayern Munich", away="Dinamo Zagreb",
             home_score=19, away_score=17, side="home",
             detail=[], accent="#f2e34c"))
+
+
+class TestCrestGeometry(unittest.TestCase):
+    """Les ecussons entrent dans la reserve de _layout sans la casser."""
+
+    def check(self, card, fonts=None):
+        return check_inside(self, card, fonts)
+
+    def test_a_card_with_crests_stays_inside(self):
+        for home, away in ((CREST, CREST), (CREST, None), (None, CREST)):
+            self.check(_card(home_logo=home, away_logo=away))
+
+    def test_long_names_and_crests_together(self):
+        for home, away in (("Eintracht Frankfurt", "FC Augsburg"),
+                           ("A", "Borussia Monchengladbach"),
+                           ("Club Athletique et Sportif de la Vallee du Rhone",
+                            "Association Sportive des Amis Reunis du Nord")):
+            box = self.check(_card(home, away, CREST, CREST))
+            self.assertLessEqual(box["width"], overlay.MAX_WIDTH)
+
+    def test_crests_widen_the_card(self):
+        without = overlay._layout(_card(), fake_fonts())
+        with_crests = overlay._layout(_card(home_logo=CREST, away_logo=CREST),
+                                      fake_fonts())
+        self.assertGreater(with_crests["width"], without["width"])
+        self.assertEqual(with_crests["logo"], overlay._logo_size(fake_fonts()))
+        self.assertEqual(without["logo"], 0)
+
+    def test_the_place_is_reserved_on_both_sides_even_with_one_crest(self):
+        """Sinon le score se decalerait selon les ecussons deja telecharges."""
+        both = overlay._layout(_card(home_logo=CREST, away_logo=CREST),
+                               fake_fonts())
+        only_home = overlay._layout(_card(home_logo=CREST), fake_fonts())
+        self.assertEqual(only_home["width"], both["width"])
+        self.assertEqual(only_home["score_x"], both["score_x"])
+        self.assertEqual(only_home["home_x"], both["home_x"])
+
+    def test_the_row_makes_room_for_a_tall_crest(self):
+        fonts = fake_fonts()
+        short = overlay._layout(_card(), fonts)
+        tall = overlay._layout(_card(home_logo=CREST, away_logo=CREST), fonts)
+        self.assertGreaterEqual(tall["height"], short["height"])
+        # L'ecusson tient dans la carte, en hauteur aussi.
+        size = tall["logo"]
+        self.assertGreaterEqual(tall["score_y"] - size / 2.0, 0)
+        self.assertLessEqual(tall["score_y"] + size / 2.0, tall["height"])
+
+    def test_a_crest_never_lands_on_the_score(self):
+        box = overlay._layout(_card(home_logo=CREST, away_logo=CREST,
+                                    home_score=19, away_score=17), fake_fonts())
+        self.assertLess(box["home_logo_x"], box["score_x"])
+        self.assertGreater(box["away_logo_x"], box["score_x"] + box["score_w"])
 
 
 class TestStackPositions(unittest.TestCase):

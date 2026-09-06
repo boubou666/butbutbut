@@ -160,8 +160,8 @@ class TestPaths(unittest.TestCase):
     def test_all_paths_live_under_the_data_dir(self):
         paths = cli.paths()
         self.assertEqual(set(paths),
-                         {"data", "sound", "wav", "log", "pid", "config",
-                          "state"})
+                         {"data", "sound", "logos", "wav", "log", "pid",
+                          "config", "state"})
         root = paths["data"]
         for key, value in paths.items():
             self.assertIsInstance(value, Path)
@@ -179,6 +179,21 @@ class TestWatchLoops(unittest.TestCase):
         source = Path(cli.__file__).read_text(encoding="utf-8")
         self.assertEqual(source.count("stopping.wait(guard.plan_wait())"), 2)
         self.assertNotIn("guard.next_delay()", source)
+class TestCrestCache(unittest.TestCase):
+    def test_the_cache_lives_in_the_data_dir(self):
+        args = cli.build_parser().parse_args([])
+        cache = cli.crest_cache(args)
+        self.assertTrue(cache.enabled)
+        self.assertEqual(cache.directory, cli.paths()["logos"])
+
+    def test_no_logos_switches_the_cache_off(self):
+        args = cli.build_parser().parse_args(["--no-logos"])
+        self.assertTrue(args.no_logos)
+        cache = cli.crest_cache(args)
+        self.assertFalse(cache.enabled)
+        # Eteint, il ne rend rien et ne demande rien au reseau.
+        self.assertIsNone(cache.get("https://exemple/1.png"))
+        self.assertFalse(cache.prefetch("https://exemple/1.png"))
 
 
 class TestSoundResolution(unittest.TestCase):

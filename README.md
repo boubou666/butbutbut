@@ -14,10 +14,11 @@ ecran avec le score et le buteur.
 
 ![Trois cartes empilees en bas a droite de l'ecran](https://raw.githubusercontent.com/boubou666/butbutbut/main/docs/cartes.png)
 
-L'equipe qui vient de marquer et son chiffre sont dans la couleur du
-championnat, le nom du buteur ressort en clair. Deux buts en meme temps ne se
-marchent pas dessus : les cartes s'empilent depuis le coin. Les temps forts du
-match (coup d'envoi, mi-temps, reprise, fin) ont droit a une carte plus
+Chaque equipe porte son **ecusson**, l'equipe qui vient de marquer et son
+chiffre passent a la **couleur de son club**, le filet vertical garde celle de
+la competition et le nom du buteur ressort en clair. Deux buts en meme temps ne
+se marchent pas dessus : les cartes s'empilent depuis le coin. Les temps forts
+du match (coup d'envoi, mi-temps, reprise, fin) ont droit a une carte plus
 discrete, sans son : c'est la troisieme ci-dessus.
 
 Comme [doot](https://github.com/boubou666/doot) : **zero dependance**, rien que
@@ -193,6 +194,52 @@ Les cartes s'empilent depuis le coin choisi : la derniere arrivee est collee au
 coin, les precedentes remontent (ou descendent, depuis un coin du haut). Au-dela
 de cinq cartes visibles, la plus ancienne cede sa place.
 
+### Les ecussons et les couleurs des clubs
+
+La source publie, pour chaque equipe, l'URL de son ecusson et ses deux
+couleurs. La carte s'en sert de deux facons.
+
+**L'ecusson**, a cote du nom de son equipe. tkinter lit le PNG tout seul, donc
+toujours zero dependance : pas de Pillow. Mais **une carte n'attend jamais le
+reseau** - un but doit etre a l'ecran dans la seconde. Les ecussons sont donc
+servis depuis un cache disque, et un ecusson encore inconnu part se telecharger
+en tache de fond : la carte du moment s'affiche sans lui, celle du prochain but
+l'aura. La place lui est reservee des qu'une des deux equipes en a un, pour que
+le score reste centre au meme endroit d'un but a l'autre.
+
+| Systeme | Cache |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\butbutbut\logos` |
+| macOS | `~/Library/Application Support/butbutbut/logos` |
+| Linux | `~/.local/share/butbutbut/logos` |
+
+Un ecusson qui n'existe pas, un PNG corrompu, un dossier en lecture seule : la
+carte s'affiche sans image, et c'est tout. Le dossier peut etre efface a tout
+moment, il se remplira de nouveau.
+
+**La couleur du club**, pour l'equipe qui marque et son chiffre. Attention, ces
+couleurs sont choisies pour un fond blanc, et le fond de la carte est presque
+noir : le bleu marine de Troyes (`0000bf`) y est illisible, et le noir du Paris
+FC (`000000`) n'existe carrement plus. butbutbut mesure donc le **contraste**
+(luminance relative WCAG) et descend trois etages tant qu'il ne lit rien :
+
+| Etage | Exemple |
+| --- | --- |
+| la couleur du club, si elle se detache | Bayern `dc052d`, Arsenal `e20520` -> gardee |
+| sa couleur secondaire, sinon | Chelsea `144992` -> blanc, Barcelone `990000` -> `fce38a` |
+| celle de la competition, en dernier | Paris FC `000000` / `000000` -> le jaune de la Ligue 1 |
+
+Le filet vertical, lui, ne bouge jamais : il dit toujours dans quelle
+competition on est. `butbutbut --test 5` promene la couleur sur les trois
+etages, avec cinq vraies equipes.
+
+```bash
+butbutbut --no-logos          # pas d'ecusson, rien de telecharge
+```
+
+Les couleurs des clubs restent avec `--no-logos` : elles arrivent avec les
+scores, elles ne coutent aucune requete.
+
 ### Le son
 
 Le mp3 fourni est joue a chaque but. Pour le remplacer, depose un fichier dans
@@ -211,6 +258,7 @@ relu a chaque fois.
 ```bash
 butbutbut --no-sound          # muet
 butbutbut --no-overlay        # juste le son et le journal, pas de carte
+butbutbut --no-logos          # pas d'ecusson sur les cartes
 butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 ```
 
@@ -387,9 +435,9 @@ Ligue des champions `uefa.champions`, la Coupe de France
 
 Pourquoi cette source : pas de cle d'API, pas d'inscription, pas de quota a
 surveiller, elle est mise a jour en direct, et elle donne le **buteur**, la
-**minute**, les **csc** et les **penaltys**. C'est une API publique mais non
-documentee : tout est lu de facon defensive, une cle qui disparait ne tue pas
-le daemon.
+**minute**, les **csc**, les **penaltys**, l'**ecusson** de chaque club et ses
+**couleurs**. C'est une API publique mais non documentee : tout est lu de facon
+defensive, une cle qui disparait ne tue pas le daemon.
 
 ### Comment un but est detecte
 
@@ -451,6 +499,9 @@ minutes. En cas de coupure reseau, l'attente double a chaque echec (plafond
 ## Ce qui se passe a l'ecran
 
 - **fenetre sans bordure, toujours au-dessus**, qui ne vole jamais le focus ;
+- **ecussons** lus depuis le cache disque, jamais depuis le reseau : chaque
+  carte garde une reference sur ses images, sinon tkinter les oublie et elles
+  disparaissent de l'ecran ;
 - **Windows** : fond reellement transparent (coins arrondis) et fenetre
   *click-through* : les clics passent au travers, tu peux continuer a jouer ;
 - **macOS** : fenetre sans bordure, absente du Dock ;
@@ -624,6 +675,12 @@ PYTHONPATH=".:tests" python -m unittest discover -s tests
 **222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
+**238 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+cache d'ecussons par un `fetcher`, et la geometrie des cartes (empilement,
+debordement, troncature, place des ecussons) est verifiee avec une police
+factice, donc sans tkinter. Le choix de couleur, lui, est une fonction pure :
+son invariant est teste sur toutes les paires d'un jeu de couleurs reelles - ce
+qui sort est toujours lisible, ou c'est la couleur de la competition.
 
 ---
 

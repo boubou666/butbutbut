@@ -3,7 +3,7 @@
 Trois lignes par carte, toujours les memes :
 
     BUT !   LIGUE 1                                            35'
-    Angers        1 - 2        Stade Rennais
+    (o) Angers       1 - 2       Stade Rennais (o)
     But de C. Arcus
 
 La fin du match en ajoute quelques-unes, une par camp qui a marque :
@@ -13,9 +13,12 @@ La fin du match en ajoute quelques-unes, une par camp qui a marque :
     Angers : M. Lopez 12'
     Stade Rennais : A. Kalimuendo 58', L. Blas 77'
 
-L'equipe qui vient de marquer et son chiffre sont ecrits dans la couleur du
-championnat, le nom du buteur ressort en clair. On sait donc d'un coup d'oeil
-qui a marque, ou en est le match et dans quel championnat il se joue.
+L'equipe qui vient de marquer et son chiffre sont ecrits dans la couleur de son
+club (voir crests.py : elle n'est prise que si elle se lit sur ce fond tres
+sombre), le filet vertical garde celle de la competition et le nom du buteur
+ressort en clair. On sait donc d'un coup d'oeil qui a marque, ou en est le
+match et dans quel championnat il se joue. Chaque equipe porte son ecusson a
+cote de son nom, quand il est deja en cache.
 
 Deux buts coup sur coup ne se marchent pas dessus : chaque carte est une
 fenetre a elle, et `Stack` les empile depuis le coin (la derniere arrivee est
@@ -38,7 +41,7 @@ from __future__ import annotations
 import sys
 import time
 
-from . import fullscreen, screens, sound
+from . import crests, fullscreen, screens, sound
 
 TRANSPARENT_KEY = "#ff00fe"
 CARD_BG = "#0d1017"
@@ -56,6 +59,9 @@ LINE_GAP = 12
 EXTRA_GAP = 6            # espace entre deux lignes supplementaires
 STACK_GAP = 10           # espace entre deux cartes empilees
 MAX_EXTRA_LINES = 4      # au-dela, la carte serait plus haute qu'utile
+
+LOGO_RATIO = 1.35        # cote de l'ecusson, en hauteurs de ligne d'equipe
+LOGO_GAP = 10            # espace entre un ecusson et le nom de son equipe
 
 MIN_WIDTH = 420          # largeur de confort : les cartes empilees s'alignent
 MAX_WIDTH = 720
@@ -76,8 +82,55 @@ FONT_CANDIDATES = {
 LINUX_FONTS = ("Inter", "Cantarell", "DejaVu Sans", "Liberation Sans", "Noto Sans")
 
 
+# Cartes de demonstration : de vraies equipes, avec leurs vraies couleurs et
+# leurs vrais numeros ESPN, pour que `--test` montre exactement ce que donne un
+# but. Chaque equipe : (nom, numero ESPN, couleur, couleur secondaire).
+#
+# Le choix des buteurs n'est pas innocent : `--test 5` promene ainsi la couleur
+# du club sur les trois etages de crests.pick_accent. Le Bayern (dc052d) garde
+# sa couleur, Chelsea (144992) et Barcelone (990000) sont illisibles sur ce
+# fond et passent a leur couleur secondaire, le Paris FC (000000, secondaire
+# 000000 elle aussi) n'a rien de lisible et retombe sur le jaune de la Ligue 1.
+DEMO = {
+    "fra.1": {"home": ("Marseille", "176", "ffffff", "011F68"),
+              "away": ("Paris FC", "6851", "000000", "000000"),
+              "score": (2, 1), "side": "away",
+              "scorer": "I. Kebbal", "minute": "67'"},
+    "eng.1": {"home": ("Arsenal", "359", "e20520", "003399"),
+              "away": ("Chelsea", "363", "144992", "ffffff"),
+              "score": (1, 2), "side": "away",
+              "scorer": "C. Palmer", "minute": "74'"},
+    "esp.1": {"home": ("Real Madrid", "86", "ffffff", "1B4D3E"),
+              "away": ("Barcelona", "83", "990000", "FCE38A"),
+              "score": (3, 3), "side": "away",
+              "scorer": "L. Yamal", "minute": "88'"},
+    "ita.1": {"home": ("Inter Milan", "110", "00239c", "ffffff"),
+              "away": ("Juventus", "111", "000000", "E8A2B0"),
+              "score": (1, 0), "side": "home",
+              "scorer": "M. Thuram", "minute": "23'"},
+    "ger.1": {"home": ("Bayern Munich", "132", "dc052d", "1a1a1a"),
+              "away": ("Dortmund", "124", "ffee00", "272726"),
+              "score": (4, 2), "side": "home",
+              "scorer": "H. Kane", "minute": "56'"},
+}
+
+
 class TkinterMissing(RuntimeError):
     """tkinter absent : paquet systeme a installer."""
+
+
+def _crest(cache, url):
+    """Le chemin de l'ecusson deja en cache, ou None. Ne bloque jamais.
+
+    Un cache casse (disque plein, dossier efface sous les pieds) n'a pas a
+    empecher un but de s'afficher : on rend None et la carte se passe d'image.
+    """
+    if cache is None or not url:
+        return None
+    try:
+        return cache.get(url)
+    except Exception:
+        return None
 
 
 def _import_tk():
@@ -103,10 +156,11 @@ class Card:
 
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
                  "away_score", "side", "parts", "accent", "title_color",
-                 "extra")
+                 "extra", "team_accent", "home_logo", "away_logo")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
-                 side, detail, accent, title_color=None, extra=()):
+                 side, detail, accent, title_color=None, extra=(),
+                 team_accent=None, home_logo=None, away_logo=None):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -119,10 +173,18 @@ class Card:
         # Les lignes qui suivent, decoupees pareil : les buteurs, a la fin du
         # match. Vide pour toutes les autres cartes.
         self.extra = tuple(tuple(line) for line in extra)
-        self.accent = accent            # filet vertical + equipe qui marque
+        self.accent = accent            # filet vertical, aux couleurs de la competition
         # Le titre : la couleur du championnat pour un but, gris pour une carte
         # de deroulement. Un but doit sauter aux yeux, une mi-temps non.
         self.title_color = title_color or accent
+        # L'equipe qui marque : la couleur de son club, quand elle se lit sur
+        # le fond de la carte. Le filet, lui, ne bouge pas : il dit toujours
+        # dans quelle competition on est.
+        self.team_accent = team_accent or accent
+        # Chemins de PNG deja en cache, ou None : une carte n'attend jamais un
+        # telechargement, elle se passe de l'ecusson qui n'est pas encore la.
+        self.home_logo = home_logo
+        self.away_logo = away_logo
 
     @property
     def detail(self) -> str:
@@ -130,17 +192,25 @@ class Card:
         return "".join(text for text, _ in self.parts)
 
     @classmethod
-    def from_event(cls, event):
-        """Construit la carte a partir d'un evenement du watcher."""
+    def from_event(cls, event, crest=None):
+        """Construit la carte a partir d'un evenement du watcher.
+
+        `crest` : un crests.Cache, ou None pour une carte sans ecusson. Il
+        n'est interroge que sur le disque - le reseau, si besoin, part derriere.
+        """
         accent = event.league.accent
         title_color = accent
+        team_accent = accent
 
         if event.sober:
             # Temps forts, expulsion, avant-match : rien de tout ca ne doit
             # sauter aux yeux comme un but.
             title_color = MUTED
         elif not event.goal:
-            accent = title_color = CANCEL_ACCENT    # but annule
+            accent = title_color = team_accent = CANCEL_ACCENT   # but annule
+        else:
+            color, alternate = event.colors
+            team_accent = crests.pick_accent(color, alternate, accent, CARD_BG)
 
         return cls(
             title=event.title,
@@ -157,34 +227,37 @@ class Card:
             accent=accent,
             title_color=title_color,
             extra=event.extra_parts(),
+            team_accent=team_accent,
+            home_logo=_crest(crest, event.match.home_logo),
+            away_logo=_crest(crest, event.match.away_logo),
         )
 
     @classmethod
-    def demo(cls, league=None):
+    def demo(cls, league=None, crest=None):
         """Une carte d'exemple, pour `butbutbut --test`."""
+        from . import espn
         from .leagues import LEAGUES
 
         league = league or LEAGUES[0]
-        samples = {
-            "fra.1": ("Marseille", "Paris FC", 2, 1, "home", "M. Greenwood", "67'"),
-            "eng.1": ("Arsenal", "Chelsea", 1, 2, "away", "C. Palmer", "74'"),
-            "esp.1": ("Real Madrid", "Barcelona", 3, 3, "home", "K. Mbappe", "88'"),
-            "ita.1": ("Inter Milan", "Juventus", 1, 0, "home", "M. Thuram", "23'"),
-            "ger.1": ("Bayern Munich", "Dortmund", 4, 2, "home", "H. Kane", "56'"),
-        }
-        home, away, hs, as_, side, scorer, minute = samples.get(
-            league.slug, samples["fra.1"])
+        sample = DEMO.get(league.slug, DEMO["fra.1"])
+        home, away = sample["home"], sample["away"]
+        scoring = home if sample["side"] == "home" else away
+
         return cls(
             title="BUT !",
             league=league.label,
-            minute=minute,
-            home=home,
-            away=away,
-            home_score=hs,
-            away_score=as_,
-            side=side,
-            detail=[("But de ", False), (scorer, True)],
+            minute=sample["minute"],
+            home=home[0],
+            away=away[0],
+            home_score=sample["score"][0],
+            away_score=sample["score"][1],
+            side=sample["side"],
+            detail=[("But de ", False), (sample["scorer"], True)],
             accent=league.accent,
+            team_accent=crests.pick_accent(scoring[2], scoring[3],
+                                           league.accent, CARD_BG),
+            home_logo=_crest(crest, espn.logo_url(home[1])),
+            away_logo=_crest(crest, espn.logo_url(away[1])),
         )
 
     def text_line(self) -> str:
@@ -216,6 +289,11 @@ def _fonts(tkfont, scale: float):
 
 def _detail_font(fonts, strong):
     return fonts["scorer"] if strong else fonts["detail"]
+
+
+def _logo_size(fonts) -> int:
+    """Cote de l'ecusson : cale sur la ligne d'equipe, il suit donc --scale."""
+    return int(fonts["team"].metrics("linespace") * LOGO_RATIO)
 
 
 def _make_click_through(window) -> None:
@@ -343,6 +421,11 @@ def _layout(card: Card, fonts):
     donc la MEME de chaque cote, sinon le nom le plus long sort de la carte :
     c'est exactement ce qui arrivait a "Eintracht Frankfurt 1 - 4 FC Augsburg",
     ou le nom de gauche depassait le bord.
+
+    Les ecussons entrent dans cette reserve au lieu de la contourner : dans la
+    demi-largeur reservee a chaque equipe, l'ecusson passe a l'exterieur du nom.
+    Et il est reserve des qu'UNE des deux equipes en a un, sinon le score se
+    decalerait selon les ecussons deja telecharges.
     """
     # Le score est decoupe en trois pour pouvoir colorer le seul chiffre qui
     # vient de bouger.
@@ -354,7 +437,10 @@ def _layout(card: Card, fonts):
     home, away = card.home, card.away
     half = max(fonts["team"].measure(home), fonts["team"].measure(away))
 
-    middle_w = 2 * half + 2 * GAP + score_w
+    logo = _logo_size(fonts) if (card.home_logo or card.away_logo) else 0
+    slot = (logo + LOGO_GAP) if logo else 0
+
+    middle_w = 2 * (half + slot) + 2 * GAP + score_w
     header_w = (fonts["title"].measure(card.title) + 18
                 + fonts["label"].measure(card.league) + 18
                 + fonts["label"].measure(card.minute))
@@ -375,7 +461,7 @@ def _layout(card: Card, fonts):
 
     # Plafond atteint (des noms a rallonge) : on raccourcit plutot que de
     # deborder. La carte reste dans ses bords, quoi qu'on lui donne.
-    room = max(20.0, (width - margins - score_w - 2 * GAP) / 2.0)
+    room = max(20.0, (width - margins - score_w - 2 * GAP) / 2.0 - slot)
     if half > room:
         home = _fit(fonts["team"], home, room)
         away = _fit(fonts["team"], away, room)
@@ -384,7 +470,8 @@ def _layout(card: Card, fonts):
     score_left = center - score_w / 2.0
 
     header_h = max(fonts["title"].metrics("linespace"), fonts["label"].metrics("linespace"))
-    score_h = max(fonts["team"].metrics("linespace"), fonts["score"].metrics("linespace"))
+    score_h = max(fonts["team"].metrics("linespace"),
+                  fonts["score"].metrics("linespace"), logo)
     detail_h = max(fonts["detail"].metrics("linespace"),
                    fonts["scorer"].metrics("linespace")) if card.parts else 0
 
@@ -410,6 +497,10 @@ def _layout(card: Card, fonts):
         "away": away,
         "home_x": score_left - GAP,                  # ancre "e"
         "away_x": score_left + score_w + GAP,        # ancre "w"
+        "logo": logo,                                # cote de l'ecusson, 0 = aucun
+        "home_logo_x": score_left - GAP - fonts["team"].measure(home) - LOGO_GAP,
+        "away_logo_x": (score_left + score_w + GAP
+                        + fonts["team"].measure(away) + LOGO_GAP),
         "score_x": score_left,
         "score_parts": score_parts,
         "score_widths": score_widths,
@@ -420,7 +511,26 @@ def _layout(card: Card, fonts):
     }
 
 
-def _draw(canvas, card: Card, fonts, box, background):
+def load_logos(tk, card: Card, box, master=None) -> dict:
+    """Les ecussons de la carte, deja mis a la taille reservee par _layout.
+
+    Rendus dans un dictionnaire que l'appelant doit GARDER : tkinter oublie une
+    image que plus rien ne reference, et elle disparait de l'ecran. Avec des
+    cartes empilees, chacune tient donc les siennes.
+    """
+    found = {}
+    if not box.get("logo"):
+        return found
+    for key, path in (("home", card.home_logo), ("away", card.away_logo)):
+        if path is None:
+            continue
+        image = crests.photo(tk, path, box["logo"], master=master)
+        if image is not None:
+            found[key] = image
+    return found
+
+
+def _draw(canvas, card: Card, fonts, box, background, images=None):
     width, height = box["width"], box["height"]
 
     canvas.create_rectangle(0, 0, width, height, fill=background, outline=background)
@@ -439,10 +549,17 @@ def _draw(canvas, card: Card, fonts, box, background):
         canvas.create_text(box["right"], box["header_y"], text=card.minute,
                            fill=MUTED, font=fonts["label"], anchor="e")
 
-    # --- ligne 2 : Equipe A  score - score  Equipe B
-    # L'equipe qui vient de marquer et son chiffre passent en couleur.
-    home_color = card.accent if card.side == "home" else TEXT
-    away_color = card.accent if card.side == "away" else TEXT
+    # --- ligne 2 : [ecusson] Equipe A  score - score  Equipe B [ecusson]
+    # L'equipe qui vient de marquer et son chiffre passent a la couleur de son
+    # club (crests.pick_accent l'a deja jugee lisible).
+    home_color = card.team_accent if card.side == "home" else TEXT
+    away_color = card.team_accent if card.side == "away" else TEXT
+
+    for key, anchor in (("home", "e"), ("away", "w")):
+        image = (images or {}).get(key)
+        if image is not None:
+            canvas.create_image(box[key + "_logo_x"], box["score_y"],
+                                image=image, anchor=anchor)
 
     canvas.create_text(box["home_x"], box["score_y"], text=box["home"],
                        fill=home_color, font=fonts["team"], anchor="e")
@@ -502,10 +619,14 @@ class _Toast:
         self.width = self.box["width"]
         self.height = self.box["height"]
 
+        # Les images vivent aussi longtemps que la carte : sans cette
+        # reference, tkinter les ramasse et les ecussons disparaissent.
+        self.images = load_logos(tk, card, self.box, master=self.window)
+
         canvas = tk.Canvas(self.window, width=self.width, height=self.height,
                            bg=background, highlightthickness=0, bd=0)
         canvas.pack(fill="both", expand=True)
-        _draw(canvas, card, stack.fonts, self.box, background)
+        _draw(canvas, card, stack.fonts, self.box, background, self.images)
 
     def move(self, x: int, y: int) -> None:
         try:
