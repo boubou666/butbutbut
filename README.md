@@ -98,6 +98,7 @@ butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, son, ecrans, connexion a la source
 butbutbut --stop              # arrete le daemon
 butbutbut --paths             # ou vivent les donnees et le journal
+butbutbut --write-config      # ecrit un fichier de configuration d'exemple
 butbutbut --screens           # les ecrans detectes
 ```
 
@@ -230,6 +231,71 @@ Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux il faut
 un lecteur : `mpv` ou `ffmpeg` pour le mp3 ; avec seulement `aplay`/`paplay`,
 butbutbut retombe sur une **corne de stade synthetisee** en wav, generee par le
 programme lui-meme.
+
+### Le fichier de configuration
+
+Pour ne pas retaper les memes options a chaque fois - ni relancer l'installeur
+pour changer de championnat - butbutbut lit un fichier au demarrage :
+
+```bash
+butbutbut --write-config      # ecrit un exemple commente (n'ecrase jamais rien)
+butbutbut --paths             # ou il se trouve : ligne "config"
+```
+
+| Systeme | Fichier |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\butbutbut\butbutbut.conf` |
+| macOS | `~/Library/Application Support/butbutbut/butbutbut.conf` |
+| Linux | `~/.local/share/butbutbut/butbutbut.conf` |
+
+Une seule section, `[butbutbut]`, et des cles nommees comme les options
+longues sans les tirets. Tout est facultatif :
+
+```ini
+[butbutbut]
+# Ce qu'on suit
+leagues = l1,ucl,cdf
+exclude = seriea
+teams = om,psg
+exclude_teams = psg
+
+# Ou et comment ca s'affiche
+position = top-right
+screen = 1
+duration = 8
+scale = 1.2
+opacity = 0.95
+
+# Cadence des releves, en secondes
+interval = 25
+idle_interval = 300
+
+# Son et discretion (oui/non, true/false, 1/0)
+volume = 0.55
+no_sound = non
+no_overlay = non
+no_phase_cards = non
+quiet = non
+```
+
+**La ligne de commande garde toujours la priorite** : `ligne de commande >
+fichier > defauts`. Avec le fichier ci-dessus, `butbutbut --leagues pl` suit la
+Premier League pour cette fois-la, sans rien changer au fichier.
+
+```bash
+butbutbut --config ~/perso/but.conf     # lire un autre fichier
+butbutbut --config ~/perso/but.conf --write-config
+```
+
+Le fichier n'est **lu qu'au demarrage** : apres une modification, relance le
+daemon (`butbutbut --stop`, puis `butbutbut`). `butbutbut --status` rappelle
+quel fichier est utilise, et s'il existe.
+
+Rien de tout cela n'empeche jamais butbutbut de demarrer : un fichier absent
+est le cas normal et silencieux, et un fichier illisible, mal forme, ou
+porteur d'une cle inconnue ou d'une valeur impossible (`interval = beaucoup`,
+`position = milieu`) est signale sur la sortie d'erreur - la cle fautive est
+ignoree, le reste s'applique.
 
 ---
 
@@ -414,7 +480,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**179 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+**218 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
 
