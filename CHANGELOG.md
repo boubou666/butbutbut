@@ -7,6 +7,20 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.1.1] - 2026-09-06
+
+### Corrige
+
+- **`--status`, `--scores` et `--test` plantaient en 1.1.0** avec un
+  `NameError`. En retirant la fonction devenue inutile qui deduisait les coups
+  d'envoi, le decoupage a emporte les quatre fonctions voisines, dont
+  `do_status`. La surveillance et les cartes, elles, n'etaient pas touchees :
+  seuls ces trois commandes l'etaient. **Passer directement de 1.0.x a 1.1.1.**
+- Un test verifie desormais que chaque commande appelee par `main()` existe
+  bel et bien, et chaque commande est executee au moins une fois avec la source
+  simulee. La suite passait sur la 1.1.0 cassee parce qu'aucun test n'entrait
+  dans ces commandes : c'est cette lacune qui est comblee.
+
 ## [1.1.0] - 2026-09-06
 
 ### Ajoute
@@ -120,7 +134,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.1.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/boubou666/butbutbut/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/boubou666/butbutbut/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/boubou666/butbutbut/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/boubou666/butbutbut/releases/tag/v1.0.0

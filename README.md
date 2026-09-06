@@ -297,7 +297,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**141 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+**145 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
 

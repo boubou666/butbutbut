@@ -312,6 +312,142 @@ def _startup_summary(guard) -> str:
     return line
 
 
+def do_test(args) -> int:
+    from . import overlay
+
+    selection = leagues.resolve(args.leagues, args.exclude)
+    count = max(1, int(args.test))
+    cards = [overlay.Card.demo(selection[i % len(selection)]) for i in range(count)]
+
+    for card in cards:
+        print("butbutbut : demo - [{}] {} - {}".format(
+            card.league, card.text_line(), card.detail))
+
+    path, duration = resolve_sound(args)
+
+    if args.no_overlay:
+        handle = play_goal_sound(path)
+        time.sleep(min(duration, 5.0))
+        sound.release(handle)
+        return 0
+
+    try:
+        overlay.show(cards, duration=duration, sound_path=path,
+                     screen=args.screen, position=args.position,
+                     opacity=args.opacity, scale=args.scale)
+    except overlay.TkinterMissing as exc:
+        print(str(exc), file=sys.stderr)
+        return 4
+    return 0
+
+
+def do_scores(args) -> int:
+    selection = leagues.resolve(args.leagues, args.exclude)
+    now = datetime.now(timezone.utc)
+    total = 0
+
+    for league in selection:
+        try:
+            matches = espn.scoreboard(league)
+        except espn.SourceError as exc:
+            print("{:<16} {}".format(league.name, "injoignable ({})".format(exc)))
+            continue
+
+        print("\n{}".format(league.name))
+        if not matches:
+            print("  (aucun match au programme)")
+            continue
+
+        for match in matches:
+            total += 1
+            if match.live:
+                mark, state = ">", match.detail or match.clock or "en cours"
+            elif match.finished:
+                mark, state = " ", match.detail or "termine"
+            else:
+                mark, state = " ", _kickoff_text(match, now)
+            print("  {} {:>22} {} - {} {:<22} {}".format(
+                mark, match.home, match.home_score, match.away_score,
+                match.away, state))
+            for play in match.plays:
+                side = match.home if play.team_id == match.home_id else match.away
+                print("      {:<22} {}".format(side, play.summary()))
+
+    print("\n{} match(s), '>' = en cours.".format(total))
+    return 0
+
+
+def _kickoff_text(match, now) -> str:
+    remaining = match.seconds_until_kickoff(now)
+    if remaining is None:
+        return match.detail or "a venir"
+    if remaining < 0:
+        return match.detail or "imminent"
+    if remaining < 3600:
+        return "dans {} min".format(int(remaining // 60))
+    local = match.start.astimezone()
+    return "{:%d/%m %H:%M}".format(local)
+
+
+def do_status(args) -> int:
+    p = paths()
+    pid = running_pid()
+    selection = leagues.resolve(args.leagues, args.exclude)
+
+    print("butbutbut {}".format(__version__))
+    print("  daemon      : {}".format(
+        "actif (pid {})".format(pid) if pid else "arrete"))
+    summary = leagues.describe(selection)
+    names = ", ".join(league.name for league in selection)
+    print("  suivi       : {}".format(summary))
+    if names != summary and len(selection) <= 10:
+        print("  competitions: {}".format(names))
+    print("  source      : ESPN scoreboard (public, sans cle)")
+    print("  cadence     : {}s en direct / {}s au repos".format(
+        args.interval, args.idle_interval))
+    print("  donnees     : {}".format(p["data"]))
+
+    sounds = sound.custom_sounds(p["sound"])
+    if sounds:
+        extra = " (+{} autre(s), tirage au hasard)".format(len(sounds) - 1) if len(sounds) > 1 else ""
+        print("  son         : {}{}".format(sounds[0].name, extra))
+    else:
+        chosen = sound.pick_sound(p["wav"], p["sound"])
+        origin = "fourni" if chosen == sound.BUNDLED_SOUND else "corne synthetisee"
+        print("  son         : {} ({})".format(chosen.name, origin))
+    print("  sons perso  : {}  ({} fichier(s))".format(p["sound"], len(sounds)))
+
+    from . import screens
+
+    found = screens.monitors()
+    print("  ecrans      : {} -> carte en {} sur {}".format(
+        screens.describe(found), args.position,
+        "l'ecran principal" if args.screen is None else "ecran {}".format(args.screen)))
+    print("  journal     : {}".format(p["log"]))
+
+    if sys.platform == "win32":
+        print("  lecteur     : winsound + MCI (integres)")
+    else:
+        player = sound.find_player()
+        print("  lecteur     : {}".format(
+            player[0] if player else "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)"))
+    try:
+        import tkinter  # noqa: F401
+
+        print("  affichage   : tkinter OK")
+    except Exception:
+        print("  affichage   : tkinter MANQUANT (voir README)")
+
+    print("\n  Connexion   : ", end="", flush=True)
+    try:
+        matches = espn.scoreboard(selection[0])
+        print("OK ({} : {} match(s))".format(selection[0].name, len(matches)))
+    except espn.SourceError as exc:
+        print("ECHEC ({})".format(exc))
+        return 1
+    return 0
+
+
 def do_list(args) -> int:
     """Le catalogue des competitions, avec les noms acceptes."""
     print("butbutbut : competitions surveillables\n")

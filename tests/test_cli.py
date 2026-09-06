@@ -1,7 +1,13 @@
+import io
+import re
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
-from butbutbut import cli
+from butbutbut import cli, espn, leagues
+
+from helpers import event, payload
 
 
 class TestParser(unittest.TestCase):
@@ -63,6 +69,60 @@ class TestMainGuards(unittest.TestCase):
 
     def test_screens_command(self):
         self.assertEqual(cli.main(["--screens"]), 0)
+
+
+class TestEveryCommandIsReachable(unittest.TestCase):
+    """main() ne doit jamais appeler une fonction qui n'existe pas.
+
+    Ecrit apres avoir casse do_status, do_test, do_scores et _kickoff_text en
+    supprimant une fonction voisine : la suite passait quand meme, parce que
+    plus aucun test n'entrait dans ces commandes.
+    """
+
+    def test_all_dispatch_targets_exist(self):
+        source = Path(cli.__file__).read_text(encoding="utf-8")
+        body = source[source.index("def main("):]
+        called = set(re.findall(r"return (do_\w+)\(args\)", body))
+        self.assertGreaterEqual(len(called), 7, called)
+        for name in sorted(called):
+            self.assertTrue(callable(getattr(cli, name, None)),
+                            "main() appelle {}(), absent du module".format(name))
+
+    def test_every_command_runs_without_touching_the_network(self):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        commands = (["--status"], ["--scores"], ["--list"], ["--paths"],
+                    ["--screens"],
+                    ["--test", "--no-overlay", "--no-sound", "--duration", "1"])
+
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            for argv in commands:
+                buffer = io.StringIO()
+                with redirect_stdout(buffer):
+                    code = cli.main(argv + ["--leagues", "l1"])
+                self.assertEqual(code, 0, argv)
+                self.assertTrue(buffer.getvalue().strip(), argv)
+
+    def test_scores_shows_the_match_and_its_scorers(self):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        buffer = io.StringIO()
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            with redirect_stdout(buffer):
+                cli.main(["--scores", "--leagues", "l1"])
+        printed = buffer.getvalue()
+        self.assertIn("Ligue 1", printed)
+        self.assertIn("Angers", printed)
+        self.assertIn("Stade Rennais", printed)
+
+    def test_status_reports_the_source_being_unreachable(self):
+        with mock.patch.object(espn, "scoreboard",
+                               side_effect=espn.SourceError("pas de reseau")):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = cli.main(["--status", "--leagues", "l1"])
+        self.assertEqual(code, 1)
+        self.assertIn("ECHEC", buffer.getvalue())
 
 
 class TestPaths(unittest.TestCase):
