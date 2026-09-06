@@ -1,0 +1,307 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" width="1200" height="700" role="img" aria-label="Deux personnes ahuries pointent du doigt cinq ecrans qui affichent tous un but">
+<defs>
+  <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#151a24"/><stop offset="1" stop-color="#0a0d13"/>
+  </linearGradient>
+  <radialGradient id="glow">
+    <stop offset="0" stop-color="#8fd7ff" stop-opacity="0.45"/>
+    <stop offset="1" stop-color="#8fd7ff" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="vignette">
+    <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#000000" stop-opacity="0.5"/>
+  </radialGradient>
+</defs>
+<rect x="0.0" y="0.0" width="1200.0" height="700.0" rx="0.0" fill="url(#wall)" opacity="1"/>
+<rect x="200.0" y="0.0" width="1.5" height="700.0" rx="0.0" fill="#1d2432" opacity="0.5"/>
+<rect x="400.0" y="0.0" width="1.5" height="700.0" rx="0.0" fill="#1d2432" opacity="0.5"/>
+<rect x="600.0" y="0.0" width="1.5" height="700.0" rx="0.0" fill="#1d2432" opacity="0.5"/>
+<rect x="800.0" y="0.0" width="1.5" height="700.0" rx="0.0" fill="#1d2432" opacity="0.5"/>
+<rect x="1000.0" y="0.0" width="1.5" height="700.0" rx="0.0" fill="#1d2432" opacity="0.5"/>
+<rect x="0.0" y="470.0" width="1200.0" height="8.0" rx="0.0" fill="#1a212e" opacity="0.7"/>
+<g transform="rotate(-0.60 245.0 147.0)">
+<ellipse cx="245.0" cy="147.0" rx="313.5" ry="199.5" fill="url(#glow)" opacity="0.6"/>
+<rect x="73.0" y="45.0" width="344.0" height="204.0" rx="10.0" fill="#05070a" stroke="#2c3547" stroke-width="2.0" opacity="1"/>
+<rect x="80.0" y="52.0" width="330.0" height="190.0" rx="0.0" fill="#1d7a3d" opacity="1"/>
+<rect x="127.1" y="52.0" width="47.1" height="190.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="221.4" y="52.0" width="47.1" height="190.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="315.7" y="52.0" width="47.1" height="190.0" rx="0.0" fill="#22894a" opacity="1"/>
+<g stroke="#bfe6cd" stroke-width="1.6" fill="none" opacity="0.7">
+<rect x="96.5" y="67.2" width="297.0" height="159.6"/>
+<line x1="245.0" y1="67.2" x2="245.0" y2="226.8"/>
+<circle cx="245.0" cy="147.0" r="30.4"/>
+<rect x="96.5" y="112.8" width="33.0" height="68.4"/>
+<rect x="360.5" y="112.8" width="33.0" height="68.4"/>
+</g>
+<circle cx="165.8" cy="128.0" r="4.2" fill="#f4f6fa" opacity="1"/>
+<circle cx="195.5" cy="171.7" r="4.2" fill="#f4f6fa" opacity="1"/>
+<circle cx="231.8" cy="143.2" r="4.2" fill="#f4f6fa" opacity="1"/>
+<circle cx="264.8" cy="116.6" r="4.2" fill="#e4453f" opacity="1"/>
+<circle cx="287.9" cy="166.0" r="4.2" fill="#e4453f" opacity="1"/>
+<circle cx="324.2" cy="137.5" r="4.2" fill="#e4453f" opacity="1"/>
+<rect x="90.0" y="62.0" width="112.2" height="20.0" rx="5.0" fill="#0b0e14" opacity="0.9"/>
+<rect x="90.0" y="62.0" width="4.0" height="20.0" rx="2.0" fill="#f2e34c" opacity="1"/>
+<text x="101.0" y="76.5" fill="#f3f5f9" font-size="10.5" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">MAR  2 - 1  PAR</text>
+<rect x="188.8" y="187.0" width="211.2" height="46.0" rx="7.0" fill="#000000" opacity="0.45"/>
+<rect x="186.8" y="184.0" width="211.2" height="46.0" rx="7.0" fill="#0d1017" stroke="#232936" stroke-width="1.0" opacity="1"/>
+<rect x="189.8" y="191.0" width="3.2" height="32.0" rx="1.6" fill="#f2e34c" opacity="1"/>
+<text x="198.8" y="199.0" fill="#f2e34c" font-size="8.6" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">BUT !</text>
+<text x="228.8" y="199.0" fill="#8b95a7" font-size="6.4" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.50" opacity="1">LIGUE 1</text>
+<text x="276.4" y="218.0" fill="#f2e34c" font-size="11.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="end" letter-spacing="0.00" opacity="1">Marseille</text>
+<text x="292.4" y="218.5" fill="#f3f5f9" font-size="13.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="1">2 - 1</text>
+<text x="308.4" y="218.0" fill="#f3f5f9" font-size="11.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.00" opacity="1">Paris FC</text>
+<path d="M80.0 52.0 L228.5 52.0 L80.0 185.0 Z" fill="#ffffff" opacity="0.05"/>
+<rect x="73.0" y="45.0" width="344.0" height="204.0" rx="10.0" fill="none" stroke="#ffffff" stroke-width="1.0" opacity="0.07"/>
+</g>
+<g transform="rotate(0.50 605.0 122.0)">
+<ellipse cx="605.0" cy="122.0" rx="290.7" ry="184.8" fill="url(#glow)" opacity="0.6"/>
+<rect x="445.0" y="27.0" width="320.0" height="190.0" rx="10.0" fill="#05070a" stroke="#2c3547" stroke-width="2.0" opacity="1"/>
+<rect x="452.0" y="34.0" width="306.0" height="176.0" rx="0.0" fill="#1d7a3d" opacity="1"/>
+<rect x="495.7" y="34.0" width="43.7" height="176.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="583.1" y="34.0" width="43.7" height="176.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="670.6" y="34.0" width="43.7" height="176.0" rx="0.0" fill="#22894a" opacity="1"/>
+<g stroke="#bfe6cd" stroke-width="1.6" fill="none" opacity="0.7">
+<rect x="467.3" y="48.1" width="275.4" height="147.8"/>
+<line x1="605.0" y1="48.1" x2="605.0" y2="195.9"/>
+<circle cx="605.0" cy="122.0" r="28.2"/>
+<rect x="467.3" y="90.3" width="30.6" height="63.4"/>
+<rect x="712.1" y="90.3" width="30.6" height="63.4"/>
+</g>
+<circle cx="531.6" cy="104.4" r="3.9" fill="#f4f6fa" opacity="1"/>
+<circle cx="559.1" cy="144.9" r="3.9" fill="#f4f6fa" opacity="1"/>
+<circle cx="592.8" cy="118.5" r="3.9" fill="#f4f6fa" opacity="1"/>
+<circle cx="623.4" cy="93.8" r="3.9" fill="#e4453f" opacity="1"/>
+<circle cx="644.8" cy="139.6" r="3.9" fill="#e4453f" opacity="1"/>
+<circle cx="678.4" cy="113.2" r="3.9" fill="#e4453f" opacity="1"/>
+<rect x="462.0" y="44.0" width="104.0" height="20.0" rx="5.0" fill="#0b0e14" opacity="0.9"/>
+<rect x="462.0" y="44.0" width="4.0" height="20.0" rx="2.0" fill="#00ff87" opacity="1"/>
+<text x="473.0" y="58.5" fill="#f3f5f9" font-size="10.5" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">ARS  2 - 1  CHE</text>
+<rect x="552.2" y="158.3" width="195.8" height="42.7" rx="6.5" fill="#000000" opacity="0.45"/>
+<rect x="550.2" y="155.3" width="195.8" height="42.7" rx="6.5" fill="#0d1017" stroke="#232936" stroke-width="1.0" opacity="1"/>
+<rect x="552.9" y="161.8" width="3.0" height="29.7" rx="1.5" fill="#00ff87" opacity="1"/>
+<text x="561.3" y="169.3" fill="#00ff87" font-size="8.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">BUT !</text>
+<text x="589.1" y="169.3" fill="#8b95a7" font-size="5.9" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.50" opacity="1">PREMIER LEAGUE</text>
+<text x="633.2" y="186.9" fill="#00ff87" font-size="10.2" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="end" letter-spacing="0.00" opacity="1">Arsenal</text>
+<text x="648.1" y="187.3" fill="#f3f5f9" font-size="12.1" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="1">2 - 1</text>
+<text x="662.9" y="186.9" fill="#f3f5f9" font-size="10.2" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.00" opacity="1">Chelsea</text>
+<path d="M452.0 34.0 L589.7 34.0 L452.0 157.2 Z" fill="#ffffff" opacity="0.05"/>
+<rect x="445.0" y="27.0" width="320.0" height="190.0" rx="10.0" fill="none" stroke="#ffffff" stroke-width="1.0" opacity="0.07"/>
+</g>
+<g transform="rotate(-0.40 961.0 142.5)">
+<ellipse cx="961.0" cy="142.5" rx="305.9" ry="194.2" fill="url(#glow)" opacity="0.6"/>
+<rect x="793.0" y="43.0" width="336.0" height="199.0" rx="10.0" fill="#05070a" stroke="#2c3547" stroke-width="2.0" opacity="1"/>
+<rect x="800.0" y="50.0" width="322.0" height="185.0" rx="0.0" fill="#1d7a3d" opacity="1"/>
+<rect x="846.0" y="50.0" width="46.0" height="185.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="938.0" y="50.0" width="46.0" height="185.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="1030.0" y="50.0" width="46.0" height="185.0" rx="0.0" fill="#22894a" opacity="1"/>
+<g stroke="#bfe6cd" stroke-width="1.6" fill="none" opacity="0.7">
+<rect x="816.1" y="64.8" width="289.8" height="155.4"/>
+<line x1="961.0" y1="64.8" x2="961.0" y2="220.2"/>
+<circle cx="961.0" cy="142.5" r="29.6"/>
+<rect x="816.1" y="109.2" width="32.2" height="66.6"/>
+<rect x="1073.7" y="109.2" width="32.2" height="66.6"/>
+</g>
+<circle cx="883.7" cy="124.0" r="4.1" fill="#f4f6fa" opacity="1"/>
+<circle cx="912.7" cy="166.6" r="4.1" fill="#f4f6fa" opacity="1"/>
+<circle cx="948.1" cy="138.8" r="4.1" fill="#f4f6fa" opacity="1"/>
+<circle cx="980.3" cy="112.9" r="4.1" fill="#e4453f" opacity="1"/>
+<circle cx="1002.9" cy="161.0" r="4.1" fill="#e4453f" opacity="1"/>
+<circle cx="1038.3" cy="133.2" r="4.1" fill="#e4453f" opacity="1"/>
+<rect x="810.0" y="60.0" width="109.5" height="20.0" rx="5.0" fill="#0b0e14" opacity="0.9"/>
+<rect x="810.0" y="60.0" width="4.0" height="20.0" rx="2.0" fill="#ff5c5c" opacity="1"/>
+<text x="821.0" y="74.5" fill="#f3f5f9" font-size="10.5" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">FRA  1 - 4  AUG</text>
+<rect x="905.9" y="181.1" width="206.1" height="44.9" rx="6.8" fill="#000000" opacity="0.45"/>
+<rect x="903.9" y="178.1" width="206.1" height="44.9" rx="6.8" fill="#0d1017" stroke="#232936" stroke-width="1.0" opacity="1"/>
+<rect x="906.8" y="184.9" width="3.1" height="31.2" rx="1.6" fill="#ff5c5c" opacity="1"/>
+<text x="915.6" y="192.8" fill="#ff5c5c" font-size="8.4" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">BUT !</text>
+<text x="944.9" y="192.8" fill="#8b95a7" font-size="6.2" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.50" opacity="1">BUNDESLIGA</text>
+<text x="991.3" y="211.3" fill="#f3f5f9" font-size="10.7" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="end" letter-spacing="0.00" opacity="1">Frankfurt</text>
+<text x="1007.0" y="211.8" fill="#f3f5f9" font-size="12.7" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="1">1 - 4</text>
+<text x="1022.6" y="211.3" fill="#ff5c5c" font-size="10.7" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.00" opacity="1">Augsburg</text>
+<path d="M800.0 50.0 L944.9 50.0 L800.0 179.5 Z" fill="#ffffff" opacity="0.05"/>
+<rect x="793.0" y="43.0" width="336.0" height="199.0" rx="10.0" fill="none" stroke="#ffffff" stroke-width="1.0" opacity="0.07"/>
+</g>
+<g transform="rotate(0.00 253.0 347.0)">
+<ellipse cx="253.0" cy="347.0" rx="248.9" ry="157.5" fill="url(#glow)" opacity="0.6"/>
+<rect x="115.0" y="265.0" width="276.0" height="164.0" rx="10.0" fill="#05070a" stroke="#2c3547" stroke-width="2.0" opacity="1"/>
+<rect x="122.0" y="272.0" width="262.0" height="150.0" rx="0.0" fill="#1d7a3d" opacity="1"/>
+<rect x="159.4" y="272.0" width="37.4" height="150.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="234.3" y="272.0" width="37.4" height="150.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="309.1" y="272.0" width="37.4" height="150.0" rx="0.0" fill="#22894a" opacity="1"/>
+<g stroke="#bfe6cd" stroke-width="1.6" fill="none" opacity="0.7">
+<rect x="135.1" y="284.0" width="235.8" height="126.0"/>
+<line x1="253.0" y1="284.0" x2="253.0" y2="410.0"/>
+<circle cx="253.0" cy="347.0" r="24.0"/>
+<rect x="135.1" y="320.0" width="26.2" height="54.0"/>
+<rect x="344.7" y="320.0" width="26.2" height="54.0"/>
+</g>
+<circle cx="190.1" cy="332.0" r="3.3" fill="#f4f6fa" opacity="1"/>
+<circle cx="213.7" cy="366.5" r="3.3" fill="#f4f6fa" opacity="1"/>
+<circle cx="242.5" cy="344.0" r="3.3" fill="#f4f6fa" opacity="1"/>
+<circle cx="268.7" cy="323.0" r="3.3" fill="#e4453f" opacity="1"/>
+<circle cx="287.1" cy="362.0" r="3.3" fill="#e4453f" opacity="1"/>
+<circle cx="315.9" cy="339.5" r="3.3" fill="#e4453f" opacity="1"/>
+<rect x="132.0" y="282.0" width="89.1" height="20.0" rx="5.0" fill="#0b0e14" opacity="0.9"/>
+<rect x="132.0" y="282.0" width="4.0" height="20.0" rx="2.0" fill="#ff6b5e" opacity="1"/>
+<text x="143.0" y="296.5" fill="#f3f5f9" font-size="10.5" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">REA  3 - 3  BAR</text>
+<rect x="206.3" y="376.5" width="167.7" height="36.5" rx="5.6" fill="#000000" opacity="0.45"/>
+<rect x="204.3" y="373.5" width="167.7" height="36.5" rx="5.6" fill="#0d1017" stroke="#232936" stroke-width="1.0" opacity="1"/>
+<rect x="206.7" y="379.0" width="2.5" height="25.4" rx="1.3" fill="#ff6b5e" opacity="1"/>
+<text x="213.8" y="385.4" fill="#ff6b5e" font-size="6.8" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">BUT !</text>
+<text x="237.7" y="385.4" fill="#8b95a7" font-size="5.1" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.50" opacity="1">LA LIGA</text>
+<text x="275.5" y="400.5" fill="#ff6b5e" font-size="8.7" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="end" letter-spacing="0.00" opacity="1">REA</text>
+<text x="288.2" y="400.9" fill="#f3f5f9" font-size="10.3" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="1">3 - 3</text>
+<text x="300.9" y="400.5" fill="#f3f5f9" font-size="8.7" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.00" opacity="1">Barcelona</text>
+<path d="M122.0 272.0 L239.9 272.0 L122.0 377.0 Z" fill="#ffffff" opacity="0.05"/>
+<rect x="115.0" y="265.0" width="276.0" height="164.0" rx="10.0" fill="none" stroke="#ffffff" stroke-width="1.0" opacity="0.07"/>
+</g>
+<rect x="243.0" y="429.0" width="20.0" height="28.0" rx="3.0" fill="#1b2130" opacity="1"/>
+<rect x="207.0" y="455.0" width="92.0" height="9.0" rx="4.0" fill="#242d40" opacity="1"/>
+<g transform="rotate(0.00 976.0 356.0)">
+<ellipse cx="976.0" cy="356.0" rx="224.2" ry="142.8" fill="url(#glow)" opacity="0.6"/>
+<rect x="851.0" y="281.0" width="250.0" height="150.0" rx="10.0" fill="#05070a" stroke="#2c3547" stroke-width="2.0" opacity="1"/>
+<rect x="858.0" y="288.0" width="236.0" height="136.0" rx="0.0" fill="#1d7a3d" opacity="1"/>
+<rect x="891.7" y="288.0" width="33.7" height="136.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="959.1" y="288.0" width="33.7" height="136.0" rx="0.0" fill="#22894a" opacity="1"/>
+<rect x="1026.6" y="288.0" width="33.7" height="136.0" rx="0.0" fill="#22894a" opacity="1"/>
+<g stroke="#bfe6cd" stroke-width="1.6" fill="none" opacity="0.7">
+<rect x="869.8" y="298.9" width="212.4" height="114.2"/>
+<line x1="976.0" y1="298.9" x2="976.0" y2="413.1"/>
+<circle cx="976.0" cy="356.0" r="21.8"/>
+<rect x="869.8" y="331.5" width="23.6" height="49.0"/>
+<rect x="1058.6" y="331.5" width="23.6" height="49.0"/>
+</g>
+<circle cx="919.4" cy="342.4" r="3.0" fill="#f4f6fa" opacity="1"/>
+<circle cx="940.6" cy="373.7" r="3.0" fill="#f4f6fa" opacity="1"/>
+<circle cx="966.6" cy="353.3" r="3.0" fill="#f4f6fa" opacity="1"/>
+<circle cx="990.2" cy="334.2" r="3.0" fill="#e4453f" opacity="1"/>
+<circle cx="1006.7" cy="369.6" r="3.0" fill="#e4453f" opacity="1"/>
+<circle cx="1032.6" cy="349.2" r="3.0" fill="#e4453f" opacity="1"/>
+<rect x="868.0" y="298.0" width="80.2" height="20.0" rx="5.0" fill="#0b0e14" opacity="0.9"/>
+<rect x="868.0" y="298.0" width="4.0" height="20.0" rx="2.0" fill="#5ab7ff" opacity="1"/>
+<text x="879.0" y="312.5" fill="#f3f5f9" font-size="10.5" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">INT  1 - 0  JUV</text>
+<rect x="933.0" y="382.1" width="151.0" height="32.9" rx="5.0" fill="#000000" opacity="0.45"/>
+<rect x="931.0" y="379.1" width="151.0" height="32.9" rx="5.0" fill="#0d1017" stroke="#232936" stroke-width="1.0" opacity="1"/>
+<rect x="933.1" y="384.1" width="2.3" height="22.9" rx="1.1" fill="#5ab7ff" opacity="1"/>
+<text x="939.5" y="389.8" fill="#5ab7ff" font-size="6.2" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.40" opacity="1">BUT !</text>
+<text x="961.0" y="389.8" fill="#8b95a7" font-size="4.6" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.50" opacity="1">SERIE A</text>
+<text x="995.0" y="403.4" fill="#5ab7ff" font-size="7.9" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="end" letter-spacing="0.00" opacity="1">Inter</text>
+<text x="1006.5" y="403.8" fill="#f3f5f9" font-size="9.3" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="1">1 - 0</text>
+<text x="1017.9" y="403.4" fill="#f3f5f9" font-size="7.9" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="start" letter-spacing="0.00" opacity="1">Juve</text>
+<path d="M858.0 288.0 L964.2 288.0 L858.0 383.2 Z" fill="#ffffff" opacity="0.05"/>
+<rect x="851.0" y="281.0" width="250.0" height="150.0" rx="10.0" fill="none" stroke="#ffffff" stroke-width="1.0" opacity="0.07"/>
+</g>
+<path d="M849.0 432.0 L1103.0 432.0 L1128.0 454.0 L824.0 454.0 Z" fill="#1b2130" stroke="#2c3547" stroke-width="1.5"/>
+<line x1="832.0" y1="449.0" x2="1120.0" y2="449.0" stroke="#2f3a4f" stroke-width="2.5" stroke-linecap="butt" opacity="1"/>
+<path d="M218.2 710.0 C226.0 618.8 265.0 587.6 330.0 586.6 C395.0 587.6 434.0 618.8 441.8 710.0 Z" fill="#3a5686"/>
+<path d="M330.0 586.6 C395.0 587.6 434.0 618.8 441.8 710.0 L330.0 710.0 Z" fill="#2f4670" opacity="0.5"/>
+<rect x="314.4" y="546.0" width="31.2" height="49.4" rx="10.4" fill="#d69f74" opacity="1"/>
+<g stroke-linecap="round" fill="none">
+<path d="M376.8 603.2 L393.8 421.7" stroke="#3a5686" stroke-width="26.0"/>
+<path d="M393.8 421.7 L536.3 258.5" stroke="#e9b489" stroke-width="21.8"/>
+</g>
+<circle cx="536.3" cy="258.5" r="14.6" fill="#e9b489" opacity="1"/>
+<line x1="536.3" y1="258.5" x2="552.1" y2="224.5" stroke="#e9b489" stroke-width="9.9" stroke-linecap="round" opacity="1"/>
+<line x1="536.3" y1="258.5" x2="521.8" y2="250.4" stroke="#d69f74" stroke-width="7.8" stroke-linecap="round" opacity="1"/>
+<g stroke="#ffffff" stroke-width="3.1" stroke-linecap="round" opacity="0.75">
+<line x1="548.3" y1="217.1" x2="544.1" y2="208.7"/>
+<line x1="553.2" y1="216.2" x2="554.4" y2="207.0"/>
+<line x1="557.6" y1="218.3" x2="563.9" y2="211.4"/>
+<line x1="560.2" y1="222.5" x2="569.3" y2="220.3"/>
+</g>
+<g stroke-linecap="round" fill="none">
+<path d="M283.2 603.2 L276.4 541.2" stroke="#3a5686" stroke-width="26.0"/>
+<path d="M276.4 541.2 L231.5 483.9" stroke="#e9b489" stroke-width="21.8"/>
+</g>
+<circle cx="231.5" cy="483.9" r="13.5" fill="#e9b489" opacity="1"/>
+<line x1="231.5" y1="483.9" x2="210.1" y2="475.8" stroke="#e9b489" stroke-width="6.8" stroke-linecap="round" opacity="1"/>
+<line x1="231.5" y1="483.9" x2="214.9" y2="468.1" stroke="#e9b489" stroke-width="6.8" stroke-linecap="round" opacity="1"/>
+<line x1="231.5" y1="483.9" x2="222.4" y2="462.9" stroke="#e9b489" stroke-width="6.8" stroke-linecap="round" opacity="1"/>
+<line x1="231.5" y1="483.9" x2="231.3" y2="461.0" stroke="#e9b489" stroke-width="6.8" stroke-linecap="round" opacity="1"/>
+<line x1="231.5" y1="483.9" x2="240.2" y2="462.8" stroke="#e9b489" stroke-width="6.8" stroke-linecap="round" opacity="1"/>
+<path d="M283.2 587.6 Q330.0 613.6 376.8 587.6" stroke="#f2e34c" stroke-width="17.7" fill="none" stroke-linecap="round"/>
+<g transform="rotate(-5.00 330.0 520.0)">
+<circle cx="285.3" cy="526.2" r="8.3" fill="#d69f74" opacity="1"/>
+<circle cx="374.7" cy="526.2" r="8.3" fill="#d69f74" opacity="1"/>
+<ellipse cx="330.0" cy="520.0" rx="44.2" ry="52.0" fill="#e9b489" opacity="1"/>
+<path d="M285.3 514.8 A44.2 52.0 0 0 1 374.7 514.8 Q343.0 487.8 285.3 514.8 Z" fill="#2f2a2c"/>
+<ellipse cx="311.8" cy="519.0" rx="11.4" ry="14.0" fill="#ffffff" opacity="1"/>
+<circle cx="315.4" cy="517.4" r="6.0" fill="#171b24" opacity="1"/>
+<circle cx="313.1" cy="513.8" r="1.8" fill="#ffffff" opacity="0.9"/>
+<path d="M299.3 494.0 Q311.8 483.6 324.3 494.0" stroke="#2f2a2c" stroke-width="4.9" fill="none" stroke-linecap="round"/>
+<ellipse cx="348.2" cy="519.0" rx="11.4" ry="14.0" fill="#ffffff" opacity="1"/>
+<circle cx="351.8" cy="517.4" r="6.0" fill="#171b24" opacity="1"/>
+<circle cx="349.5" cy="513.8" r="1.8" fill="#ffffff" opacity="0.9"/>
+<path d="M335.7 494.0 Q348.2 483.6 360.7 494.0" stroke="#2f2a2c" stroke-width="4.9" fill="none" stroke-linecap="round"/>
+<ellipse cx="330.0" cy="546.0" rx="12.0" ry="15.6" fill="#40202a" opacity="1"/>
+<ellipse cx="330.0" cy="554.3" rx="7.3" ry="5.7" fill="#c9575f" opacity="0.8"/>
+</g>
+<g stroke="#f3f5f9" stroke-width="3.9" stroke-linecap="round" opacity="0.6">
+<line x1="266.6" y1="493.0" x2="252.1" y2="486.3"/>
+<line x1="281.8" y1="469.7" x2="270.8" y2="457.1"/>
+<line x1="304.6" y1="454.3" x2="298.8" y2="437.9"/>
+<line x1="331.4" y1="449.3" x2="331.8" y2="431.6"/>
+<line x1="358.0" y1="455.4" x2="364.4" y2="439.3"/>
+<line x1="380.2" y1="471.8" x2="391.6" y2="459.7"/>
+</g>
+<path d="M767.9 710.0 C776.0 614.6 816.5 582.2 884.0 581.1 C951.5 582.2 992.0 614.6 1000.1 710.0 Z" fill="#7a3550"/>
+<path d="M884.0 581.1 C951.5 582.2 992.0 614.6 1000.1 710.0 L884.0 710.0 Z" fill="#642b42" opacity="0.5"/>
+<rect x="867.8" y="539.0" width="32.4" height="51.3" rx="10.8" fill="#94603d" opacity="1"/>
+<g stroke-linecap="round" fill="none">
+<path d="M835.4 598.4 L911.8 470.3" stroke="#7a3550" stroke-width="27.0"/>
+<path d="M911.8 470.3 L896.5 293.7" stroke="#a9714b" stroke-width="22.7"/>
+</g>
+<circle cx="896.5" cy="293.7" r="15.1" fill="#a9714b" opacity="1"/>
+<line x1="896.5" y1="293.7" x2="904.1" y2="255.5" stroke="#a9714b" stroke-width="10.3" stroke-linecap="round" opacity="1"/>
+<line x1="896.5" y1="293.7" x2="879.8" y2="289.1" stroke="#94603d" stroke-width="8.1" stroke-linecap="round" opacity="1"/>
+<g stroke="#ffffff" stroke-width="3.2" stroke-linecap="round" opacity="0.75">
+<line x1="898.5" y1="248.9" x2="892.2" y2="241.5"/>
+<line x1="903.2" y1="246.9" x2="902.2" y2="237.3"/>
+<line x1="908.2" y1="247.9" x2="912.9" y2="239.4"/>
+<line x1="911.8" y1="251.6" x2="920.4" y2="247.2"/>
+</g>
+<g stroke-linecap="round" fill="none">
+<path d="M932.6 598.4 L952.0 536.6" stroke="#7a3550" stroke-width="27.0"/>
+<path d="M952.0 536.6 L1009.3 487.3" stroke="#a9714b" stroke-width="22.7"/>
+</g>
+<circle cx="1009.3" cy="487.3" r="14.0" fill="#a9714b" opacity="1"/>
+<line x1="1009.3" y1="487.3" x2="1004.7" y2="464.0" stroke="#a9714b" stroke-width="7.0" stroke-linecap="round" opacity="1"/>
+<line x1="1009.3" y1="487.3" x2="1014.1" y2="464.0" stroke="#a9714b" stroke-width="7.0" stroke-linecap="round" opacity="1"/>
+<line x1="1009.3" y1="487.3" x2="1022.8" y2="467.7" stroke="#a9714b" stroke-width="7.0" stroke-linecap="round" opacity="1"/>
+<line x1="1009.3" y1="487.3" x2="1029.3" y2="474.5" stroke="#a9714b" stroke-width="7.0" stroke-linecap="round" opacity="1"/>
+<line x1="1009.3" y1="487.3" x2="1032.7" y2="483.3" stroke="#a9714b" stroke-width="7.0" stroke-linecap="round" opacity="1"/>
+<g transform="rotate(6.00 884.0 512.0)">
+<circle cx="837.6" cy="518.5" r="8.6" fill="#94603d" opacity="1"/>
+<circle cx="930.4" cy="518.5" r="8.6" fill="#94603d" opacity="1"/>
+<ellipse cx="884.0" cy="512.0" rx="45.9" ry="54.0" fill="#a9714b" opacity="1"/>
+<path d="M837.6 506.6 A45.9 54.0 0 0 1 930.4 506.6 Q897.5 478.5 837.6 506.6 Z" fill="#241d1c"/>
+<ellipse cx="865.1" cy="510.9" rx="11.9" ry="14.6" fill="#ffffff" opacity="1"/>
+<circle cx="861.3" cy="509.3" r="6.2" fill="#171b24" opacity="1"/>
+<circle cx="858.9" cy="505.5" r="1.9" fill="#ffffff" opacity="0.9"/>
+<path d="M852.1 485.0 Q865.1 474.2 878.1 485.0" stroke="#241d1c" stroke-width="5.1" fill="none" stroke-linecap="round"/>
+<ellipse cx="902.9" cy="510.9" rx="11.9" ry="14.6" fill="#ffffff" opacity="1"/>
+<circle cx="899.1" cy="509.3" r="6.2" fill="#171b24" opacity="1"/>
+<circle cx="896.7" cy="505.5" r="1.9" fill="#ffffff" opacity="0.9"/>
+<path d="M889.9 485.0 Q902.9 474.2 915.9 485.0" stroke="#241d1c" stroke-width="5.1" fill="none" stroke-linecap="round"/>
+<ellipse cx="884.0" cy="539.0" rx="12.4" ry="16.2" fill="#40202a" opacity="1"/>
+<ellipse cx="884.0" cy="547.6" rx="7.6" ry="5.9" fill="#c9575f" opacity="0.8"/>
+</g>
+<g stroke="#f3f5f9" stroke-width="4.0" stroke-linecap="round" opacity="0.6">
+<line x1="818.1" y1="484.0" x2="803.1" y2="477.0"/>
+<line x1="833.9" y1="459.7" x2="822.5" y2="446.7"/>
+<line x1="857.6" y1="443.8" x2="851.6" y2="426.7"/>
+<line x1="885.5" y1="438.6" x2="885.8" y2="420.2"/>
+<line x1="913.1" y1="445.0" x2="919.7" y2="428.2"/>
+<line x1="936.2" y1="461.9" x2="948.0" y2="449.4"/>
+</g>
+<text x="468.0" y="552.0" fill="#f2e34c" font-size="70.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="0.9">!</text>
+<text x="762.0" y="524.0" fill="#ff5c5c" font-size="56.0" font-weight="700" font-family="Segoe UI, Inter, DejaVu Sans, sans-serif" text-anchor="middle" letter-spacing="0.00" opacity="0.85">!</text>
+<circle cx="620.0" cy="656.0" r="29.0" fill="#f4f6fa" opacity="1"/>
+<polygon points="620.0,643.2 632.1,652.1 627.5,666.3 612.5,666.3 607.9,652.1" fill="#171b24"/>
+<line x1="629.4" y1="643.1" x2="636.9" y2="632.8" stroke="#171b24" stroke-width="3.2" stroke-linecap="round" opacity="1"/>
+<line x1="635.2" y1="660.9" x2="647.3" y2="664.9" stroke="#171b24" stroke-width="3.2" stroke-linecap="round" opacity="1"/>
+<line x1="620.0" y1="672.0" x2="620.0" y2="684.7" stroke="#171b24" stroke-width="3.2" stroke-linecap="round" opacity="1"/>
+<line x1="604.8" y1="660.9" x2="592.7" y2="664.9" stroke="#171b24" stroke-width="3.2" stroke-linecap="round" opacity="1"/>
+<line x1="610.6" y1="643.1" x2="603.1" y2="632.8" stroke="#171b24" stroke-width="3.2" stroke-linecap="round" opacity="1"/>
+<rect x="0.0" y="0.0" width="1200.0" height="700.0" rx="0.0" fill="url(#vignette)" opacity="1"/>
+</svg>

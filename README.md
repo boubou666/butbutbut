@@ -1,3 +1,5 @@
+![Deux supporters ahuris pointent du doigt cinq ecrans qui affichent tous un but](docs/banniere.png)
+
 # butbutbut
 
 [![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)

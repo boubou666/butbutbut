@@ -7,6 +7,14 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- Une banniere en tete du README : deux supporters ahuris qui pointent cinq
+  ecrans affichant tous un but. Dessinee en vectoriel
+  ([docs/banniere.svg](docs/banniere.svg), genere par
+  [docs/banniere.py](docs/banniere.py)), aux couleurs des cartes, et
+  rasterisee en PNG pour l'affichage sur GitHub.
+
 ## [1.1.1] - 2026-09-06
 
 ### Corrige
