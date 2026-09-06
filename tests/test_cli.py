@@ -353,6 +353,13 @@ class OneShot:
     def next_delay(self):
         return 0.0
 
+    def plan_wait(self):
+        # Les boucles de surveillance annoncent leur attente au watcher, qui
+        # s'en sert pour reperer les trous (veille, processus gele). La
+        # doublure doit donc porter la meme methode que le vrai.
+        self.planned = True
+        return self.next_delay()
+
 
 class FakeStack:
     """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
