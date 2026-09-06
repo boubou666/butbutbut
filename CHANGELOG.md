@@ -7,6 +7,11 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.4.0] - 2026-09-06
+
+Premiere contribution exterieure au projet, par
+[@Arzaroth](https://github.com/Arzaroth) : la mise a jour sans reinstaller.
+
 ### Ajoute
 
 - **Mise a jour automatique**, sur le modele de
@@ -269,7 +274,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.3.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/boubou666/butbutbut/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/butbutbut/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/boubou666/butbutbut/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/boubou666/butbutbut/compare/v1.1.0...v1.1.1
