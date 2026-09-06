@@ -7,8 +7,25 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.2.0] - 2026-09-06
+
 ### Ajoute
 
+- **Filtre par equipe** : `--teams om,psg` ne signale que les matchs de ces
+  clubs, `--exclude-teams psg` ne signale que les autres. Un match compte des
+  qu'une des deux equipes y est, buts et cartes de deroulement comprises, et
+  `--scores` s'y plie aussi.
+- La reconnaissance des noms encaisse le nom complet, le nom court,
+  l'abreviation de la source, les accents (`malaga` trouve Malaga), un debut de
+  mot a partir de quatre lettres, et une table de surnoms usuels (`om`, `ol`,
+  `asse`, `losc`, `manu`, `barca`, `juve`, `bvb`...). Un mot ne mord qu'au
+  debut d'un mot du nom : `real` designe Madrid, Sociedad et Betis, mais pas
+  Villarreal.
+- Un mot qui ne designe aucune equipe est refuse au demarrage, avec la liste
+  des competitions ou il a ete cherche - plutot qu'un daemon muet pour
+  toujours.
+- `--list-teams` liste les equipes des competitions suivies et marque celles
+  que le filtre attrape (`*` suivie, `-` exclue).
 - Une banniere en tete du README : deux supporters ahuris qui pointent cinq
   ecrans affichant tous un but. Dessinee en vectoriel
   ([docs/banniere.svg](docs/banniere.svg), genere par
@@ -142,7 +159,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.1.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/boubou666/butbutbut/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/boubou666/butbutbut/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/boubou666/butbutbut/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/boubou666/butbutbut/compare/v1.0.0...v1.0.1

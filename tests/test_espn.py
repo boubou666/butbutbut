@@ -22,9 +22,16 @@ class TestParse(unittest.TestCase):
         self.assertIs(match.league, LIGUE1)
 
     def test_long_names_fall_back_to_short_name(self):
-        matches = espn.parse(
-            payload(event(home="Borussia Monchengladbach")), LIGUE1)
-        self.assertEqual(matches[0].home, "Boruss")
+        matches = espn.parse(payload(event(
+            home=("Borussia Monchengladbach", "M'gladbach", "BMG"))), LIGUE1)
+        self.assertEqual(matches[0].home, "M'gladbach")
+
+    def test_every_writing_of_a_team_is_kept(self):
+        # C'est ce que le filtre par equipe interroge.
+        matches = espn.parse(payload(event(
+            home=("Paris Saint-Germain", "PSG", "PSG"))), LIGUE1)
+        self.assertIn("Paris Saint-Germain", matches[0].home_names)
+        self.assertIn("PSG", matches[0].home_names)
 
     def test_missing_score_is_zero_not_a_crash(self):
         raw = payload(event())

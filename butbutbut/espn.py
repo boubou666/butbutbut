@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from . import __version__
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
+TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams"
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
@@ -111,18 +112,22 @@ class Match:
     """Un match tel que le tableau de bord le decrit a l'instant T."""
 
     __slots__ = ("id", "league", "home", "away", "home_id", "away_id",
-                 "home_score", "away_score", "state", "status_name", "detail",
-                 "clock", "start", "plays")
+                 "home_names", "away_names", "home_score", "away_score",
+                 "state", "status_name", "detail", "clock", "start", "plays")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
-                 status_name=""):
+                 status_name="", home_names=(), away_names=()):
         self.id = id
         self.league = league
         self.home = home
         self.away = away
         self.home_id = home_id
         self.away_id = away_id
+        # Tous les noms connus de chaque equipe : nom complet, nom court,
+        # abreviation. C'est ce que le filtre par equipe interroge.
+        self.home_names = tuple(home_names) or (home,)
+        self.away_names = tuple(away_names) or (away,)
         self.home_score = home_score
         self.away_score = away_score
         self.state = state
@@ -223,6 +228,14 @@ def _team_name(competitor) -> str:
     if full and len(full) <= NAME_LIMIT:
         return full
     return short or full or (team.get("abbreviation") or "?")
+
+
+def team_names(competitor) -> tuple:
+    """Tous les noms d'une equipe, du plus lisible au plus court."""
+    team = competitor.get("team") or {}
+    names = (team.get("displayName"), team.get("shortDisplayName"),
+             team.get("name"), team.get("location"), team.get("abbreviation"))
+    return tuple(str(name).strip() for name in names if name)
 
 
 def _parse_date(value) -> datetime | None:
@@ -333,6 +346,8 @@ def parse(payload: dict, league) -> list:
             away=_team_name(away),
             home_id=str((home.get("team") or {}).get("id") or "H"),
             away_id=str((away.get("team") or {}).get("id") or "A"),
+            home_names=team_names(home),
+            away_names=team_names(away),
             home_score=_int(home.get("score")),
             away_score=_int(away.get("score")),
             state=state,
@@ -348,3 +363,46 @@ def parse(payload: dict, league) -> list:
 def scoreboard(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:
     """fetch + parse, pour un championnat."""
     return parse(fetch(league.slug, timeout=timeout, opener=opener), league)
+
+
+def catalogue(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:
+    """Toutes les equipes d'une competition : une liste de tuples de noms.
+
+    Sert a valider ce que l'utilisateur a tape dans --teams, et a repondre a
+    --list-teams. Une competition qui ne repond pas (certaines coupes) rend
+    une liste vide plutot qu'une erreur : on ne bloque pas pour ca.
+    """
+    url = TEAMS_URL.format(slug=league.slug)
+    try:
+        if opener is not None:
+            raw = opener(url, timeout)
+        else:
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": "application/json",
+                    "Accept-Language": "fr,en;q=0.8",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read()
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        payload = json.loads(raw)
+    except Exception:
+        return []
+
+    try:
+        groups = (payload.get("sports") or [{}])[0].get("leagues") or [{}]
+        entries = groups[0].get("teams") or []
+    except Exception:
+        return []
+
+    found = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            names = team_names(entry)
+            if names:
+                found.append(names)
+    return found

@@ -75,6 +75,7 @@ butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
 butbutbut --list              # les competitions surveillables
+butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, son, ecrans, connexion a la source
 butbutbut --stop              # arrete le daemon
 butbutbut --paths             # ou vivent les donnees et le journal
@@ -124,6 +125,38 @@ premier releve (`gre.1` devient « GREEK SUPER LEAGUE »).
 > Attention quand meme : `--leagues all`, c'est 36 endpoints a interroger. La
 > cadence adaptative fait le gros du travail (une competition sans match est
 > relue toutes les 5 minutes seulement), mais reste raisonnable.
+
+### Suivre seulement certaines equipes
+
+```bash
+butbutbut --teams om,psg                    # rien que ces deux clubs
+butbutbut --teams "real madrid" --leagues liga,ucl
+butbutbut --exclude-teams psg               # tout, sauf le PSG
+```
+
+Un match compte **des qu'une des deux equipes** y est : suivre l'OM, c'est
+aussi vouloir savoir quand l'OM encaisse. Le filtre s'applique aux buts comme
+aux cartes de deroulement, et aussi a `--scores`.
+
+Les noms acceptes encaissent ce qu'on tape vraiment :
+
+| On tape | Ce que ca trouve |
+| --- | --- |
+| `marseille`, `olm` | le nom complet, l'abreviation de la source |
+| `om`, `ol`, `asse`, `losc`, `manu`, `barca`, `juve`, `bvb` | les surnoms usuels |
+| `malaga`, `atletico`, `alaves` | les noms accentues, sans accent |
+| `barce`, `rennai` | un debut de mot (a partir de 4 lettres) |
+| `real` | **trois** clubs : Madrid, Sociedad, Betis - mais pas Villarreal |
+| `manchester` | les deux Manchester |
+
+Un mot ne mord qu'au **debut d'un mot** du nom : `real` ne va pas chercher
+Villar**real**. En dessous de quatre lettres, il faut tomber juste (`bar` est
+l'abreviation de Barcelone).
+
+Un mot qui ne designe aucune equipe est refuse au demarrage, avec la liste des
+competitions ou il a ete cherche : une faute de frappe ne se traduit pas par un
+daemon muet pendant trois semaines. `butbutbut --list-teams --teams om` montre
+d'ailleurs ce que chaque mot attrape (`*` suivie, `-` exclue).
 
 ### Placer les cartes
 
@@ -299,7 +332,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**145 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
+**179 tests**, sans reseau ni ecran : la source est simulee par un `opener`, et
 la geometrie des cartes (empilement, debordement, troncature) est verifiee avec
 une police factice, donc sans tkinter.
 

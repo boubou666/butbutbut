@@ -179,8 +179,11 @@ class Watcher:
     def __init__(self, leagues, interval=DEFAULT_INTERVAL,
                  idle_interval=DEFAULT_IDLE_INTERVAL,
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
-                 opener=None, on_log=None):
+                 opener=None, on_log=None, teams=None):
         self.leagues = list(leagues)
+        # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
+        # les matchs, mais on ne signale que ceux qui concernent ces clubs.
+        self.teams = teams
         self.interval = max(5.0, float(interval))
         self.idle_interval = max(self.interval, float(idle_interval))
         self.kickoff_window = float(kickoff_window)
@@ -351,7 +354,11 @@ class Watcher:
         previous.seen_plays = keys
         previous.last_seen = stamp
 
-        return events if alert else []
+        if not alert:
+            return []
+        if self.teams is not None and not self.teams.matches(match):
+            return []
+        return events
 
     @staticmethod
     def _pick_play(match, team_id, seen_keys):

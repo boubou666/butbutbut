@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, espn, leagues, sound, watcher
+from . import __version__, espn, leagues, sound, teams, watcher
 
 DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
@@ -157,6 +157,78 @@ def play_goal_sound(path, min_gap: float = 2.0):
     return sound.play_async(path)
 
 
+def team_filter(args):
+    """Le filtre par equipe, ou None s'il n'y a rien a filtrer."""
+    chosen = teams.Filter(args.teams, args.exclude_teams)
+    return chosen if chosen.active else None
+
+
+def check_teams(args, selection) -> int:
+    """Confronte --teams / --exclude-teams au catalogue des competitions.
+
+    Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
+    le dire tout de suite que de laisser le daemon rester muet pour toujours.
+    """
+    chosen = team_filter(args)
+    if chosen is None:
+        return 0
+
+    catalogue = []
+    for league in selection:
+        catalogue.extend(espn.catalogue(league))
+        time.sleep(0.15)
+
+    if not catalogue:
+        print("butbutbut : impossible de verifier les equipes (source "
+              "injoignable), on continue sans verification.", file=sys.stderr)
+        return 0
+
+    found, orphans = chosen.resolve(catalogue)
+    for token in sorted(found):
+        clubs = found[token]
+        extra = "" if len(clubs) == 1 else "  ({} clubs)".format(len(clubs))
+        print("  {:<16} -> {}{}".format(token, ", ".join(clubs), extra))
+    if orphans:
+        print("butbutbut : aucune equipe ne correspond a {} dans {}. "
+              "Voir 'butbutbut --list-teams'.".format(
+                  ", ".join(repr(o) for o in orphans),
+                  leagues.describe(selection)), file=sys.stderr)
+        return 2
+    return 0
+
+
+def do_list_teams(args) -> int:
+    """Les equipes des competitions suivies, avec ce que le filtre attrape."""
+    selection = leagues.resolve(args.leagues, args.exclude)
+    chosen = team_filter(args)
+
+    for league in selection:
+        catalogue = espn.catalogue(league)
+        print()
+        print("{} - {} equipe(s)".format(league.name, len(catalogue)))
+        if not catalogue:
+            print("  (la source ne publie pas de liste pour cette competition)")
+            continue
+        for names in catalogue:
+            mark = " "
+            if chosen is not None:
+                if chosen.team_excluded(names):
+                    mark = "-"
+                elif chosen.team_matches(names):
+                    mark = "*"
+            print("  {} {:<30} {}".format(mark, names[0], names[-1]))
+        time.sleep(0.15)
+
+    print()
+    if chosen is not None:
+        print("'*' = suivie, '-' = exclue.")
+    print("Exemples :")
+    print("  butbutbut --teams om,psg")
+    print("  butbutbut --teams \"real madrid\" --leagues liga,ucl")
+    print("  butbutbut --exclude-teams psg")
+    return 0
+
+
 # --------------------------------------------------------------- actions -----
 
 def do_daemon(args) -> int:
@@ -169,6 +241,7 @@ def do_daemon(args) -> int:
             quiet=args.quiet)
         return 1
 
+    chosen_teams = team_filter(args)
     stopping = threading.Event()
 
     def request_stop(_signum, _frame):
@@ -185,11 +258,14 @@ def do_daemon(args) -> int:
         interval=args.interval,
         idle_interval=args.idle_interval,
         on_log=lambda message: log(message, quiet=args.quiet),
+        teams=chosen_teams,
     )
 
     log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s au repos"
         .format(os.getpid(), leagues.describe(selection), args.interval,
                 args.idle_interval), quiet=args.quiet)
+    if chosen_teams is not None:
+        log(chosen_teams.describe(), quiet=args.quiet)
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -343,6 +419,7 @@ def do_test(args) -> int:
 
 def do_scores(args) -> int:
     selection = leagues.resolve(args.leagues, args.exclude)
+    chosen = team_filter(args)
     now = datetime.now(timezone.utc)
     total = 0
 
@@ -353,9 +430,13 @@ def do_scores(args) -> int:
             print("{:<16} {}".format(league.name, "injoignable ({})".format(exc)))
             continue
 
+        if chosen is not None:
+            matches = [match for match in matches if chosen.matches(match)]
+
         print("\n{}".format(league.name))
         if not matches:
-            print("  (aucun match au programme)")
+            print("  (aucun match au programme)"
+                  if chosen is None else "  (aucun match de ces equipes)")
             continue
 
         for match in matches:
@@ -397,6 +478,9 @@ def do_status(args) -> int:
     print("butbutbut {}".format(__version__))
     print("  daemon      : {}".format(
         "actif (pid {})".format(pid) if pid else "arrete"))
+    chosen = team_filter(args)
+    if chosen is not None:
+        print("  equipes     : {}".format(chosen.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
     print("  suivi       : {}".format(summary))
@@ -537,6 +621,15 @@ def build_parser() -> argparse.ArgumentParser:
                              "--exclude liga,seriea")
     parser.add_argument("--list", action="store_true", dest="list_leagues",
                         help="liste les competitions surveillables et leurs noms")
+    parser.add_argument("--teams", default=None, metavar="LISTE",
+                        help="ne signaler que les matchs de ces equipes, "
+                             "separees par des virgules. Un match compte des "
+                             "qu'une des deux equipes y est. Ex : --teams om,psg")
+    parser.add_argument("--exclude-teams", default=None, metavar="LISTE",
+                        dest="exclude_teams",
+                        help="ne rien signaler des matchs de ces equipes")
+    parser.add_argument("--list-teams", action="store_true", dest="list_teams",
+                        help="liste les equipes des competitions suivies")
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL,
                         help="secondes entre deux releves quand un match est en "
                              "cours (defaut {})".format(DEFAULT_INTERVAL))
@@ -604,6 +697,13 @@ def main(argv=None) -> int:
 
     if args.list_leagues:
         return do_list(args)
+    if args.list_teams:
+        return do_list_teams(args)
+    if args.teams or args.exclude_teams:
+        failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
+        if failed:
+            return failed
+
     if args.screens:
         return do_screens(args)
     if args.paths:
