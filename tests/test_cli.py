@@ -1,11 +1,16 @@
 import io
+import json
+import os
 import re
+import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, leagues
+from butbutbut import cli, espn, leagues, state, watcher
 
 from helpers import event, payload
 
@@ -155,7 +160,8 @@ class TestPaths(unittest.TestCase):
     def test_all_paths_live_under_the_data_dir(self):
         paths = cli.paths()
         self.assertEqual(set(paths),
-                         {"data", "sound", "wav", "log", "pid", "config"})
+                         {"data", "sound", "wav", "log", "pid", "config",
+                          "state"})
         root = paths["data"]
         for key, value in paths.items():
             self.assertIsInstance(value, Path)
@@ -202,6 +208,238 @@ class TestPidFile(unittest.TestCase):
         import os
 
         self.assertTrue(cli._process_alive(os.getpid()))
+
+
+class TestActivity(unittest.TestCase):
+    """--status et --today, sur un dossier de donnees fabrique."""
+
+    LOG = "\n".join((
+        "2026-09-05 22:10:04  BUT [Ligue 1] Nice 1 - 0 Lens pour Nice - "
+        "But de G. Laborde (12')",
+        "{day} 18:43:27  BUT [Premier League] Arsenal 2 - 1 Chelsea pour "
+        "Arsenal - But de M. Odegaard (50')",
+        "{day} 18:51:10  BUT [Ligue 1] Angers 1 - 0 Stade Rennais pour "
+        "Angers - Penalty de C. Arcus (61')",
+        "{day} 18:52:44  BUT ANNULE [Ligue 1] Angers 0 - 0 Stade Rennais "
+        "pour Angers - Score corrige (62')",
+    ))
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        root = Path(self.tmp.name)
+        patcher = mock.patch.object(cli, "data_dir", return_value=root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+
+    def run_cli(self, argv):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        buffer = io.StringIO()
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            with redirect_stdout(buffer):
+                code = cli.main(argv + ["--leagues", "l1"])
+        return code, buffer.getvalue()
+
+    def write_state(self, **extra):
+        data = {
+            "version": 1, "pid": os.getpid(), "updated_at": time.time(),
+            "updated_text": "2026-09-06 18:52:44", "day": state.today(),
+            "goals_today": 3, "interval": 25, "idle_interval": 300,
+            "leagues": ["Ligue 1"], "total_matches": 4,
+            "matches": [{"league": "Premier League", "home": "Arsenal",
+                         "away": "Chelsea", "home_score": 2, "away_score": 1,
+                         "clock": "50'"}],
+        }
+        data.update(extra)
+        self.paths["state"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["state"].write_text(json.dumps(data), encoding="utf-8")
+
+    def pretend_the_daemon_runs(self):
+        self.paths["pid"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["pid"].write_text(str(os.getpid()))
+
+    # ------------------------------------------------------------ status ---
+
+    def test_status_shows_the_last_poll_and_the_live_matches(self):
+        self.pretend_the_daemon_runs()
+        self.write_state()
+        code, printed = self.run_cli(["--status"])
+        self.assertEqual(code, 0)
+        self.assertIn("il y a", printed)
+        self.assertIn("Arsenal 2 - 1 Chelsea", printed)
+        self.assertIn("1 match(s) sur 4 au programme", printed)
+        self.assertIn("buts du jour: 3", printed)
+
+    def test_status_says_when_there_is_no_state_yet(self):
+        code, printed = self.run_cli(["--status"])
+        self.assertEqual(code, 0)
+        self.assertIn("releve", printed)
+        self.assertNotIn("Traceback", printed)
+
+    def test_status_survives_a_truncated_state_file(self):
+        self.pretend_the_daemon_runs()
+        self.paths["state"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["state"].write_text('{"matches": [{"home": "Ars',
+                                       encoding="utf-8")
+        code, printed = self.run_cli(["--status"])
+        self.assertEqual(code, 0)
+        self.assertIn("releve", printed)
+
+    def test_status_warns_when_the_daemon_stopped_polling(self):
+        # Le signal qui manquait : un daemon vivant mais muet depuis 20 min
+        # alors qu'un match est en cours.
+        self.pretend_the_daemon_runs()
+        self.write_state(updated_at=time.time() - 1200)
+        _code, printed = self.run_cli(["--status"])
+        self.assertIn("(!)", printed)
+        # L'etat est perime : ses matchs ne sont plus affiches comme en cours.
+        self.assertNotIn("Arsenal 2 - 1 Chelsea", printed)
+
+    def test_status_ignores_a_goal_counter_from_another_day(self):
+        self.pretend_the_daemon_runs()
+        self.write_state(day="1998-07-12")
+        _code, printed = self.run_cli(["--status"])
+        self.assertIn("buts du jour: 0", printed)
+
+    # ------------------------------------------------------------- today ---
+
+    def test_today_recaps_the_goals_by_competition(self):
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text(self.LOG.format(day=state.today()),
+                                     encoding="utf-8")
+        code, printed = self.run_cli(["--today"])
+        self.assertEqual(code, 0)
+        self.assertIn("Premier League", printed)
+        self.assertIn("18:43:27", printed)
+        self.assertIn("Arsenal 2 - 1 Chelsea", printed)
+        self.assertIn("But de M. Odegaard (50')", printed)
+        self.assertIn("Penalty de C. Arcus (61')", printed)
+        self.assertIn("2 but(s) dans 2 competition(s)", printed)
+        # Le but annule est montre, mais ne compte pas.
+        self.assertIn("Score corrige", printed)
+        # Hier n'est pas aujourd'hui.
+        self.assertNotIn("G. Laborde", printed)
+
+    def test_today_without_a_journal(self):
+        code, printed = self.run_cli(["--today"])
+        self.assertEqual(code, 0)
+        self.assertIn("aucun but", printed)
+
+    def test_today_is_reachable_from_main(self):
+        self.assertIn("--today", cli.build_parser().format_help())
+
+
+class OneShot:
+    """Un watcher qui rend un but au premier passage, puis plus rien."""
+
+    def __init__(self, matches, events, stopping):
+        self.matches = matches
+        self.events = events
+        self.stopping = stopping
+        self.passes = 0
+
+    def tick(self):
+        self.passes += 1
+        if self.passes > 1:
+            self.stopping.set()
+            return []
+        return self.events
+
+    def all_matches(self):
+        return self.matches
+
+    def next_delay(self):
+        return 0.0
+
+    def plan_wait(self):
+        # Les boucles de surveillance annoncent leur attente au watcher, qui
+        # s'en sert pour reperer les trous (veille, processus gele). La
+        # doublure doit donc porter la meme methode que le vrai.
+        self.planned = True
+        return self.next_delay()
+
+
+class FakeStack:
+    """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
+
+    def __init__(self, state_path):
+        self.state_path = state_path
+        self.cards = []
+        self.drain = None
+        self.stopping = None
+
+    def every(self, _ms, callback):
+        self.drain = callback
+
+    def run(self):
+        # Le fil de surveillance travaille : on l'attend a son premier etat
+        # publie, puis on vide la file comme le ferait la boucle tkinter.
+        deadline = time.time() + 10
+        while time.time() < deadline and not self.state_path.exists():
+            time.sleep(0.01)
+        self.stopping.set()
+        self.drain()
+
+    def push(self, card, duration=None):
+        self.cards.append(card)
+
+    def stop(self):
+        pass
+
+
+class TestBothWatchLoopsFeedTheState(unittest.TestCase):
+    """Les deux chemins de surveillance publient le meme etat.
+
+    Ecrit parce que le chemin avec cartes est le seul qu'on utilise vraiment :
+    l'oublier reviendrait a n'avoir un --status utile qu'en --no-overlay.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+        self.paths["data"].mkdir(parents=True, exist_ok=True)
+        self.args = cli.build_parser().parse_args(["--quiet", "--no-sound"])
+
+    def guard_with_one_goal(self, stopping):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        goal = watcher.Event(kind=watcher.GOAL, match=matches[0], side="home",
+                             team=matches[0].home, opponent=matches[0].away,
+                             home_score=1, away_score=0, delta=1, play=None)
+        return OneShot(matches, [goal], stopping)
+
+    def reporter(self):
+        return state.Reporter(self.paths["state"],
+                              leagues=[leagues.BY_SLUG["fra.1"]],
+                              interval=25, idle_interval=300)
+
+    def test_headless_loop_publishes_the_state(self):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        cli._watch_headless(guard, self.args, stopping, self.reporter())
+
+        data = state.read(self.paths["state"])
+        self.assertEqual(data["goals_today"], 1)
+        self.assertEqual(data["matches"][0]["home"], "Angers")
+
+    def test_card_loop_publishes_the_state_too(self):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"])
+        stack.stopping = stopping
+        cli._watch_with_cards(guard, self.args, stopping, stack, self.reporter())
+
+        data = state.read(self.paths["state"])
+        self.assertEqual(data["goals_today"], 1)
+        self.assertEqual(data["matches"][0]["home"], "Angers")
+        self.assertEqual(len(stack.cards), 1)
 
 
 if __name__ == "__main__":
