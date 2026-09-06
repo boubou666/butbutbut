@@ -157,6 +157,23 @@ OPTIONS = (
            "Pas de carte au coup d'envoi, a la mi-temps, a la reprise ni a la "
            "fin du match : oui pour ne voir que les buts.",
            "non"),
+    Option("red_cards", _flag,
+           "Signaler aussi les cartons rouges, par une carte discrete et sans "
+           "son.",
+           "non"),
+    Option("before_kickoff", _integer,
+           "Annoncer un match ce nombre de minutes avant le coup d'envoi, une "
+           "seule fois et sans son. 0 desactive l'annonce.",
+           "5", fallback="desactive"),
+    Option("no_logos", _flag,
+           "Pas d'ecusson sur les cartes, et rien de telecharge. Les couleurs "
+           "des clubs, elles, restent.",
+           "non"),
+    Option("retry_fullscreen", _number,
+           "Quand une application en plein ecran masque l'ecran, repasser la "
+           "carte des que l'ecran se libere, pendant ce nombre de secondes au "
+           "plus. 0 desactive. Windows uniquement.",
+           "120", fallback="desactive"),
     Option("quiet", _flag,
            "Silence dans le terminal : oui pour n'ecrire que dans le journal.",
            "non"),

@@ -7,6 +7,61 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.3.0] - 2026-09-06
+
+Sept chantiers menes en parallele, chacun dans sa branche, fusionnes ensemble.
+
+### Ajoute
+
+- **Ecussons et couleurs des clubs sur la carte** : l'equipe qui marque prend
+  la couleur de son club, le filet vertical garde celle de la competition. La
+  couleur n'est retenue que si elle se lit sur le fond sombre (luminance WCAG,
+  seuil 3.5) ; sinon on descend sur la couleur secondaire, puis sur celle du
+  championnat - le noir sur noir du Paris FC finit ainsi en jaune Ligue 1. Les
+  ecussons viennent d'un cache disque et ne sont **jamais** attendus : une
+  carte sans ecusson s'affiche tout de suite et le telechargement se fait en
+  fond pour la prochaine fois. `--no-logos`.
+- **Fichier de configuration** (`butbutbut --write-config`) : plus besoin de
+  relancer l'installeur pour changer de championnat. La ligne de commande garde
+  toujours la priorite, y compris quand elle retape une valeur par defaut.
+- **Cartons rouges** (`--red-cards`), **annonce d'avant-match**
+  (`--before-kickoff N`, une seule fois par match) et **carte de fin de match
+  avec les buteurs**. Aucune des trois ne fait de bruit : seul un but declenche
+  le son.
+- **Fichier d'etat et `--today`** : `--status` dit maintenant quand a eu lieu
+  le dernier releve, quels matchs sont en cours et combien de buts sont tombes
+  aujourd'hui, avec un avertissement quand le releve est trop vieux pour la
+  cadence annoncee. `--today` recapitule la journee en relisant le journal, la
+  seule trace qui survive a un redemarrage.
+- **Publication PyPI** en Trusted Publishing, dans un workflow separe et inerte
+  tant que le proprietaire du depot ne l'a pas arme (voir README).
+
+### Corrige
+
+- **Plus de fausses cartes en sortant de veille.** Apres une suspension, la
+  source avait des heures d'avance sur notre derniere photo : le daemon criait
+  un but avec un ecart de trois et une minute perimee. Un trou d'horloge remet
+  desormais les competitions a l'etat "jamais photographie", ce qui reutilise le
+  chemin silencieux du premier releve. La detection compare le temps reellement
+  ecoule a l'attente annoncee, et non `time.monotonic()` a `time.time()` : la
+  semantique de monotonic vis-a-vis de la veille differe entre Windows et Linux,
+  ce detecteur-la aurait ete faux d'un cote.
+- **Une carte masquee par une application en plein ecran est signalee.** Une
+  fenetre `topmost` passe derriere un jeu ou un lecteur en plein ecran
+  exclusif : le but etait rate en silence. Detecte sous Windows, note au
+  journal, et `--retry-fullscreen` repasse la carte des que l'ecran se libere.
+- Les liens relatifs du README auraient tous ete morts sur la fiche PyPI, et le
+  sdist embarquait les tests sans `tests/helpers.py` : ils ne demarraient meme
+  pas.
+- Le fichier de configuration ignorait quatre options ajoutees en parallele par
+  d'autres branches. Un test verifie desormais que toute option durable du
+  parseur a sa cle.
+
+### Interne
+
+- 179 -> **403 tests**, toujours sans reseau ni ecran.
+
+
 ## [1.2.0] - 2026-09-06
 
 ### Ajoute
@@ -159,7 +214,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.2.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/boubou666/butbutbut/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/boubou666/butbutbut/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/boubou666/butbutbut/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/boubou666/butbutbut/compare/v1.0.1...v1.1.0

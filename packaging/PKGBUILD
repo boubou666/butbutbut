@@ -9,7 +9,7 @@
 #   systemctl --user enable --now butbutbut.service
 
 pkgname=butbutbut
-pkgver=1.2.0
+pkgver=1.3.0
 pkgrel=1
 pkgdesc="Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : le son part et le score s'affiche a l'ecran"
 arch=('any')

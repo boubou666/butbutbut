@@ -342,5 +342,35 @@ class TestMainWiring(ConfigCase):
                       config.example(cli.build_parser()))
 
 
+class TestNoOptionIsForgotten(unittest.TestCase):
+    """Le fichier doit suivre la ligne de commande, sinon il ment.
+
+    Ecrit apres avoir constate qu'une option ajoutee au parseur n'atterrissait
+    pas dans le fichier : `--write-config` proposait alors un fichier complet
+    ou quatre reglages etaient tout simplement absents.
+    """
+
+    # Ce qui n'a aucun sens dans un fichier : les commandes ponctuelles, et le
+    # chemin du fichier lui-meme.
+    ACTIONS = {
+        "test", "scores", "status", "stop", "paths", "screens", "today",
+        "list_leagues", "list_teams", "regen_sound", "write_config", "config",
+    }
+
+    def test_every_lasting_option_has_its_key(self):
+        parser = cli.build_parser()
+        lasting = {action.dest for action in parser._actions
+                   if action.dest not in ("help", "version")} - self.ACTIONS
+        known = {option.name for option in config.OPTIONS}
+        self.assertEqual(sorted(lasting - known), [],
+                         "options absentes du fichier de configuration")
+
+    def test_no_key_without_its_option(self):
+        parser = cli.build_parser()
+        dests = {action.dest for action in parser._actions}
+        for option in config.OPTIONS:
+            self.assertIn(option.name, dests, option.name)
+
+
 if __name__ == "__main__":
     unittest.main()
