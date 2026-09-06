@@ -1,0 +1,42 @@
+# Maintainer: boubou666
+# PKGBUILD Arch Linux. Depuis un clone du depot :
+#
+#   cd packaging && makepkg -si
+#
+# Le paquet installe le module et la commande ; le demarrage automatique reste
+# a la main de l'utilisateur :
+#
+#   systemctl --user enable --now butbutbut.service
+
+pkgname=butbutbut
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : le son part et le score s'affiche a l'ecran"
+arch=('any')
+url="https://github.com/boubou666/butbutbut"
+license=('MIT')
+depends=('python' 'tk')
+optdepends=('mpv: lecture du mp3 fourni'
+            'ffmpeg: lecture du mp3 fourni (ffplay)'
+            'alsa-utils: lecture du repli wav'
+            'xorg-xrandr: detection multi-ecrans sous X11')
+makedepends=('python-build' 'python-installer' 'python-setuptools' 'python-wheel')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+
+    install -Dm644 packaging/butbutbut.service \
+        "$pkgdir/usr/lib/systemd/user/butbutbut.service"
+    install -Dm644 README.md \
+        "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 LICENSE \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

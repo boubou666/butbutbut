@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LaunchAgent macOS (modele).
+  install.sh en genere automatiquement une version avec les bons chemins dans
+  ~/Library/LaunchAgents/com.butbutbut.goals.plist. Pour le faire a la main :
+
+      cp packaging/com.butbutbut.goals.plist ~/Library/LaunchAgents/
+      # remplace USERNAME par ton nom d'utilisateur
+      launchctl load ~/Library/LaunchAgents/com.butbutbut.goals.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.butbutbut.goals</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/USERNAME/.local/bin/butbutbut</string>
+        <string>--position</string><string>bottom-right</string>
+        <string>--interval</string><string>25</string>
+        <string>--quiet</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>

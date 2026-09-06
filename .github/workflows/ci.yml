@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: tests ${{ matrix.os }} / python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.9", "3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python: "3.8"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Les tests ne demandent ni ecran ni reseau, mais on installe tk pour
+      # que l'import de tkinter soit couvert la ou c'est un paquet a part.
+      - name: tk (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      - name: compilation
+        run: python -m compileall -q butbutbut tests
+
+      - name: tests
+        shell: bash
+        run: PYTHONPATH=".:tests" python -m unittest discover -s tests -v
+
+      - name: la ligne de commande repond
+        shell: bash
+        run: |
+          python -m butbutbut --version
+          python -m butbutbut --paths
+          python -m butbutbut --screens
+          python -m butbutbut --help > /dev/null
+
+  build:
+    name: paquet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+      - name: le son est bien dans le paquet
+        run: |
+          python -m zipfile -l dist/*.whl | grep -q 'butbutbut/assets/but.mp3'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: butbutbut-dist
+          path: dist/
+
+  shellcheck:
+    name: scripts shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: shellcheck install.sh uninstall.sh
