@@ -285,6 +285,14 @@ geometrie de l'empilement est testee sans tkinter.
 
 ---
 
+## Versions
+
+Les evolutions sont consignees dans [CHANGELOG.md](CHANGELOG.md), au format
+[Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Chaque version porte
+un tag `vX.Y.Z` et une
+[release](https://github.com/boubou666/butbutbut/releases) construite
+automatiquement, avec le paquet en piece jointe.
+
 ## Licence
 
 MIT.

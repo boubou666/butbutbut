@@ -59,9 +59,13 @@ class TestPlayers(unittest.TestCase):
             self.skipTest("Windows uniquement")
         self.assertIsNone(sound.find_player(Path("a.mp3")))
 
-    def test_unknown_file_never_raises(self):
-        self.assertIsNone(sound.play_async(Path("nulle-part.mp3"))
-                          if sys.platform != "win32" else None)
+    def test_a_missing_file_never_raises(self):
+        # Le contrat de play_async : ne jamais lever, quoi qu'on lui donne. Un
+        # but ne doit pas faire tomber le daemon parce qu'un son a disparu.
+        # Selon la plateforme il rend un handle (le lecteur externe echouera de
+        # son cote, sans bruit) ou None si aucun lecteur n'est disponible.
+        handle = sound.play_async(Path("nulle-part-du-tout.mp3"))
+        sound.release(handle)
 
     def test_release_and_stop_are_safe_to_call(self):
         sound.release(None)

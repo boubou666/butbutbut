@@ -17,9 +17,11 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+from . import __version__
+
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/scoreboard"
 
-USER_AGENT = "butbutbut/1.0 (+https://github.com/boubou666/butbutbut)"
+USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
 
 # Etats renvoyes par ESPN.
