@@ -99,6 +99,9 @@ butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
 butbutbut --today             # les buts signales aujourd'hui
 butbutbut --stop              # arrete le daemon
+butbutbut --check-update      # une version plus recente existe-t-elle ?
+butbutbut --update            # recupere, reinstalle, relance le daemon
+butbutbut --update --dev      # idem, mais la pointe de la branche principale
 butbutbut --paths             # ou vivent les donnees et le journal
 butbutbut --write-config      # ecrit un fichier de configuration d'exemple
 butbutbut --screens           # les ecrans detectes
@@ -652,6 +655,73 @@ fins de match. C'est cette trace que `butbutbut --today` relit.
 
 ---
 
+## Mettre a jour
+
+Une fois installe, butbutbut se met a jour tout seul, sur les trois systemes :
+
+```bash
+butbutbut --check-update    # dit si une version plus recente existe
+butbutbut --update          # recupere, reinstalle, relance le daemon
+```
+
+`--update` relit la fiche deposee par l'installeur (`install.json`, dans le
+dossier de donnees) pour retrouver **avec quelles options il avait ete
+installe**, puis rejoue l'installeur avec les memes reglages. Une mise a jour
+ne te ramenera pas aux cinq grands championnats si tu suivais `l1,pl,ucl`. Le
+daemon est arrete le temps de l'operation et redemarre derriere, sur la meme
+selection. S'il echoue en route, le daemon repart quand meme, sur l'ancien
+code.
+
+C'est la **derniere release** qui est installee, telechargee depuis GitHub et
+depliee dans un dossier temporaire. Ton depot clone, si tu en as garde un,
+n'est pas touche : l'amener sur l'etiquette voudrait dire le laisser en HEAD
+detachee, et il t'appartient.
+
+### La pointe, avec `--dev`
+
+```bash
+butbutbut --check-update --dev    # ou en est la branche principale ?
+butbutbut --update --dev          # y aller
+```
+
+La, le depot clone sert s'il est encore la (`git pull --ff-only`), et l'archive
+de `main` prend le relais sinon. Cette seconde voie ne demande ni git ni le
+clone d'origine, donc une installation dont tu as efface le dossier depuis se
+met a jour quand meme.
+
+Les deux commandes visent la meme chose dans chaque mode : des versions par
+defaut, des commits avec `--dev`. `--check-update` ne peut donc pas t'annoncer
+une release et `--update` t'en installer une autre.
+
+### Le fichier de configuration reste maitre
+
+L'installeur ne pose dans le service de demarrage que les options que **tu**
+lui as passees. `./install.sh --leagues l1,pl,ucl` pose `--leagues`, et rien
+d'autre. Les valeurs par defaut ne sont pas materialisees en arguments, sans
+quoi elles ecraseraient la meme cle de `butbutbut.conf`, la ligne de commande
+l'emportant toujours sur le fichier.
+
+Autrement dit : `./install.sh` tout court laisse le fichier de configuration
+maitre de tout, et `--update` respecte ce choix puisqu'il rejoue les memes
+options. La seule exception est `--quiet`, toujours pose, un daemon de session
+ecrivant sur une sortie qui n'existe pas.
+
+Tes sons, ton fichier de configuration et ton journal ne sont pas touches :
+ils vivent dans le dossier de donnees, l'installeur ne remplace que le code.
+
+Si butbutbut ne vient pas des scripts d'installation, `--update` refuse et te
+renvoie vers l'outil qui le gere plutot que d'ecraser des fichiers qui ne lui
+appartiennent pas :
+
+| Installe par | Mise a jour |
+| --- | --- |
+| `install.sh` / `install.ps1` | `butbutbut --update` |
+| `pipx install butbutbut` | `pipx upgrade butbutbut` |
+| `pip install --user butbutbut` | `pip install --upgrade butbutbut` |
+| le `PKGBUILD` d'Arch, un paquet de la distribution | `pacman -Syu`, `apt upgrade`... |
+
+---
+
 ## Desinstallation
 
 ```bash
@@ -670,7 +740,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**403 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**459 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

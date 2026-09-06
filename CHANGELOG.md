@@ -7,6 +7,33 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Mise a jour automatique**, sur le modele de
+  [doot](https://github.com/boubou666/doot) : `butbutbut --update` recupere la
+  derniere version, rejoue l'installeur et relance le daemon ;
+  `butbutbut --check-update` se contente de dire si une version plus recente
+  existe.
+- L'installeur depose une fiche `install.json` dans le dossier de donnees :
+  d'ou vient le code, quel commit, et **avec quelles options**. `--update` la
+  relit, donc une mise a jour rejoue les memes competitions, le meme coin et la
+  meme cadence - qui suivait `l1,pl,ucl` ne se retrouve pas ramene aux cinq
+  grands championnats, ni le daemon relance sans sa selection.
+- C'est la **derniere release** qui est installee, depliee depuis son archive.
+  Le depot clone n'est pas touche dans ce mode : l'amener sur l'etiquette
+  demanderait de le laisser en HEAD detachee, et il appartient a son
+  proprietaire. `--dev` vise la pointe de la branche principale, et la le clone
+  sert s'il est encore la (`git pull --ff-only`), l'archive de `main` prenant
+  le relais sinon. Cette seconde voie ne demande ni git ni le clone d'origine :
+  une installation dont le dossier a ete efface se met a jour quand meme.
+- `--check-update` et `--update` visent enfin la meme chose : des versions par
+  defaut, des commits avec `--dev`. La premiere mouture annoncait une release
+  et installait la pointe de `main`.
+- `--update` refuse d'ecraser une installation qui ne vient pas des scripts et
+  renvoie vers l'outil qui la gere : `pipx upgrade butbutbut`,
+  `pip install --upgrade butbutbut`, ou le gestionnaire de paquets de la
+  distribution.
+
 ### Corrige
 
 - **La publication PyPI ne pouvait pas se declencher.** Elle vivait dans un
@@ -20,6 +47,20 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   autorise UN nom de fichier de workflow, et c'est celui-la qui est declare
   cote pypi.org. Le declenchement manuel du meme workflow sert de rattrapage.
   Le README ne promet plus un automatisme qui n'existait pas.
+- L'installeur arrete le daemon avant de remplacer le code. Il continuait
+  jusque-la sur des fichiers effaces, et ne reprenait le nouveau code qu'a la
+  session suivante.
+- Une mise a jour interrompue rend le daemon. Le redemarrage vit desormais
+  dans un `finally` : un telechargement coupe ou un installeur en echec
+  laissait sinon la surveillance eteinte jusqu'a la session suivante, sans que
+  personne s'en apercoive.
+- `--update` explique ce qui a echoue au lieu d'imprimer une pile d'appels.
+- **L'installeur n'ecrase plus le fichier de configuration.** Il posait ses
+  valeurs par defaut en arguments du service de demarrage (`--position`,
+  `--interval`), et la ligne de commande l'emportant toujours sur le fichier,
+  ces deux reglages de `butbutbut.conf` etaient ignores en silence. Il ne pose
+  desormais que les options qu'on lui passe, `--quiet` excepte. Le bug touchait
+  deja `./install.sh` rejoue a la main, avant meme l'arrivee de `--update`.
 
 ## [1.3.0] - 2026-09-06
 

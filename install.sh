@@ -6,6 +6,11 @@
 #   ./install.sh --leagues l1,pl          # ne suit que ces championnats
 #   ./install.sh --position top-right     # coin ou les cartes s'empilent
 #
+# Les options passees ici sont notees dans install.json, au chaud dans le
+# dossier de donnees, et `butbutbut --update` les rejoue telles quelles.
+# Celles qu'on ne passe pas ne sont pas posees non plus dans le service de
+# demarrage : le fichier de configuration reste alors maitre de ces reglages.
+#
 # Aucun droit root, aucune dependance Python : tout est dans la stdlib.
 set -euo pipefail
 
@@ -15,10 +20,13 @@ BIN_DIR="$HOME/.local/bin"
 APP_DIR="$DATA_HOME/$APP_NAME/app"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Vides tant qu'on ne les a pas recus. Materialiser un defaut en argument du
+# service ecraserait silencieusement la meme cle du fichier de configuration,
+# que la ligne de commande l'emporte toujours sur le fichier.
 AUTOSTART=1
 LEAGUES=""
-POSITION="bottom-right"
-INTERVAL=25
+POSITION=""
+INTERVAL=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -26,7 +34,7 @@ while [ $# -gt 0 ]; do
         --leagues) LEAGUES="$2"; shift 2 ;;
         --position) POSITION="$2"; shift 2 ;;
         --interval) INTERVAL="$2"; shift 2 ;;
-        -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
         *) echo "option inconnue : $1" >&2; exit 2 ;;
     esac
 done
@@ -35,11 +43,20 @@ say()   { printf '  %s\n' "$*"; }
 head_() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 # Les arguments du daemon, en tableau : ils traversent proprement le plist,
-# l'unite systemd et le fichier .desktop.
-DAEMON_ARGS=(--position "$POSITION" --interval "$INTERVAL" --quiet)
+# l'unite systemd et le fichier .desktop. Seul --quiet est pose sans condition,
+# un daemon de session ecrivant sur une sortie qui n'existe pas ; le journal
+# reste alimente de toute facon.
+DAEMON_ARGS=()
 if [ -n "$LEAGUES" ]; then
-    DAEMON_ARGS=(--leagues "$LEAGUES" "${DAEMON_ARGS[@]}")
+    DAEMON_ARGS+=(--leagues "$LEAGUES")
 fi
+if [ -n "$POSITION" ]; then
+    DAEMON_ARGS+=(--position "$POSITION")
+fi
+if [ -n "$INTERVAL" ]; then
+    DAEMON_ARGS+=(--interval "$INTERVAL")
+fi
+DAEMON_ARGS+=(--quiet)
 ARGS_LINE="${DAEMON_ARGS[*]}"
 
 head_ "butbutbut - installation"
@@ -115,6 +132,20 @@ fi
 
 # ------------------------------------------------------------ fichiers -------
 head_ "Copie des fichiers"
+
+# Un daemon deja lance continuerait sur du code efface : on l'arrete, et
+# l'autostart le relance en fin d'installation. C'est aussi ce que fait
+# `butbutbut --update`, qui rejoue ce script.
+PID_FILE="$DATA_HOME/$APP_NAME/butbutbut.pid"
+if [ -f "$PID_FILE" ]; then
+    DAEMON_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+        kill "$DAEMON_PID" 2>/dev/null || true
+        rm -f "$PID_FILE"
+        say "daemon      : arrete (pid $DAEMON_PID) le temps de la copie"
+    fi
+fi
+
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR" "$BIN_DIR"
 cp -R "$SRC_DIR/butbutbut" "$APP_DIR/butbutbut"
@@ -135,6 +166,34 @@ case ":$PATH:" in
     *) say "ATTENTION   : $BIN_DIR n'est pas dans ton PATH"
        say "  -> ajoute  export PATH=\"\$HOME/.local/bin:\$PATH\"  a ton ~/.bashrc / ~/.zshrc" ;;
 esac
+
+# Fiche d'installation, relue par `butbutbut --update` : d'ou vient le code,
+# quel commit, et avec quelles options il a ete installe.
+COMMIT=""
+if [ -d "$SRC_DIR/.git" ] && command -v git >/dev/null 2>&1; then
+    COMMIT="$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null || true)"
+fi
+VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' \
+    "$SRC_DIR/butbutbut/__init__.py" 2>/dev/null || true)"
+RECORD_DIR="$DATA_HOME/$APP_NAME"
+mkdir -p "$RECORD_DIR"
+cat > "$RECORD_DIR/install.json" <<EOF
+{
+  "source": "$SRC_DIR",
+  "commit": "$COMMIT",
+  "version": "$VERSION",
+  "leagues": "$LEAGUES",
+  "position": "$POSITION",
+  "interval": ${INTERVAL:-null},
+  "autostart": $([ "$AUTOSTART" -eq 1 ] && echo true || echo false),
+  "app_dir": "$APP_DIR",
+  "bin_dir": "$BIN_DIR",
+  "python": "$PYTHON",
+  "platform": "$(uname -s)",
+  "installed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+EOF
+say "fiche       : $RECORD_DIR/install.json"
 
 # --------------------------------------------------------- demarrage ---------
 if [ "$AUTOSTART" -eq 1 ]; then
@@ -207,6 +266,7 @@ head_ "Termine"
 say "Voir l'empilement   : butbutbut --test 3"
 say "Les matchs du jour  : butbutbut --scores"
 say "Etat                : butbutbut --status"
+say "Mettre a jour       : butbutbut --update"
 say "Desinstaller        : ./uninstall.sh"
 printf '\n'
 "$BIN_DIR/butbutbut" --status || true
