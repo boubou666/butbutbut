@@ -1291,6 +1291,10 @@ penalty `(sp)`. La carte gagne une ligne par camp buteur, mais jamais un pixel
 de plus que sa largeur maximale : une liste trop longue est coupee par des
 points de suspension plutot que de deborder.
 
+Un soir de coupe, cette meme carte porte en plus le verdict de la seance de
+tirs au but - `Tirs au but 3 - 5 : Stade de Reims` - parce qu'un `1 - 1` ne dit
+pas qui se qualifie. Voir [Les tirs au but](#les-tirs-au-but).
+
 Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux il faut
 un lecteur : `mpv` ou `ffmpeg` pour le mp3 ; avec seulement `aplay`/`paplay`,
 butbutbut retombe sur une **corne de stade synthetisee** en wav, generee par le
@@ -1633,17 +1637,67 @@ la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
 touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
 pareil partout.
 
-L'aide, `--status`, `--scores`, `--screens`, `--list` et `--today` suivent, y
-compris les valeurs qu'ils affichent - `il y a 12 s` devient `vor 12 s`, pas
-seulement l'etiquette devant.
+**Toutes** les commandes suivent, y compris les valeurs qu'elles affichent -
+`il y a 12 s` devient `vor 12 s`, pas seulement l'etiquette devant : l'aide,
+`--status`, `--scores`, `--next`, `--table`, `--screens`, `--list`,
+`--list-teams`, `--today`, `--week`, `--month`, `--since`, `--top-scorers`,
+`--stats`, `--export` et `--test-hook`.
 
-**Ce qui reste en francais** : le journal, et **par choix**. `--today` le
-relit, et un fichier ecrit avant un changement de langue resterait sinon a
-moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!` pendant
-que le journal note `BUT`.
+Les colonnes tiennent dans les cinq langues, et c'est cette contrainte-la qui
+decide de la traduction d'une etiquette de `--status` : le deux-points tombe au
+meme caractere partout, quitte a abreger (`rattrapage` devient `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+Les en-tetes du classement de `--table` suivent la meme regle, et pour la meme
+raison qu'elles etaient un probleme : `G`, `N`, `P` sont les initiales de
+gagne, nul et perdu, et ne veulent rien dire pour qui lit la page en anglais.
+Elles deviennent `W D L`, `G E P`, `V N P`, `S U N` - chacune tenant dans une
+colonne de six signes, ce qu'un test verifie langue par langue plutot que de
+s'en remettre a l'oeil.
+
+**Ce qui reste en francais** :
+
+- **le journal, et par choix.** `--today` le relit, et un fichier ecrit avant
+  un changement de langue resterait sinon a moitie illisible pour le
+  relecteur. Une carte peut donc afficher `TOR!` pendant que le journal note
+  `BUT` - et une ligne citee par `--today` reste dans la langue ou elle a ete
+  ecrite ;
+- **les dates.** Les jours de la semaine (`lundi`, `mar.`), `(aujourd'hui)` et
+  `(demain)`, le compte a rebours de `--next` (`dans 3 h`) sont ecrits en dur
+  dans `cli.py` et ne passent pas par le catalogue ;
+- **les valeurs de `--status` qui vont aussi au journal.** Trois familles, et
+  une seule raison pour les trois : la meme phrase sert a l'ecran ET a une
+  ligne de journal, qui reste francaise. Les lignes `silence` et `voix`
+  (`silence.describe()`, `speech.describe()`), la ligne `equipes`
+  (`teams.Filter.describe()`, que le daemon note aussi au demarrage), et le
+  detail d'un son nomme qu'on ne peut pas jouer (`sound.unusable()`, que le
+  journal reprend quand un fichier disparait en cours de soiree). Les
+  etiquettes, elles, sont traduites ;
+- **le fichier de configuration commente** qu'ecrit `--write-config`, et les
+  six messages qui refusent un argument impossible : les quatre du demarrage
+  (`--speed 0`, `--record` avec `--replay`, `--retry-fullscreen` et
+  `--quiet-while-presenting` hors de Windows) et les deux du rejeu (un
+  enregistrement illisible, un enregistrement qui ne nomme aucune competition
+  reconnaissable) ;
+- **le nom des sports dans une phrase a trou.** `tout le {} (N competitions)`
+  recoit le nom du sport, que `sports.py` garde en francais pour le journal :
+  la traduire ferait une phrase a moitie traduite. Les titres du catalogue,
+  eux, sont traduits (`Ice hockey (on request)`, `Eishockey (auf Wunsch)`).
 
 Une phrase qu'un catalogue ne porte pas retombe sur le francais plutot que de
-disparaitre : une traduction incomplete laisse le programme utilisable.
+disparaitre : une traduction incomplete laisse le programme utilisable. C'est
+ce qui a permis a sept commandes d'etre livrees en francais dans les cinq
+langues sans que rien ne casse - et sans que personne ne le voie. Un test
+compare maintenant, langue par langue, les phrases que le code donne a traduire
+a celles que les catalogues portent : ce qui reste en francais y est nomme une
+par une, avec sa raison.
+
+Ce garde-fou a une portee exacte, et elle vaut la peine d'etre dite : il ne
+voit que ce qui **passe par `tr()`**. Une phrase ecrite en dur, qui n'est
+jamais donnee a traduire, lui est invisible - c'est le cas des trois familles
+ci-dessus et des jours de la semaine. Il empeche la dette de revenir par la
+porte qu'elle avait empruntee sept fois ; il ne remplace pas de regarder
+l'ecran dans les cinq langues.
 
 L'ordre de decision, du plus fort au plus faible :
 
@@ -1737,6 +1791,88 @@ Deux garde-fous :
   lancer le daemon un dimanche a 17 h rejouerait tous les buts deja marques ;
 - **un score qui descend** (but refuse par la VAR) affiche une carte orange
   `BUT ANNULE`, sans son.
+
+### Les tirs au but
+
+Une seance de tirs au but est le seul moment ou la source dit "but" onze fois
+sans que personne ne marque. Tout depend donc d'une question, et d'une seule :
+**est-ce que le score publie bouge pendant la seance ?** La reponse a ete allee
+chercher sur des matchs a elimination directe deja joues, et elle est **non**.
+
+| Seance | Ce que la source publie |
+| --- | --- |
+| Chelsea - Liverpool, finale de la FA Cup, 14 mai 2022 | score `0 - 0`, `shootoutScore` 5 et 6, onze tirs, statut `STATUS_FINAL_PEN`, detail `FT-Pens` |
+| Angers - Reims, Coupe de France, 25 fevrier 2025 | score `1 - 1`, **aucun `shootoutScore`**, huit tirs horodates de 91' a 99', meme statut |
+| Argentine - France, finale de la Coupe du monde, 18 decembre 2022 | score `3 - 3`, `shootoutScore` 4 et 2, six tirs, meme statut |
+| Atletico - Real Madrid, Ligue des champions, 12 mars 2025 | score `1 - 0`, `shootoutScore` 2 et 4, six tirs, meme statut |
+
+Le score reste celui de la fin du temps reglementaire, et la seance est publiee
+**a cote**. Donc **pas de soir de coupe a dix cornes** : la detection ne
+regarde que le score, le score ne bouge pas, rien ne se declenche. Le bug qu'on
+redoutait n'existe pas, et c'est la premiere chose que ce chantier a etablie.
+
+Il y a en revanche le manque inverse, et il est double.
+
+**Un tir au but se presentait comme un but.** Chaque tir reussi est publie dans
+le meme tableau que les buts, avec le meme drapeau :
+
+```json
+{"type": {"text": "Penalty - Scored"}, "scoreValue": 1, "scoringPlay": true,
+ "penaltyKick": true, "shootout": true, "clock": {"displayValue": "120'"}}
+```
+
+Ce tableau-la est celui qui habille les cartes et que `--scores` recopie. Une
+finale de FA Cup terminee 0-0 sortait donc une carte `FIN DU MATCH` annoncant
+`Chelsea 0 - 0 Liverpool` suivie de **onze buteurs**. Les tirs sont maintenant
+mis de cote des la lecture : le drapeau `shootout` est le seul qui les
+distingue d'un vrai but, et c'est le seul auquel on puisse se fier puisque le
+score, lui, les dement.
+
+**Une seance ne disait pas qui se qualifiait.** `FIN DU MATCH / Angers 1 - 1
+Stade de Reims` est exact et rate l'essentiel. La troisieme ligne le dit
+maintenant, et le vainqueur y est mis en valeur comme un buteur l'est ailleurs :
+
+```
+FIN DU MATCH
+Angers 1 - 1 Stade de Reims
+Tirs au but 3 - 5 : Stade de Reims
+Angers : B. Dieng 90'+5'
+Stade de Reims : K. Nakamura 79'
+```
+
+Le total vient de `shootoutScore` quand la source le donne. Il manque environ
+une fois sur dix - la Coupe de France du 25 fevrier 2025 ne le portait pas,
+sans rien qui la distingue des autres soirs - et on compte alors les tirs
+reussis, ce qui donne le meme nombre partout ou les deux etaient la. Le nom du
+vainqueur, lui, vient du drapeau `winner` : c'est la seule chose de la reponse
+qui sache dire qui continue sur un 1-1. Sans lui, la carte se contente de
+`Tirs au but` - elle n'invente pas un qualifie.
+
+La carte reste **muette**, comme toutes les fins de match : un verdict s'ecrit,
+il ne se corne pas.
+
+Le **hockey** n'a jamais eu ce probleme, et pour une raison de reglement : sa
+fusillade **donne un but au vainqueur**, dans le score du match. Vegas 4-3
+Chicago le 3 decembre 2025, statut `STATUS_FINAL` et detail `Final/SO` - le
+score bouge donc pour de vrai, une fois, au bon moment, et butbutbut annonce ce
+but comme les autres. C'est correct : la NHL aussi l'appelle le but vainqueur.
+La carte de fin de match ajoute seulement `Vainqueur aux tirs au but : Vegas
+Golden Knights`, parce qu'un 4-3 qui n'a pas eu lieu dans le temps
+reglementaire merite d'etre explique. Noter au passage que le hockey ne le dit
+pas au meme endroit : son statut reste `STATUS_FINAL`, seul le detail change.
+
+Le **rugby a XV** n'a aucun marqueur : le reglement prevoit bien un concours de
+coups de pied, il n'a jamais servi dans un match professionnel, et guetter une
+chaine qu'ESPN n'a jamais eu a ecrire serait guetter une invention.
+
+**Ce qui reste ouvert.** Tout ceci est etabli sur des seances **terminees**. Ce
+que la source publie pendant les quelques minutes que dure la seance - un
+statut `STATUS_SHOOTOUT` ? un score qui monterait puis reviendrait ? - n'a pas
+pu etre observe : il aurait fallu etre devant un match a elimination directe au
+bon moment. Le score final etant celui du temps reglementaire dans les quatre
+competitions relevees, il n'y a pas de raison de croire qu'il bouge entre-temps
+- mais c'est une deduction, pas une observation, et elle est ecrite ici pour
+que le jour ou quelqu'un verra une carte de trop, il sache ou regarder.
 
 ### Sortie de veille
 
@@ -2774,7 +2910,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1251 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1298 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -2786,6 +2922,32 @@ et les deux doivent rendre exactement la meme suite d'evenements.
 
 Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
 suite : c'est [le canari](#le-canari), `python tools/canari.py`.
+
+### Ou elle tourne
+
+L'[integration continue](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
+la rejoue sur Linux, Windows et macOS, en **Python 3.9, 3.12, 3.13 et 3.14**,
+plus la **3.8** sous Linux seul. Ce sont les deux bouts qui comptent : la 3.8
+tient le plancher annonce dans les prerequis, et la 3.14 est celle sur laquelle
+le depot s'ecrit tous les jours - longtemps la seule a n'avoir jamais ete
+essayee, ce qui est exactement la mauvaise a oublier. Les versions du milieu
+(3.10, 3.11) sont tenues sans etre essayees : c'est un pari assume, ce qui
+casse d'une version a l'autre casse rarement au milieu seul. Et le plancher ne
+passe que sous Linux, parce qu'on lui demande de prouver que le code se lit
+encore en 3.8, pas que les trois systemes divergent a cette version-la plutot
+qu'aux autres.
+
+Ce plancher, `3.8`, est ecrit a seize endroits. Neuf se nomment un par un :
+`requires-python`, les deux badges, les deux listes de prerequis, et les quatre
+garde-fous des installeurs - la comparaison qui refuse, et la phrase qui
+l'explique. Les sept autres sont les en-tetes de `recipes/`, et ceux-la ne se
+nomment pas : ils se **decouvrent**, sans quoi la recette ecrite demain
+echapperait au controle - ce qui est precisement le defaut qu'on repare ici.
+
+Le plafond, lui, n'est ecrit nulle part : il se deduit des classifiers du
+paquet et de la matrice. Un test du depot les confronte tous, parce que c'est
+exactement ainsi que la 3.14 avait pu manquer - rien ne reliait ces fichiers
+entre eux, et tout restait vert.
 
 ---
 

@@ -13,7 +13,10 @@ de la reponse, elle, est presque la meme partout - presque, et c'est tout le
 sujet de `_parse_details` :
 
   - le **football** publie ses actions dans `competitions[].details`, chacune
-    portee par des drapeaux (`scoringPlay`, `redCard`, `ownGoal`...) ;
+    portee par des drapeaux (`scoringPlay`, `redCard`, `ownGoal`...). Le
+    drapeau `shootout` en fait partie, et c'est le seul qui contredise le
+    score : un tir au but est marque `scoringPlay` alors que le score du match
+    ne bouge pas (voir _soccer_details) ;
   - le **rugby** publie le meme tableau, mais **sans aucun drapeau** : c'est
     `type.id` qui dit ce qui s'est passe (1 essai, 2 transformation, 3
     penalite, 4 drop, 6 carton rouge). Lu avec le lecteur du football, un match
@@ -232,12 +235,14 @@ class Match:
     __slots__ = ("id", "league", "home", "away", "home_id", "away_id",
                  "home_names", "away_names", "home_score", "away_score",
                  "state", "status_name", "detail", "clock", "start", "plays",
-                 "red_cards", "home_logo", "away_logo", "home_color",
+                 "red_cards", "shootout", "home_shootout", "away_shootout",
+                 "winner", "home_logo", "away_logo", "home_color",
                  "away_color", "home_alt", "away_alt")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
                  status_name="", home_names=(), away_names=(), red_cards=(),
+                 shootout=(), home_shootout=0, away_shootout=0, winner="",
                  home_logo="", away_logo="", home_color="", away_color="",
                  home_alt="", away_alt=""):
         self.id = id
@@ -261,6 +266,21 @@ class Match:
         # Les expulsions sont tenues a part : `plays` habille les buts, et un
         # carton rouge n'a jamais decrit un but.
         self.red_cards = list(red_cards)
+        # Les tirs au but, tenus a part pour la meme raison, en plus fort : la
+        # source les publie dans le meme tableau que les buts, avec le meme
+        # `scoringPlay`, alors qu'ils ne changent PAS le score du match. Les
+        # laisser dans `plays` ferait dire a une carte de fin de match "0 - 0"
+        # suivi de onze buteurs. Voir _soccer_details().
+        self.shootout = list(shootout)
+        # Le resultat de la seance. Il vient de `shootoutScore` quand la source
+        # le donne, du decompte des tirs reussis sinon : les deux se rejoignent
+        # partout ou l'on a pu les comparer, et `shootoutScore` manque une fois
+        # sur dix.
+        self.home_shootout = int(home_shootout or 0)
+        self.away_shootout = int(away_shootout or 0)
+        # "home", "away" ou "" : le cote que la source declare vainqueur. Seul
+        # ce drapeau sait dire qui se qualifie sur un 1-1.
+        self.winner = winner
         # L'habillage du club : l'URL de son ecusson et ses deux couleurs, en
         # #rrggbb. Vides quand la source ne les donne pas.
         self.home_logo = home_logo
@@ -291,6 +311,47 @@ class Match:
     def score_line(self) -> str:
         return "{} {} - {} {}".format(self.home, self.home_score,
                                       self.away_score, self.away)
+
+    @property
+    def on_penalties(self) -> bool:
+        """Vrai quand la source dit que ce match s'est decide aux tirs au but.
+
+        Un match en cours ne compte pas, meme pendant la seance : tant qu'il
+        n'est pas fini il n'y a pas de verdict a annoncer, et la carte qui
+        porte ce verdict est celle de la fin du match.
+
+        Les marqueurs viennent du sport (voir sports.py) parce que la source ne
+        les ecrit pas au meme endroit d'un sport a l'autre : le football pose
+        un etat de fin a lui (STATUS_FINAL_PEN), le hockey garde STATUS_FINAL
+        et ne le dit que dans le detail ("Final/SO").
+        """
+        if not self.finished:
+            return False
+        marks = self.sport.shootout
+        if not marks:
+            return False
+        haystack = "{} {}".format(self.status_name, self.detail).upper()
+        return any(mark in haystack for mark in marks)
+
+    @property
+    def winner_name(self) -> str:
+        """Le nom de l'equipe declaree vainqueur, ou une chaine vide."""
+        if self.winner == "home":
+            return self.home
+        if self.winner == "away":
+            return self.away
+        return ""
+
+    def shootout_line(self) -> str:
+        """Le score de la seance, "3 - 5", ou "" quand on ne le sait pas.
+
+        Le hockey tombe toujours dans le "" : sa fusillade donne un but au
+        vainqueur et se lit deja dans le score du match, la source ne publie ni
+        tir ni total pour elle.
+        """
+        if not (self.home_shootout or self.away_shootout):
+            return ""
+        return "{} - {}".format(self.home_shootout, self.away_shootout)
 
     def seconds_until_kickoff(self, now=None) -> float | None:
         if self.start is None:
@@ -528,15 +589,26 @@ def _detail_common(detail) -> tuple:
 
 
 def _soccer_details(competition) -> tuple:
-    """(buts, cartons rouges) d'un match de football.
+    """(buts, cartons rouges, tirs au but) d'un match de football.
 
-    Les deux vivent dans le meme tableau `details` : un but porte
-    `scoringPlay`, une expulsion porte `redCard`. Ils sont separes ici parce
-    qu'ils ne servent pas a la meme chose (un but est habille par un buteur,
-    une expulsion se signale pour elle-meme).
+    Les trois vivent dans le meme tableau `details` : un but porte
+    `scoringPlay`, une expulsion porte `redCard`, et un tir au but porte...
+    `scoringPlay` lui aussi, plus `shootout`. Ils sont separes ici parce qu'ils
+    ne servent pas a la meme chose (un but est habille par un buteur, une
+    expulsion se signale pour elle-meme, une seance se resume a la fin).
+
+    Le tri du troisieme est ce qui compte le plus, et il vient d'une
+    observation : **un tir au but ne fait pas monter le score du match**.
+    Verifie sur des seances reelles (FA Cup 2022, Coupe de France 2025, Coupe
+    du monde 2022) - la source garde le score du temps reglementaire et publie
+    la seance a cote. Un tir laisse dans `plays` serait un but que le score
+    dement :
+    onze buteurs sous un "0 - 0" sur la carte de fin de match, et onze lignes
+    de buts dans `--scores`.
     """
     goals = []
     red_cards = []
+    shootout = []
     for index, detail in enumerate(competition.get("details") or []):
         if not isinstance(detail, dict):
             continue
@@ -563,9 +635,15 @@ def _soccer_details(competition) -> tuple:
             shootout=bool(detail.get("shootout")),
             red_card=red and not scoring,
         )
+        if play.shootout:
+            # Un tir au but est mis de cote meme quand la source le marque
+            # aussi comme une expulsion : c'est le drapeau le plus precis qui
+            # gagne, et il n'y a pas d'autre lecture possible d'un tir.
+            shootout.append(play)
+            continue
         # Un but reste un but, meme si la source colle les deux drapeaux.
         (goals if scoring else red_cards).append(play)
-    return goals, red_cards
+    return goals, red_cards, shootout
 
 
 # Ce que le rugby publie, releve sur la vraie source (Top 14, Six Nations,
@@ -596,7 +674,11 @@ RUGBY_RED_CARD = ("6",)
 
 
 def _rugby_details(competition) -> tuple:
-    """(actions de points, cartons rouges) d'un match de rugby.
+    """(actions de points, cartons rouges, tirs au but) d'un match de rugby.
+
+    La troisieme liste est toujours vide, et le restera : le rugby a XV ne se
+    departage pas aux tirs au but (voir sports.py). Elle est rendue quand meme
+    pour que les deux lecteurs aient la meme forme.
 
     Meme tableau `details` qu'au football, mais sans le moindre drapeau : la
     nature de l'action se lit dans `type.id`, et son nom dans `type.text`. Une
@@ -635,22 +717,38 @@ def _rugby_details(competition) -> tuple:
             points=points,
         )
         (red_cards if scored is None else scores).append(play)
-    return scores, red_cards
+    return scores, red_cards, []
 
 
 def _parse_details(competition, sport=None) -> tuple:
-    """(actions de score, cartons rouges) du match, selon le sport.
+    """(actions de score, cartons rouges, tirs au but) du match, selon le sport.
 
     Le hockey passe par la branche vide : la source ne publie pas de tableau
     d'actions pour lui, et inventer un buteur serait pire que de n'en afficher
-    aucun.
+    aucun. Sa fusillade ne fait pas exception - elle non plus n'a pas d'action
+    publiee, seul le score du match la trahit.
     """
     sport = sport or sports.DEFAULT
     if sport.plays == sports.PLAYS_TYPES:
         return _rugby_details(competition)
     if sport.plays == sports.PLAYS_NONE:
-        return [], []
+        return [], [], []
     return _soccer_details(competition)
+
+
+def _shootout_tally(competitor, kicks, team_id) -> int:
+    """Les tirs au but reussis d'un cote : ce que la source dit, ou le compte.
+
+    `shootoutScore` est la reponse la plus courte, mais elle manque : sur les
+    dix seances relevees en Coupe de France 2025, neuf la portaient et une non,
+    sans que rien d'autre ne distingue la dixieme. Compter les tirs reussis
+    donne exactement le meme nombre partout ou les deux etaient la, et c'est
+    donc le repli - il vaut mieux qu'un tiret.
+    """
+    given = competitor.get("shootoutScore")
+    if given is not None:
+        return _int(given)
+    return sum(1 for kick in kicks if kick.team_id == team_id)
 
 
 def parse(payload: dict, league) -> list:
@@ -700,17 +798,28 @@ def parse(payload: dict, league) -> list:
         if not match_id:
             continue
 
-        goals, red_cards = _parse_details(competition, sport)
+        goals, red_cards, kicks = _parse_details(competition, sport)
         home_color, home_alt = team_colors(home)
         away_color, away_alt = team_colors(away)
+
+        home_id = str((home.get("team") or {}).get("id") or "H")
+        away_id = str((away.get("team") or {}).get("id") or "A")
+        # Le vainqueur d'un match nul : sur un 1-1 de coupe, c'est la seule
+        # chose de la reponse qui dise qui continue. La source pose le drapeau
+        # sur les deux cotes ; on ne retient que celui qui est vrai.
+        winner = ""
+        if bool(home.get("winner")):
+            winner = "home"
+        elif bool(away.get("winner")):
+            winner = "away"
 
         matches.append(Match(
             id=match_id,
             league=league,
             home=_team_name(home),
             away=_team_name(away),
-            home_id=str((home.get("team") or {}).get("id") or "H"),
-            away_id=str((away.get("team") or {}).get("id") or "A"),
+            home_id=home_id,
+            away_id=away_id,
             home_names=team_names(home),
             away_names=team_names(away),
             home_score=_int(home.get("score")),
@@ -722,6 +831,10 @@ def parse(payload: dict, league) -> list:
             start=_parse_date(competition.get("date") or event.get("date")),
             plays=goals,
             red_cards=red_cards,
+            shootout=kicks,
+            home_shootout=_shootout_tally(home, kicks, home_id),
+            away_shootout=_shootout_tally(away, kicks, away_id),
+            winner=winner,
             home_logo=team_logo(home),
             away_logo=team_logo(away),
             home_color=home_color,

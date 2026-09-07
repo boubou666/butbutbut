@@ -70,6 +70,8 @@ Le strict necessaire pour que le reste du programme n'ait jamais a demander
     le publient pas pareil (voir espn.py) ;
   - `breaks` : ce qu'ESPN ecrit dans `status.type.name` pendant une pause. Le
     hockey n'a pas de mi-temps, il a deux pauses entre trois tiers-temps ;
+  - `shootout` : ce qu'ESPN ecrit quand le match s'est decide aux tirs au but.
+    Un sport qui n'y va jamais - le rugby - ne met rien ici ;
   - `titles` : les libelles de carte qui changent de mot d'un sport a l'autre.
     Un sport qui n'a rien a redire ne met rien ici, et retombe sur le
     vocabulaire du football ;
@@ -92,6 +94,20 @@ PLAYS_TYPES = "types"    # rugby : un type numerote (1 = essai, 2 = transf.)
 PLAYS_NONE = "none"      # hockey : la source ne publie rien du tout
 
 
+# Comment un match qui s'est decide aux tirs au but se reconnait dans la
+# reponse. Releve sur des seances reelles, pas deduit : voir le README, section
+# "Les tirs au but".
+#
+# Au **football**, la seance a son propre etat de fin : `status.type.name` vaut
+# STATUS_FINAL_PEN et `shortDetail` "FT-Pens" (FA Cup 2022, Coupe de France
+# 2025, Coupe du monde 2022, Ligue des champions 2025 - la meme chose partout).
+# Au **hockey**, l'etat reste STATUS_FINAL et c'est le detail qui le dit :
+# "Final/SO". Chercher dans les deux chaines a la fois coute une concatenation
+# et evite d'avoir a se rappeler laquelle porte l'information.
+SHOOTOUT_SOCCER = ("FINAL_PEN", "FT-PENS")
+SHOOTOUT_HOCKEY = ("FINAL/SO",)
+
+
 # Les colonnes du classement, sport par sport : ce que la source publie
 # vraiment, et rien de plus. Les trois sports ne comptent pas les memes
 # choses - le hockey ignore le match nul mais compte les defaites en
@@ -107,12 +123,12 @@ PLAYS_NONE = "none"      # hockey : la source ne publie rien du tout
 # gagne. Une cle qu'on ne trouve pas donne un tiret, jamais une erreur.
 
 TABLE_SOCCER = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("N", ("ties", "gamesdrawn")),
-    ("P", ("losses", "gameslost")),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_drawn", ("ties", "gamesdrawn")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 # Le hockey n'a pas de match nul : un match se decide toujours, en prolongation
@@ -120,12 +136,12 @@ TABLE_SOCCER = (
 # prolongation, qui rapportent un point la ou une defaite seche n'en rapporte
 # aucun - sans elle, le total de points de la ligne ne se retrouve pas.
 TABLE_HOCKEY = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("P", ("losses", "gameslost")),
-    ("DP", ("otlosses", "overtimelosses")),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_otl", ("otlosses", "overtimelosses")),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 # Le rugby ajoute les points de bonus : quatre essais ou une defaite de moins
@@ -133,24 +149,24 @@ TABLE_HOCKEY = (
 # devant une autre a nombre de victoires egal. Un classement de rugby sans la
 # colonne "Bon" ne s'explique pas.
 TABLE_RUGBY = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("N", ("ties", "gamesdrawn")),
-    ("P", ("losses", "gameslost")),
-    ("Bon", ("bonuspoints",)),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_drawn", ("ties", "gamesdrawn")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_bonus", ("bonuspoints",)),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 
 class Sport:
     """Un sport d'ESPN : son segment d'URL et ses quelques particularites."""
 
-    __slots__ = ("code", "name", "aliases", "plays", "breaks", "unit_score",
-                 "logo_pattern", "table", "_titles")
+    __slots__ = ("code", "name", "aliases", "plays", "breaks", "shootout",
+                 "unit_score", "logo_pattern", "table", "_titles")
 
     def __init__(self, code, name, aliases=(), plays=PLAYS_FLAGS, breaks=(),
-                 unit_score=True, logo_pattern="", titles=None,
+                 shootout=(), unit_score=True, logo_pattern="", titles=None,
                  table=TABLE_SOCCER):
         self.code = code                  # "soccer", "hockey", "rugby"
         self.name = name                  # "football", en francais, pour le journal
@@ -159,6 +175,10 @@ class Sport:
         # Marqueurs supplementaires de pause dans status.type.name. Le controle
         # generique (HALFTIME) reste actif partout : ceci ne fait qu'ajouter.
         self.breaks = tuple(breaks)
+        # Les marqueurs de seance de tirs au but, cherches en majuscules dans
+        # le nom d'etat ET dans le detail court. Vide = ce sport n'en connait
+        # pas, et aucune carte ne parlera jamais de tirs au but chez lui.
+        self.shootout = tuple(shootout)
         self.unit_score = bool(unit_score)
         # De quoi reconstruire l'URL d'un ecusson a partir du seul numero
         # d'equipe. Ne sert qu'aux cartes de demonstration : partout ailleurs
@@ -197,6 +217,7 @@ SOCCER = Sport(
     "soccer", "football",
     aliases=("foot", "football", "soccer"),
     plays=PLAYS_FLAGS,
+    shootout=SHOOTOUT_SOCCER,
     logo_pattern="https://a.espncdn.com/i/teamlogos/soccer/500/{id}.png",
 )
 
@@ -213,6 +234,12 @@ HOCKEY = Sport(
     aliases=("hockey", "glace", "icehockey"),
     plays=PLAYS_NONE,
     breaks=("INTERMISSION", "END_PERIOD", "END_OF_PERIOD"),
+    # La fusillade du hockey ne se lit pas comme celle du football : elle
+    # donne un but au vainqueur, dans le score du match. Le marqueur ne sert
+    # donc qu'a EXPLIQUER un 4-3 qui n'a pas eu lieu dans le temps reglemen-
+    # taire, jamais a mettre des tirs de cote - il n'y en a pas a mettre, la
+    # source ne publie aucune action pour le hockey.
+    shootout=SHOOTOUT_HOCKEY,
     logo_pattern="https://a.espncdn.com/i/teamlogos/nhl/500/{id}.png",
     table=TABLE_HOCKEY,
     titles={
@@ -228,6 +255,11 @@ HOCKEY = Sport(
 # drop et une penalite 3, une transformation 2. Le titre de la carte vient donc
 # de l'action et non du sport, et quand l'action n'est pas encore publiee la
 # carte annonce des "points", pas un "but".
+#
+# Aucun marqueur de tirs au but : le reglement en prevoit bien un (le concours
+# de coups de pied), il n'a jamais servi dans un match professionnel, et
+# guetter une chaine qu'ESPN n'a jamais eu a ecrire serait guetter une
+# invention.
 
 RUGBY = Sport(
     "rugby", "rugby a XV",

@@ -7,6 +7,168 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Teste
+
+- **`tests/test_shootout.py` dependait de la langue de la machine.** Il epingle
+  le francais par `i18n.use()`, ce qui suffit tant qu'on appelle les fonctions
+  directement - mais deux de ses tests passent par la ligne de commande, et
+  `main()` refixe la langue a chaque appel : l'epinglage etait perdu en
+  chemin. Tant que « tirs au but » n'etait traduit nulle part, la sortie
+  restait francaise partout et personne ne le voyait ; la traduction faite,
+  les machines anglaises de la CI ont rendu « penalty shootout » et huit cases
+  sur quinze ont vire au rouge. L'epinglage passe donc aussi par la variable
+  d'environnement, comme en tete de `tests/test_cli.py`, et pour la meme
+  raison - qui y etait deja ecrite.
+
+### Ajoute
+
+- **Les catalogues de langue sont complets.** Sept commandes livrees depuis la
+  1.6.0 - `--next`, `--top-scorers`, `--stats`, `--table`, `--speak`,
+  `--sound-for`, `--export` - portaient toutes la meme note de livraison : « la
+  prose n'est pas encore dans les catalogues, elle sort en francais dans les
+  cinq langues, degradee et jamais cassee ». Sept fois de suite, et personne
+  n'a compte avant la huitieme : **131 phrases sur 272** n'etaient traduites
+  nulle part. Il en reste 16, toutes nommees phrase par phrase dans les deux
+  README et dans `tests/test_i18n.py`, avec la raison de l'y laisser. (Les deux
+  chiffres se comptent sur la meme base, celle d'avant ce chantier : apres lui
+  le programme donne 277 phrases a traduire, cinq metavariables ayant rejoint
+  `tr()` au passage.)
+- **Les en-tetes du classement de `--table` sortaient en francais**, et ce
+  n'etait pas un detail : `G`, `N`, `P` sont les initiales de gagne, nul et
+  perdu, et ne veulent rien dire pour qui lit la page en anglais. Le titre
+  d'une colonne devient une cle de catalogue, comme les libelles de carte, et
+  l'anglais lit `W D L`, l'allemand `S U N`. La seule contrainte est qu'une
+  abreviation tienne dans une colonne de six signes : un test la verifie langue
+  par langue, la ou seul l'oeil l'aurait vue.
+- **La ligne `epinglee` de `--status`** rendait ses deux valeurs en francais
+  (`etat inconnu`, `aucun match en cours`). Celle-la n'avait pas l'excuse des
+  autres - elle ne sert qu'a `--status`, jamais au journal - et elle est
+  traduite.
+- **Trois metavariables de `--help` sortaient en francais** au milieu d'une
+  page par ailleurs entierement traduite : `--pin EQUIPE`, `--next
+  EQUIPE|JOURS` et `--spoiler-free LISTE` ne passaient pas par `tr()`, la ou
+  leurs voisines y passaient. `--since DATE` et `--test N` non plus. Elles y
+  passent, et l'allemand dit desormais `--pin TEAM`, `--since DATUM`.
+- **Les titres de sport du catalogue** (`Hockey sur glace (a demander)`,
+  `Rugby a XV (a demander)`) et `tous les sports (N competitions)` n'avaient
+  d'entree dans aucun catalogue : `butbutbut --list` les affichait en francais
+  quelle que soit la langue. Traduits.
+
+### Corrige
+
+- **L'aide allemande de `--retry-fullscreen` renvoyait a un mot absent de la
+  page.** La phrase disait « maximal SECONDES lang » alors que la
+  metavariable, elle, etait bien traduite en `SEKUNDEN` : le lecteur cherchait
+  dans la page un mot qui n'y figurait pas. Meme defaut que celui deja corrige
+  pour l'anglais.
+- **Deux commentaires orphelins dans `de.py`** flottaient au-dessus d'une
+  entree qui n'etait pas la leur - la note sur `ausgelost` expliquait un choix
+  de traduction pour une phrase absente du fichier. Ils ont retrouve leur
+  entree, qui existe desormais.
+
+### Teste
+
+- **Le garde-fou qui manquait.** `tests/test_i18n.py` compare maintenant, pour
+  chacune des quatre langues, les phrases que le code passe a `tr()` a ce que
+  le catalogue porte : les trous a valeur doivent etre les memes (nom,
+  conversion et gabarit, dans l'ordre - compter les accolades laissait passer
+  `{:.1f}` rendu `{:.0f}`), chaque traduction doit se formater pour de bon, les
+  etiquettes de `--status` doivent garder leur deux-points au meme caractere,
+  les blancs de bord doivent survivre, et aucune entree ne doit recopier sa
+  cle. Une phrase nouvelle passee a `tr()` fait echouer la suite tant qu'elle
+  n'est ni traduite ni inscrite, avec sa raison, dans la liste des phrases
+  laissees en francais. C'est ce qui aurait arrete la dette a la premiere
+  livraison plutot qu'a la huitieme.
+
+### Interne
+
+- **Python 3.14 entre dans la matrice de CI**, sur les trois systemes comme les
+  autres versions recentes. Elle etait la seule a n'y pas figurer, et c'est
+  celle sur laquelle le depot s'ecrit tous les jours : la CI validait donc
+  scrupuleusement quatre versions que personne n'utilise pour developper, et
+  taisait la seule dont une rupture se serait vue en premier. La suite passe
+  sous 3.14 sans une correction : rien dans le depot ne comparait un message
+  d'exception mot pour mot, aucun module de la bibliotheque standard qu'il
+  importe n'a change de comportement sous lui, et `-W error::DeprecationWarning`
+  ne fait rien lever. Le chantier etait bien aussi petit qu'il en avait l'air,
+  et c'est ce qui le rendait facile a repousser.
+- **Le paquet annonce enfin la 3.14** : le classifier PyPI manquait, lui aussi.
+  `requires-python` (`>=3.8`), les badges, les prerequis et les deux
+  installeurs, eux, disaient deja la meme chose - le plancher n'avait pas
+  bouge, c'est le plafond qui avait glisse sans que rien ne le dise.
+- **Un test confronte les seize endroits qui parlent de versions de Python.**
+  C'est la vraie lecon du chantier : la matrice n'avait pas menti d'un coup,
+  elle avait vieilli, et rien ne pouvait le signaler puisque chacun de ces
+  fichiers est seul chez lui. Le test verifie que le plancher est le meme
+  partout (`requires-python`, les deux badges, les deux listes de prerequis,
+  la comparaison et le message de chaque installeur, et les en-tetes de
+  `recipes/` - ceux-la decouverts et non listes, pour que la recette ecrite
+  demain soit tenue elle aussi), que la CI l'essaye
+  vraiment, et que la version la plus haute des classifiers est bien celle que
+  la matrice va jusqu'a essayer. L'inverse n'est volontairement pas exige : le
+  paquet annonce 3.10 et 3.11 sans les essayer, un pari assume - ce qui casse
+  d'une version a l'autre casse rarement au milieu seul.
+- 1222 -> **1227 tests**.
+
+### Corrige
+
+- **Un tir au but comptait pour un but sur les cartes.** La source publie
+  chaque tir reussi dans le meme tableau que les buts, avec le meme drapeau
+  `scoringPlay` et un `scoreValue` de 1 ; seul `shootout` l'en distingue, et ce
+  drapeau etait lu par `espn.py` puis jamais regarde par personne. La finale de
+  la FA Cup 2022, terminee 0-0, sortait donc une carte `FIN DU MATCH` annoncant
+  `Chelsea 0 - 0 Liverpool` suivie de **onze buteurs**, et `--scores` alignait
+  onze "Penalty de ..." sous un score nul. Les tirs sont maintenant mis de cote
+  des la lecture (`Match.shootout`), et rien de ce qui habille les cartes ne
+  les voit plus.
+- **La detection, elle, n'avait pas de bug** - et c'est le resultat le plus
+  utile de ce chantier, parce que personne ne le savait. Verifie contre la
+  source sur quatre seances reelles (FA Cup 2022, Coupe de France 2025, Coupe du
+  monde 2022, Ligue des champions 2025) : **le score publie ne bouge pas
+  pendant une seance de tirs au but**, il reste celui de la fin du temps
+  reglementaire et la seance est publiee a cote. Une finale ne declenchait donc
+  pas dix cornes, et n'en declenche toujours pas. Le detail de ce qui a ete
+  observe est dans le README, section "Les tirs au but".
+
+### Ajoute
+
+- **La carte de fin de match dit qui se qualifie.** `FIN DU MATCH / Angers
+  1 - 1 Stade de Reims` est exact et rate l'essentiel. La troisieme ligne porte
+  desormais `Tirs au but 3 - 5 : Stade de Reims`, le vainqueur mis en valeur
+  comme un buteur l'est ailleurs. Le total vient de `shootoutScore` quand la
+  source le donne, du decompte des tirs reussis sinon - il manque environ une
+  fois sur dix - et le nom du vainqueur du drapeau `winner`, sans lequel la
+  carte se contente de dire `Tirs au but` plutot que d'inventer un qualifie.
+  La carte reste muette : un verdict s'ecrit, il ne se corne pas.
+- `--scores` ajoute une ligne `tirs au but` sous un match de coupe decide ainsi,
+  pour la meme raison : une soiree de Coupe de France s'affichait en matchs nuls.
+- **Le hockey y est traite a part, parce que son reglement l'est.** Sa
+  fusillade donne un but au vainqueur, dans le score du match (Vegas 4-3
+  Chicago, `Final/SO`) : le score bouge donc pour de vrai, une fois, et la
+  corne sonne au bon moment - rien a corriger la. La carte de fin de match
+  ajoute seulement `Vainqueur aux tirs au but : ...`, parce qu'un 4-3 qui n'a
+  pas eu lieu dans le temps reglementaire merite d'etre explique. Le marqueur
+  vit dans `sports.py` (`Sport.shootout`) : le football le pose dans le nom
+  d'etat, le hockey dans le detail, et le rugby n'en a aucun.
+- **Le canari compte les tirs a part** et verifie qu'un match decide aux tirs
+  au but porte bien son drapeau `winner`. Sans ce comptage il aurait rougi a
+  chaque soiree de coupe, pour un comportement voulu.
+- 1222 -> **1257 tests** : les charges utiles de la FA Cup 2022, de la Coupe de
+  France 2025 et d'une fusillade de NHL sont figees dans `tests/test_shootout.py`
+  telles que la source les sert, drapeaux compris. Huit tirs qui tombent un par
+  un ne doivent produire aucune carte ; la neuvieme, celle de la fin du match,
+  doit nommer le qualifie.
+
+### Reste ouvert
+
+- Tout ceci est etabli sur des seances **terminees**. Ce que la source publie
+  pendant les quelques minutes que dure la seance n'a pas pu etre observe : il
+  aurait fallu etre devant un match a elimination directe au bon moment. Le
+  score final etant celui du temps reglementaire dans les quatre competitions
+  relevees, il n'y a pas de raison de croire qu'il bouge entre-temps - mais
+  c'est une deduction, pas une observation, et elle est ecrite dans le README
+  pour que le jour ou quelqu'un verra une carte de trop, il sache ou regarder.
+
 ### Ajoute
 
 - **Le football feminin entre au catalogue : 14 competitions.** La source les

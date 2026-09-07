@@ -1192,6 +1192,13 @@ def do_scores(args) -> int:
                 match.away, note))
             if hidden:
                 continue        # les buteurs reconstitueraient le score
+            if match.on_penalties and match.winner_name:
+                # Sans cette ligne, une soiree de coupe s'affiche en matchs
+                # nuls et on ne sait pas qui joue le tour suivant.
+                tally = match.shootout_line()
+                print(tr("      {:<22} {}", tr("tirs au but"),
+                         "{} ({})".format(match.winner_name, tally) if tally
+                         else match.winner_name))
             for play in match.plays:
                 side = match.home if play.team_id == match.home_id else match.away
                 print(tr("      {:<22} {}", side, play.summary()))
@@ -1479,11 +1486,19 @@ def _table_name(name) -> str:
 
 
 def table_header(sport) -> str:
-    """La ligne d'en-tete du classement, colonnes du sport comprises."""
-    cells = "".join("{:>{}}".format(title, TABLE_CELL_WIDTH)
-                    for title, _keys in sport.table)
-    return "  {:>2}  {:<{}}{}".format("#", "Equipe", TABLE_NAME_WIDTH,
-                                      cells).rstrip()
+    """La ligne d'en-tete du classement, colonnes du sport comprises.
+
+    Les titres sont des CLES de catalogue et non des libelles : "G" veut dire
+    gagne, et ne dit rien a qui lit la page en anglais ou en allemand. Ils
+    passent donc par i18n.text() comme les libelles de carte, avec la
+    contrainte que ce sont des abreviations - elles doivent tenir dans une
+    colonne de TABLE_CELL_WIDTH signes, et un test le verifie langue par
+    langue. Le "#" du rang, lui, n'appartient a aucune langue.
+    """
+    cells = "".join("{:>{}}".format(i18n.text(key), TABLE_CELL_WIDTH)
+                    for key, _keys in sport.table)
+    return "  {:>2}  {:<{}}{}".format("#", i18n.text("table_team"),
+                                      TABLE_NAME_WIDTH, cells).rstrip()
 
 
 def table_row(row, sport, marked=False) -> str:
@@ -1494,7 +1509,7 @@ def table_row(row, sport, marked=False) -> str:
     que --scores emploie pour "en cours", et il ne coute rien a personne.
     """
     cells = "".join("{:>{}}".format(row.cell(keys), TABLE_CELL_WIDTH)
-                    for _title, keys in sport.table)
+                    for _key, keys in sport.table)
     return "{} {:>2}  {:<{}}{}".format(
         ">" if marked else " ", row.rank, _table_name(row.team),
         TABLE_NAME_WIDTH, cells).rstrip()
@@ -1686,10 +1701,10 @@ def pin_summary(token) -> str:
     """
     data = state.read(paths()["state"])
     if not data or state.is_stale(data):
-        return "{} (etat inconnu : voir la ligne releve)".format(token)
+        return tr("{} (etat inconnu : voir la ligne releve)", token)
     row = data.get("pinned")
     if not isinstance(row, dict):
-        return "{} (aucun match en cours)".format(token)
+        return tr("{} (aucun match en cours)", token)
     return "{} -> [{}] {} {} - {} {}  {}".format(
         token, row.get("league", "?"), row.get("home", "?"),
         row.get("home_score", "?"), row.get("away_score", "?"),
@@ -2828,7 +2843,7 @@ def build_parser() -> argparse.ArgumentParser:
                         version="butbutbut {}".format(__version__))
 
     parser.add_argument("--test", nargs="?", type=int, const=1, default=0,
-                        metavar="N",
+                        metavar=tr("N"),
                         help=tr("affiche N cartes de demonstration puis quitte "
                              "(defaut 1 ; --test 3 montre l'empilement)"))
     parser.add_argument("--scores", action="store_true",
@@ -2836,7 +2851,7 @@ def build_parser() -> argparse.ArgumentParser:
     # nargs="?" avec un const vide : '--next' tout court doit se distinguer de
     # '--next' absent, sans quoi la commande ne serait jamais declenchee.
     parser.add_argument("--next", nargs="?", const="", default=None,
-                        metavar="EQUIPE|JOURS",
+                        metavar=tr("EQUIPE|JOURS"),
                         help=tr("affiche les prochains matchs puis quitte. Sans "
                                 "rien : les {} prochains jours des competitions "
                                 "suivies. '--next om' cible une equipe, "
@@ -2862,7 +2877,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--month", action="store_true",
                         help=tr("recapitule les buts des {} derniers jours",
                                 MONTH_DAYS))
-    parser.add_argument("--since", default=None, metavar="DATE",
+    parser.add_argument("--since", default=None, metavar=tr("DATE"),
                         help=tr("recapitule les buts depuis ce jour, au format "
                              "AAAA-MM-JJ. Ex : --since 2026-09-01. "
                              "L'emporte sur --week et --month."))
@@ -2937,13 +2952,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude-teams", default=None, metavar=tr("LISTE"),
                         dest="exclude_teams",
                         help=tr("ne rien signaler des matchs de ces equipes"))
-    parser.add_argument("--pin", default=None, metavar="EQUIPE",
+    parser.add_argument("--pin", default=None, metavar=tr("EQUIPE"),
                         help=tr("garde a l'ecran une carte qui suit les matchs "
                              "de cette equipe : elle apparait au coup d'envoi, "
                              "se met a jour a chaque releve et s'en va "
                              "quelques minutes apres la fin. Une seule equipe, "
                              "et jamais de son. Ex : --pin om"))
-    parser.add_argument("--spoiler-free", default=None, metavar="LISTE",
+    parser.add_argument("--spoiler-free", default=None, metavar=tr("LISTE"),
                         dest="spoiler_free",
                         help=tr("matchs regardes en differe : aucune carte ni "
                              "aucun son pour ces equipes, quel que soit "

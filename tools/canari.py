@@ -160,6 +160,12 @@ COMPETITOR_KEYS = (
     ("team", REQUIRED, "objet"),
 )
 
+# Ni `winner` ni `shootoutScore` ne figurent ici, et ce n'est pas un oubli. Un
+# competiteur sur trois est un match a venir : il n'a legitimement ni l'un ni
+# l'autre, et une cle surveillee qui manque sur les deux tiers des objets ferait
+# rougir le canari un mardi de juillet. Ce qui les concerne est verifie plus
+# bas, sur les seuls matchs ou la question se pose - voir cross_check().
+
 TEAM_KEYS = (
     ("id", REQUIRED, "identifiant"),
     ("displayName", REQUIRED, "texte non vide"),
@@ -358,7 +364,8 @@ def inspect_scoreboard(payload, ledger):
     Les compteurs servent a deux choses : dire au lecteur sur quoi le verdict
     s'appuie, et savoir s'il faut aller chercher un jour ou l'on a joue.
     """
-    tally = {"events": 0, "usable": 0, "goals": 0, "red_cards": 0}
+    tally = {"events": 0, "usable": 0, "goals": 0, "red_cards": 0,
+             "shootout": 0}
 
     ledger.check("payload", payload, PAYLOAD_KEYS)
 
@@ -404,7 +411,13 @@ def inspect_scoreboard(payload, ledger):
             red = bool(detail.get("redCard"))
             if not scoring and not red:
                 continue          # un carton jaune : espn.py n'en lit rien
-            if scoring:
+            # Un tir au but est compte a part, comme espn.py le range a part :
+            # il porte `scoringPlay` sans faire monter le score du match. Le
+            # confondre avec un but ferait rougir le canari a chaque soiree de
+            # coupe, pour un comportement voulu.
+            if bool(detail.get("shootout")):
+                tally["shootout"] += 1
+            elif scoring:
                 tally["goals"] += 1
             else:
                 tally["red_cards"] += 1
@@ -429,6 +442,17 @@ def inspect_teams(payload, ledger):
             continue
         ledger.check("equipes.teams[]", entry, CATALOGUE_ENTRY_KEYS)
     return len(entries)
+
+
+def kicks_note(tally) -> str:
+    """", 12 tir(s) au but" quand il y en a eu, une chaine vide sinon.
+
+    Une seance est rare : l'annoncer a zero sur toutes les lignes du rapport
+    ferait du bruit tous les jours pour un fait de quelques soirs par an.
+    """
+    if not tally.get("shootout"):
+        return ""
+    return ", {} tir(s) au but".format(tally["shootout"])
 
 
 def cross_check(payload, slug, tally, ledger):
@@ -464,6 +488,23 @@ def cross_check(payload, slug, tally, ledger):
         problems.append(
             "espn.parse() rend {} expulsion(s) la ou la reponse en compte {}"
             .format(reds, tally["red_cards"]))
+
+    kicks = sum(len(match.shootout) for match in matches)
+    if kicks != tally["shootout"]:
+        problems.append(
+            "espn.parse() rend {} tir(s) au but la ou la reponse en compte {}"
+            .format(kicks, tally["shootout"]))
+
+    # Le drapeau `winner` ne se surveille que la : c'est le seul endroit ou la
+    # reponse doit l'avoir. Sans lui, une carte de fin de match de coupe se
+    # contente de dire "Tirs au but" - vrai, mais elle ne nomme plus celui qui
+    # se qualifie, et c'est justement ce qu'on etait venu chercher.
+    orphans = [match for match in matches
+               if match.on_penalties and not match.winner]
+    if orphans:
+        problems.append(
+            "{} match(s) decide(s) aux tirs au but sans drapeau winner : le "
+            "vainqueur ne remonte plus".format(len(orphans)))
 
     if tally["goals"] and not any(play.scorer for match in matches
                                   for play in match.plays):
@@ -590,9 +631,9 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
 
     tally = inspect_scoreboard(first, ledger)
     problems.extend(cross_check(first, slug, tally, ledger))
-    print("  releve {:<14} {} match(s), {} but(s), {} expulsion(s)".format(
+    print("  releve {:<14} {} match(s), {} but(s), {} expulsion(s){}".format(
         dates or "le jour meme", tally["events"], tally["goals"],
-        tally["red_cards"]), file=out)
+        tally["red_cards"], kicks_note(tally)), file=out)
 
     # Rien a se mettre sous la dent : on va chercher un jour ou l'on a joue.
     if not dates and not tally["goals"]:
@@ -604,9 +645,9 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
             return INJOIGNABLE, ledger
         extra = inspect_scoreboard(second, ledger)
         problems.extend(cross_check(second, slug, extra, ledger))
-        print("  rattrapage {:<10} {} match(s), {} but(s), {} expulsion(s)"
+        print("  rattrapage {:<10} {} match(s), {} but(s), {} expulsion(s){}"
               .format(window, extra["events"], extra["goals"],
-                      extra["red_cards"]), file=out)
+                      extra["red_cards"], kicks_note(extra)), file=out)
         for key in tally:
             tally[key] += extra[key]
 

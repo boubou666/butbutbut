@@ -22,6 +22,13 @@ Autour du but viennent des evenements plus discrets, tous muets : les temps
 forts du match (coup d'envoi, mi-temps, reprise, fin), les expulsions et
 l'annonce d'un coup d'envoi imminent. Les deux derniers sont a la demande.
 
+Un cas echappe a "le score dit tout", et un seul : la seance de tirs au but du
+football. Le score du match n'y bouge pas - la source publie la seance a cote -
+donc rien ne se declenche pendant, ce qui est exactement ce qu'on veut : une
+seance n'est pas dix buts. Mais la carte de fin de match, elle, annoncerait un
+1-1 alors que quelqu'un vient de se qualifier ; c'est la, et nulle part
+ailleurs, qu'elle dit le verdict. Voir `_shootout_parts`.
+
 Le filtre par equipe fait disparaitre des evenements ; le mode sans spoiler,
 lui, se contente de les marquer (`Event.spoiler_free`). C'est la difference qui
 compte : un match regarde en differe remplit le journal comme les autres, seul
@@ -137,6 +144,33 @@ def _scorer_text(play, lang=None) -> str:
     if mark:
         who += " (" + mark + ")"
     return (who + " " + play.minute) if play.minute else who
+
+
+def _shootout_parts(match, lang=None) -> list:
+    """Le verdict d'une seance de tirs au but, en morceaux (texte, en valeur).
+
+    Le vainqueur est mis en valeur comme un buteur l'est ailleurs : c'est ce
+    qu'on cherche des yeux en arrivant devant la carte.
+
+    Trois formes, de la plus riche a la plus pauvre, parce que la source ne
+    donne pas toujours tout :
+
+      - "Tirs au but 3 - 5 : Stade de Reims" au football, ou la seance est
+        publiee tir par tir ;
+      - "Vainqueur aux tirs au but : Vegas" au hockey, ou elle ne l'est pas du
+        tout - le score du match porte deja le but vainqueur, il n'y a pas de
+        seance a compter ;
+      - "Tirs au but" tout court si meme le vainqueur manque. Une carte qui
+        n'apprend presque rien vaut encore mieux qu'un 1-1 qui laisse croire
+        que personne ne s'est qualifie.
+    """
+    winner = match.winner_name
+    if not winner:
+        return [(i18n.text("shootout", lang=lang), False)]
+    score = match.shootout_line()
+    head = (i18n.text("shootout_won", lang=lang, score=score) if score
+            else i18n.text("shootout_winner", lang=lang))
+    return [(head, False), (winner, True)]
 
 
 def _countdown(seconds: float, lang=None) -> str:
@@ -307,6 +341,12 @@ class Event:
             if self.play is not None and self.play.scorer:
                 return [(self.team + " : ", False), (self.play.scorer, True)]
             return [(self.team, False)] if self.team else []
+        if self.kind == FULLTIME and self.match.on_penalties:
+            # La seule fin de match ou le titre ET le score ne suffisent pas :
+            # "FIN DU MATCH / Angers 1 - 1 Stade de Reims" est exact et ne dit
+            # pas l'essentiel, qui vient de se qualifier. La source le sait
+            # (voir espn.Match.on_penalties), autant le dire.
+            return _shootout_parts(self.match, lang=lang)
         if self.phase:
             # Le titre dit tout : pas de troisieme ligne, la carte est plus
             # basse et se distingue d'un but au premier coup d'oeil.

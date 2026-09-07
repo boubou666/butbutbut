@@ -102,6 +102,9 @@ MESSAGES = {
         "kickoff_in": "Coup d'envoi dans {minutes} min",
         "catchup_before": "avant {score}",
         "catchup_gap": "{minutes} min",
+        "shootout_won": "Tirs au but {score} : ",
+        "shootout_winner": "Vainqueur aux tirs au but : ",
+        "shootout": "Tirs au but",
         "league_ucl": "LIGUE DES CHAMPIONS",
         "league_uel": "LIGUE EUROPA",
         "league_uecl": "LIGUE CONFERENCE",
@@ -117,6 +120,18 @@ MESSAGES = {
         "league_six_nations": "TOURNOI DES SIX NATIONS",
         "league_rwc": "COUPE DU MONDE DE RUGBY",
         "league_test_match": "MATCH INTERNATIONAL",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Equipe",
+        "table_played": "J",
+        "table_won": "G",
+        "table_drawn": "N",
+        "table_lost": "P",
+        "table_otl": "DP",
+        "table_bonus": "Bon",
+        "table_diff": "Diff",
+        "table_points": "Pts",
     },
     "en": {
         "title_goal": "GOAL!",
@@ -170,6 +185,9 @@ MESSAGES = {
         "kickoff_in": "Kick-off in {minutes} min",
         "catchup_before": "was {score}",
         "catchup_gap": "{minutes} min",
+        "shootout_won": "Shootout {score}: ",
+        "shootout_winner": "Shootout winner: ",
+        "shootout": "Shootout",
         "league_ucl": "CHAMPIONS LEAGUE",
         "league_uel": "EUROPA LEAGUE",
         "league_uecl": "CONFERENCE LEAGUE",
@@ -185,6 +203,18 @@ MESSAGES = {
         "league_six_nations": "SIX NATIONS",
         "league_rwc": "RUGBY WORLD CUP",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Team",
+        "table_played": "P",
+        "table_won": "W",
+        "table_drawn": "D",
+        "table_lost": "L",
+        "table_otl": "OTL",
+        "table_bonus": "BP",
+        "table_diff": "GD",
+        "table_points": "Pts",
     },
     "es": {
         "title_goal": "GOL!",
@@ -238,6 +268,9 @@ MESSAGES = {
         "kickoff_in": "Comienza en {minutes} min",
         "catchup_before": "antes {score}",
         "catchup_gap": "{minutes} min",
+        "shootout_won": "Tanda de penaltis {score}: ",
+        "shootout_winner": "Gana en la tanda: ",
+        "shootout": "Tanda de penaltis",
         "league_ucl": "LIGA DE CAMPEONES",
         "league_uel": "EUROPA LEAGUE",
         "league_uecl": "CONFERENCE LEAGUE",
@@ -253,6 +286,18 @@ MESSAGES = {
         "league_six_nations": "SEIS NACIONES",
         "league_rwc": "MUNDIAL DE RUGBY",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Equipo",
+        "table_played": "PJ",
+        "table_won": "G",
+        "table_drawn": "E",
+        "table_lost": "P",
+        "table_otl": "DP",
+        "table_bonus": "Bon",
+        "table_diff": "Dif",
+        "table_points": "Pts",
     },
     "it": {
         "title_goal": "GOL!",
@@ -306,6 +351,9 @@ MESSAGES = {
         "kickoff_in": "Inizio tra {minutes} min",
         "catchup_before": "prima {score}",
         "catchup_gap": "{minutes} min",
+        "shootout_won": "Rigori {score}: ",
+        "shootout_winner": "Vince ai rigori: ",
+        "shootout": "Calci di rigore",
         "league_ucl": "CHAMPIONS LEAGUE",
         "league_uel": "EUROPA LEAGUE",
         "league_uecl": "CONFERENCE LEAGUE",
@@ -321,6 +369,18 @@ MESSAGES = {
         "league_six_nations": "SEI NAZIONI",
         "league_rwc": "COPPA DEL MONDO DI RUGBY",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Squadra",
+        "table_played": "G",
+        "table_won": "V",
+        "table_drawn": "N",
+        "table_lost": "P",
+        "table_otl": "SdS",
+        "table_bonus": "Bon",
+        "table_diff": "Diff",
+        "table_points": "Pti",
     },
     "de": {
         "title_goal": "TOR!",
@@ -374,6 +434,9 @@ MESSAGES = {
         "kickoff_in": "Anpfiff in {minutes} min",
         "catchup_before": "vorher {score}",
         "catchup_gap": "{minutes} min",
+        "shootout_won": "Elfmeterschiessen {score}: ",
+        "shootout_winner": "Sieger im Elfmeterschiessen: ",
+        "shootout": "Elfmeterschiessen",
         "league_ucl": "CHAMPIONS LEAGUE",
         "league_uel": "EUROPA LEAGUE",
         "league_uecl": "CONFERENCE LEAGUE",
@@ -389,6 +452,18 @@ MESSAGES = {
         "league_six_nations": "SIX NATIONS",
         "league_rwc": "RUGBY-WM",
         "league_test_match": "TESTSPIEL",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Team",
+        "table_played": "Sp",
+        "table_won": "S",
+        "table_drawn": "U",
+        "table_lost": "N",
+        "table_otl": "NV",
+        "table_bonus": "BP",
+        "table_diff": "Diff",
+        "table_points": "Pkt",
     },
 }
 
