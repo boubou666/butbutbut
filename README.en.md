@@ -97,6 +97,7 @@ python -m butbutbut --test 3
 
 ```bash
 butbutbut                     # watch in the background (the default)
+butbutbut --speak             # ... and say the goal out loud, on top of the sound
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
@@ -1050,6 +1051,94 @@ butbutbut --no-logos          # no crest on the cards
 butbutbut --duration 8        # keep the card for 8 s (default: the length of the sound)
 ```
 
+### The voice
+
+Everything above assumes you are looking at the screen. The sound says
+something happened, the card says what - but it says nothing to someone working
+in another window, on another desktop, or who cannot see the screen at all. A
+sentence spoken out loud carries the score and the scorer without you having to
+look up.
+
+```bash
+butbutbut --speak                    # the sound, then the sentence
+butbutbut --speak --no-sound         # the voice alone, no horn
+butbutbut --test --speak             # try it right now, without waiting for a goal
+```
+
+The sentence is **the hook's sentence** - the `BUT_TEXT` variable of
+`--on-goal`, word for word:
+
+```
+BUT ! [Ligue 1] Angers 1 - 2 Stade Rennais - But de A. Kalimuendo (58')
+```
+
+There is only one in the program, deliberately: two wordings would eventually
+have stopped saying the same thing. It follows the **language of the cards**
+(`--lang`), not that of the log - you are speaking to whoever is watching the
+screen, not to whoever will read `--today` tomorrow morning.
+
+**Nothing to install, anywhere** - the same rule as everywhere else here:
+
+| System | What speaks | To install |
+| --- | --- | --- |
+| Windows | PowerShell and `System.Speech` | nothing |
+| macOS | `say` | nothing |
+| Linux | `spd-say`, else `espeak-ng`, else `espeak` | `speech-dispatcher` or `espeak-ng` |
+
+`butbutbut --status` says which one would speak here, before you have even set
+the option:
+
+```
+  voix        : inactive (voir --speak) - PowerShell (System.Speech) parlerait
+```
+
+That is the answer that matters, because it comes before you have installed
+anything: a machine where nothing can speak says so there, not at the first
+goal. With the option set, the same line changes tense:
+
+```
+  voix        : PowerShell (System.Speech), dans la langue des cartes
+```
+
+**A word about installed voices.** Windows picks a voice in the language of the
+cards when the machine has one, and keeps its own otherwise: an English machine
+will read French with an English accent rather than fall silent. `spd-say` and
+`espeak` are handed the language directly. `say`, for its part, has no language
+option - the voice set in System Settings is the one that speaks, whichever it
+is; `say -v '?'` lists them.
+
+**Two goals back to back?** The sentences **queue up** and come out one after
+the other. That was the call to make, and it holds: two goals in the same poll
+are most often two different matches, and dropping the second would leave you
+believing a score that no longer exists. Talking over it, meanwhile, makes both
+unintelligible. The queue is capped at four sentences, and beyond that it is
+the **oldest one waiting** that goes: on a wild night you want to know where
+things stand, not to listen to the previous quarter of an hour.
+
+The voice also waits for the horn to finish before speaking - two and a half
+seconds - for the same reason.
+
+**What silences it.** Exactly what silences the speaker, because it is one:
+
+- `--quiet-hours` and `--quiet-while-presenting`: at night and during a
+  presentation, we no more speak than we display (see
+  [Do not disturb](#do-not-disturb));
+- `--spoiler-free`: what is not shown is not said either, otherwise the option
+  would no longer protect anything;
+- the log, for its part, keeps everything in both cases, and `--today` tells
+  the story.
+
+**What cannot happen.** No failure of the voice touches the daemon: missing
+program, voice not installed, command returning 1, command that never returns
+(it is killed after 30 s). One line in the log, **one only** - a whole Saturday
+would otherwise write as many lines as there were goals for a fault that will
+not change - and the match goes on. Speech lives in a thread of its own:
+neither the card nor the next poll waits for it.
+
+> `--speak` does not talk during a `--replay`. An evening replayed at
+> `--speed 60` squeezes a half into thirty seconds: the voice would still be on
+> the first goal when the match ended.
+
 ### The key moments of a match
 
 Beyond goals, a card marks **kick-off**, **half-time**, the **restart** and
@@ -1132,6 +1221,7 @@ idle_interval = 300
 sound_for = om=~/sounds/om.wav, ucl=~/sounds/anthem.mp3
 volume = 0.55
 no_sound = non
+speak = non
 no_overlay = non
 no_phase_cards = non
 catch_up = non
@@ -1338,6 +1428,36 @@ butbutbut --on-goal 'notify-send "Goal!" "$BUT_TEXT"'
 butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/my-goals.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sounds/airhorn.mp3'
 ```
+
+**Recipes that already work.** A way out is of no use if nobody knows what lies
+behind it: nobody will write their Discord webhook starting from a
+`notify-send`. So the
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) folder
+holds eight complete commands, to copy and to trim — a Discord webhook, a Slack
+webhook, a Home Assistant event your home automation answers, a WiZ bulb that
+turns green for the length of the goal then goes back to exactly the state it
+was in, a JSON goal counter that follows VAR cancellations too, a real system
+notification that stays in the notification centre, a text banner for OBS or a
+status bar, and a shell template to react only to the goals you care about.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependencies there as well: nothing but the Python standard library, or
+the machine's shell. No `curl` assumed to be there, no `jq`. A secret — webhook
+URL, token — is read from an environment variable and **never** travels through
+the command line, which shows up in `ps` and which `butbutbut --status` prints
+back. The instructions, each recipe's settings and where to put the secret on
+each system are in
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md)
+(in French, like the rest of that folder).
+
+Those recipes travel with the source code, and not inside the package `pipx`
+installs: butbutbut never runs them itself, you do. A test in the repository
+compares the `BUT_*` variables they read with the ones the hook really
+publishes — a recipe cannot rot silently by promising a detail that does not
+exist.
 
 **What the hook promises:**
 
@@ -1605,7 +1725,15 @@ It queries the source for real, then checks that every key read by
 `butbutbut/espn.py` is still there, and of the right type. It even hands the
 reply back to `espn.parse()`, the very code the daemon runs: keys that are
 present but no longer yield a match, a goal or a scorer would be just as
-serious a drift. The report gives one line per key:
+serious a drift.
+
+A key can also stay in place and **change shape**, which shows up nowhere else.
+So the canary re-reads goal minutes with the log's own reader, the one behind
+the `--stats` histogram: a clock nobody can read any more earns a red line.
+Football alone is held to that rule - `12:34`, an ice hockey clock, is not a
+minute of play.
+
+The report gives one line per key:
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2332,7 +2460,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1074 tests**, with no network and no screen: the source is simulated by an
+**1195 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

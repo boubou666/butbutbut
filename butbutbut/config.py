@@ -177,6 +177,13 @@ OPTIONS = (
     Option("no_sound", _flag,
            "Mode muet : oui pour ne plus rien entendre.",
            "non"),
+    Option("speak", _flag,
+           "Dire le but a voix haute, en plus du son (ou a sa place avec "
+           "no_sound). La phrase est celle des cartes, dans leur langue : "
+           "'BUT ! [Ligue 1] Marseille 2 - 1 Paris FC - But de M. Greenwood "
+           "(67')'. Rien a installer sous Windows et macOS ; sous Linux il "
+           "faut speech-dispatcher ou espeak-ng.",
+           "non"),
     Option("no_overlay", _flag,
            "Pas de carte du tout : oui pour ne garder que le son et le journal.",
            "non"),

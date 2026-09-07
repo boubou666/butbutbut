@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from butbutbut import (cli, espn, hook, i18n, leagues, pinned, presenting,
-                       silence, sound, state, watcher)
+                       silence, sound, speech, state, watcher)
 
 from helpers import at_local_hour, event, goal_detail, in_minutes, payload
 
@@ -963,6 +963,32 @@ class OneShot:
         return self.next_delay()
 
 
+class SlowReporter:
+    """Un rapporteur d'etat qui prend son temps, et le dit pendant qu'il ecrit.
+
+    L'ecriture du fichier d'etat est le seul geste du fil de surveillance qui
+    dure : c'est celui qu'on abandonnait en cours de route. En vrai il tient
+    quelques millisecondes, assez pour que la course ne se voie qu'une fois
+    sur deux et seulement sous Windows. On l'etire ici pour qu'elle soit
+    certaine a chaque passage.
+    """
+
+    def __init__(self, real, delay=0.3):
+        self.real = real
+        self.delay = delay
+        self.updates = 0
+        self.writing = False
+
+    def update(self, *args, **kwargs):
+        self.updates += 1
+        self.writing = True
+        try:
+            time.sleep(self.delay)
+            return self.real.update(*args, **kwargs)
+        finally:
+            self.writing = False
+
+
 class FakeStack:
     """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
 
@@ -1065,6 +1091,30 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         self.assertEqual(data["goals_today"], 1)
         self.assertEqual(data["matches"][0]["home"], "Angers")
         self.assertEqual(len(stack.cards), 1)
+
+    def test_the_watch_thread_is_awaited_before_the_loop_returns(self):
+        """On ne rend pas la main pendant que le fil ecrit encore l'etat.
+
+        Le fil de surveillance est le seul a appeler reporter.update(). La
+        boucle rendait la main sans l'attendre : ce qui suit - l'effacement de
+        l'etat, la fin du processus - passait alors par-dessus une ecriture en
+        cours. Ca se voyait sous Windows a deux endroits, tous deux au hasard :
+        un fichier d'etat relu vide, et un dossier temporaire qu'on ne pouvait
+        plus effacer parce qu'il restait ouvert.
+        """
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        reporter = SlowReporter(self.reporter())
+        cli._watch_with_cards(guard, self.args, stopping, stack, reporter,
+                              pinned.Pin(""))
+
+        self.assertFalse(reporter.writing, "le fil ecrivait encore")
+        # Et ce qu'il a ecrit est complet, pas un fichier a moitie pose.
+        data = state.read(self.paths["state"])
+        self.assertIsNotNone(data)
+        self.assertEqual(data["goals_today"], 1)
 
     def test_without_pin_nothing_is_pinned_anywhere(self):
         stopping = threading.Event()
@@ -1509,6 +1559,165 @@ class TestQuietHoursLoops(unittest.TestCase):
                                   self.reporter(), pinned.Pin(""))
         self.assertEqual(len(stack.cards), 1)
         self.assertTrue(horn.called)
+
+
+class TestTheVoiceInTheLoops(unittest.TestCase):
+    """--speak : ce que la voix dit, quand elle se tait, et ce qu'elle encaisse.
+
+    La voix suit exactement les regles du haut-parleur, parce qu'elle en est
+    un : elle se tait la nuit et pendant une presentation, elle se tait sur un
+    match regarde en differe, et une panne de synthetiseur ne doit pas plus
+    remonter dans la boucle de surveillance qu'une carte son absente.
+
+    Aucun synthetiseur n'est lance : `Voice.spawn` est injecte, comme ailleurs.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+        self.paths["data"].mkdir(parents=True, exist_ok=True)
+        self.args = cli.build_parser().parse_args(["--quiet", "--no-sound",
+                                                   "--speak"])
+        self.said = []
+
+    def voice(self, raises=None):
+        def spawn(command, env, timeout):
+            self.said.append(command[-1])
+            if raises is not None:
+                raise raises
+            return 0, ""
+
+        found = speech.Voice(True, lang="fr", spawn=spawn, platform="linux",
+                             which=lambda name: "/usr/bin/spd-say",
+                             on_log=lambda message: None)
+        self.addCleanup(found.close, 2.0)
+        return found
+
+    def hush(self, hour):
+        return silence.Silence("23:00-08:00",
+                               clock=lambda: datetime(2026, 9, 6, hour, 0))
+
+    def guard_with_one_goal(self, stopping, spoiler_free=False):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        goal = watcher.Event(kind=watcher.GOAL, match=matches[0], side="home",
+                             team=matches[0].home, opponent=matches[0].away,
+                             home_score=1, away_score=0, delta=1, play=None,
+                             spoiler_free=spoiler_free)
+        return OneShot(matches, [goal], stopping)
+
+    def reporter(self):
+        return state.Reporter(self.paths["state"],
+                              leagues=[leagues.BY_SLUG["fra.1"]],
+                              interval=25, idle_interval=300)
+
+    def run_headless(self, voice, hush=None, spoiler_free=False):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, spoiler_free)
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""), hush=hush, voice=voice)
+        return stopping
+
+    def run_with_cards(self, voice, hush=None, spoiler_free=False):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, spoiler_free)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        cli._watch_with_cards(guard, self.args, stopping, stack,
+                              self.reporter(), pinned.Pin(""), voice=voice,
+                              hush=hush)
+        return stack
+
+    def spoken(self, count=1, timeout=5.0):
+        limit = time.monotonic() + timeout
+        while len(self.said) < count and time.monotonic() < limit:
+            time.sleep(0.005)
+        return self.said
+
+    # ------------------------------------------------------- un but ordinaire
+
+    def test_the_headless_loop_says_the_goal(self):
+        self.run_headless(self.voice())
+        said = self.spoken()
+        self.assertEqual(len(said), 1)
+        # La phrase est celle du crochet, pas une deuxieme ecrite pour la voix.
+        self.assertIn("BUT !", said[0])
+        self.assertIn("Angers 1 - 0 Stade Rennais", said[0])
+
+    def test_the_card_loop_says_the_goal_too(self):
+        stack = self.run_with_cards(self.voice())
+        self.assertEqual(len(stack.cards), 1)
+        self.assertEqual(len(self.spoken()), 1)
+
+    # ------------------------------------------------------------- le silence
+
+    def test_nothing_is_said_at_two_in_the_morning(self):
+        """Le silence de 1.8.0 vaut pour la voix : c'est un haut-parleur."""
+        self.run_headless(self.voice(), hush=self.hush(2))
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
+        # Et le journal, lui, garde tout : c'est tout le contrat.
+        self.assertIn("BUT", self.paths["log"].read_text(encoding="utf-8"))
+
+    def test_nothing_is_said_at_two_in_the_morning_with_cards_either(self):
+        stack = self.run_with_cards(self.voice(), hush=self.hush(2))
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
+        self.assertEqual(stack.cards, [])
+
+    def test_the_goal_is_said_again_outside_the_window(self):
+        self.run_headless(self.voice(), hush=self.hush(14))
+        self.assertEqual(len(self.spoken()), 1)
+
+    def test_nothing_is_said_while_presenting(self):
+        hush = silence.Silence(while_presenting=True)
+        with mock.patch.object(presenting, "state",
+                               return_value=presenting.PRESENTATION_MODE):
+            self.run_with_cards(self.voice(), hush=hush)
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
+
+    # -------------------------------------------------------- le sans-spoiler
+
+    def test_a_match_watched_late_is_never_spoken(self):
+        """Ce qui n'est pas montre ne se dit pas non plus : c'est le point."""
+        self.run_headless(self.voice(), spoiler_free=True)
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
+        self.assertIn("BUT", self.paths["log"].read_text(encoding="utf-8"))
+
+    def test_a_match_watched_late_is_never_spoken_with_cards_either(self):
+        stack = self.run_with_cards(self.voice(), spoiler_free=True)
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
+        self.assertEqual(stack.cards, [])
+
+    # ------------------------------------------------------------ degradation
+
+    def test_a_broken_voice_never_reaches_the_watch_loop(self):
+        """Une panne de synthetiseur ne coute ni la carte, ni le journal."""
+        stack = self.run_with_cards(self.voice(raises=OSError("pas de son")))
+        self.assertEqual(len(stack.cards), 1)
+        self.assertIn("BUT", self.paths["log"].read_text(encoding="utf-8"))
+
+    def test_a_loop_without_a_voice_behaves_exactly_as_before(self):
+        """Le rejeu n'en passe aucune : les deux boucles s'en passent."""
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""))
+        self.assertEqual(self.said, [])
+
+    def test_an_unarmed_voice_says_nothing_of_an_ordinary_goal(self):
+        muette = speech.Voice(False, spawn=lambda *a: self.said.append(a))
+        self.run_headless(muette)
+        time.sleep(0.1)
+        self.assertEqual(self.said, [])
 
 
 class TestSpoilerFreeCommands(unittest.TestCase):
@@ -2149,6 +2358,62 @@ class TestNextCommand(unittest.TestCase):
         self.assertEqual(sleeping.call_count, 2)
         for call in sleeping.call_args_list:
             self.assertEqual(call[0][0], cli.NEXT_PAUSE)
+
+
+class Cp1252(io.TextIOWrapper):
+    """Une sortie sur la page de code ANSI de Windows, terminal ou non."""
+
+    def __init__(self, tty):
+        io.TextIOWrapper.__init__(self, io.BytesIO(), encoding="cp1252")
+        self._tty = tty
+
+    def isatty(self):
+        return self._tty
+
+
+class TestUtf8Output(unittest.TestCase):
+    # Un buteur dont le nom sort de la page de code ANSI : le 'n' polonais de
+    # Zielinski. C'est lui qui terminait '--scores > matchs.txt' sur une
+    # UnicodeEncodeError au lieu du score.
+    BUTEUR = "P. Zieli\u0144ski"
+
+    def test_a_redirected_output_switches_to_utf8(self):
+        flux = Cp1252(tty=False)
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "utf-8")
+        flux.write(self.BUTEUR)
+        flux.flush()
+        self.assertEqual(flux.buffer.getvalue().decode("utf-8"), self.BUTEUR)
+
+    def test_a_console_keeps_its_code_page_but_stops_crashing(self):
+        # La console sait ce qu'elle sait dessiner : on ne lui impose pas
+        # l'UTF-8, on lui retire seulement le droit de lever une exception.
+        flux = Cp1252(tty=True)
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "cp1252")
+        flux.write(self.BUTEUR)      # ne leve plus UnicodeEncodeError
+        flux.flush()
+        self.assertEqual(flux.buffer.getvalue(), b"P. Zieli?ski")
+
+    def test_stderr_is_reconfigured_too(self):
+        # Un message d'erreur peut nommer un club autant qu'une carte.
+        flux = Cp1252(tty=False)
+        with mock.patch.object(cli.sys, "stderr", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "utf-8")
+
+    def test_a_captured_output_is_left_alone(self):
+        # Sous pytest, ou ici meme, sys.stdout n'a pas de reconfigure().
+        with mock.patch.object(cli.sys, "stdout", io.StringIO()):
+            cli.utf8_output()   # ne leve pas
+
+    def test_a_closed_output_is_left_alone(self):
+        flux = Cp1252(tty=False)
+        flux.close()
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()   # ne leve pas
 
 
 if __name__ == "__main__":

@@ -97,6 +97,7 @@ python -m butbutbut --test 3
 
 ```bash
 butbutbut                     # surveille en fond (comportement par defaut)
+butbutbut --speak             # ... et dit le but a voix haute, en plus du son
 butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
@@ -1051,6 +1052,93 @@ butbutbut --no-logos          # pas d'ecusson sur les cartes
 butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 ```
 
+### La voix
+
+Tout ce qui precede suppose qu'on regarde l'ecran. Le son dit qu'il s'est passe
+quelque chose, la carte dit quoi - mais elle ne dit rien a qui travaille dans
+une autre fenetre, sur un autre bureau, ou ne voit pas l'ecran du tout. Une
+phrase dite a voix haute porte le score et le buteur sans qu'on leve les yeux.
+
+```bash
+butbutbut --speak                    # le son, puis la phrase
+butbutbut --speak --no-sound         # la voix seule, sans corne
+butbutbut --test --speak             # l'essayer tout de suite, sans attendre un but
+```
+
+La phrase est **celle du crochet** - la variable `BUT_TEXT` de `--on-goal`,
+mot pour mot :
+
+```
+BUT ! [Ligue 1] Angers 1 - 2 Stade Rennais - But de A. Kalimuendo (58')
+```
+
+Il n'y en a qu'une dans le programme, expres : deux formulations auraient fini
+par ne plus dire la meme chose. Elle suit la **langue des cartes** (`--lang`),
+pas celle du journal - on parle a qui regarde l'ecran, pas a qui relira
+`--today` demain matin.
+
+**Rien a installer, nulle part** - c'est la meme regle que pour le reste :
+
+| Systeme | Ce qui parle | A installer |
+| --- | --- | --- |
+| Windows | PowerShell et `System.Speech` | rien |
+| macOS | `say` | rien |
+| Linux | `spd-say`, sinon `espeak-ng`, sinon `espeak` | `speech-dispatcher` ou `espeak-ng` |
+
+`butbutbut --status` dit lequel parlerait ici, avant meme qu'on ait pose
+l'option :
+
+```
+  voix        : inactive (voir --speak) - PowerShell (System.Speech) parlerait
+```
+
+C'est la reponse qui compte, parce qu'elle arrive avant d'avoir rien installe :
+une machine ou rien ne parle le dit la, et pas au premier but. L'option posee,
+la meme ligne change de temps :
+
+```
+  voix        : PowerShell (System.Speech), dans la langue des cartes
+```
+
+**Un mot sur les voix installees.** Windows choisit une voix de la langue des
+cartes quand la machine en a une, et garde la sienne sinon : une machine
+anglaise lira du francais avec un accent anglais plutot que de se taire.
+`spd-say` et `espeak` recoivent la langue en clair. `say`, lui, n'a pas
+d'option de langue - c'est la voix reglee dans les Reglages qui parle, quelle
+qu'elle soit ; `say -v '?'` les enumere.
+
+**Deux buts coup sur coup ?** Les phrases **font la queue** et sortent l'une
+apres l'autre. C'etait le choix a faire, et il se defend : deux buts du meme
+releve, c'est le plus souvent deux matchs differents, et jeter le second
+laisserait croire a un score qui n'existe plus. Parler par-dessus, lui, rend
+les deux inaudibles. La file est bornee a quatre phrases, et au-dela c'est la
+plus **ancienne en attente** qui saute : un soir de folie, on veut savoir ou on
+en est, pas ecouter le quart d'heure precedent.
+
+La voix attend aussi que la corne ait fini avant de parler - deux secondes et
+demie - pour la meme raison.
+
+**Ce qui la fait taire.** Exactement ce qui fait taire le haut-parleur, parce
+qu'elle en est un :
+
+- `--quiet-hours` et `--quiet-while-presenting` : la nuit et pendant une
+  presentation, on ne parle pas plus qu'on n'affiche (voir
+  [Ne pas deranger](#ne-pas-deranger)) ;
+- `--spoiler-free` : ce qui n'est pas montre ne se dit pas non plus, sinon
+  l'option ne protegerait plus rien ;
+- le journal, lui, garde tout dans les deux cas, et `--today` le raconte.
+
+**Ce qui ne peut pas arriver.** Aucune panne de voix ne touche le daemon :
+programme absent, voix non installee, commande qui rend 1, commande qui ne rend
+jamais la main (elle est tuee au bout de 30 s). Une ligne au journal, **une
+seule** - un samedi entier ecrirait sinon autant de lignes que de buts pour une
+panne qui ne changera plus - et le match continue. La parole vit dans un fil a
+elle : ni la carte, ni le releve suivant ne l'attendent.
+
+> `--speak` ne parle pas pendant un `--replay`. Une soiree rejouee a
+> `--speed 60` reduit une mi-temps a trente secondes : la voix parlerait encore
+> du premier but que le match serait fini.
+
 ### Les temps forts du match
 
 En plus des buts, une carte signale le **coup d'envoi**, la **mi-temps**, la
@@ -1132,6 +1220,7 @@ idle_interval = 300
 sound_for = om=~/sons/om.wav, ucl=~/sons/hymne.mp3
 volume = 0.55
 no_sound = non
+speak = non
 no_overlay = non
 no_phase_cards = non
 catch_up = non
@@ -1341,6 +1430,36 @@ butbutbut --on-goal 'notify-send "But !" "$BUT_TEXT"'
 butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/mes-buts.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sons/klaxon.mp3'
 ```
+
+**Des recettes qui marchent deja.** Une porte de sortie ne sert a rien si
+personne ne sait ce qu'il y a derriere : personne n'ecrira son webhook Discord
+a partir d'un `notify-send`. Le dossier
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) contient
+donc huit commandes completes, a copier et a tailler - un webhook Discord, un
+webhook Slack, un evenement Home Assistant a qui l'automatisation de la maison
+repond, une ampoule WiZ qui vire au vert le temps du but puis retrouve
+exactement l'etat qu'elle avait, un compteur de buts en JSON qui suit meme les
+annulations de la VAR, une vraie notification du systeme qui reste dans le
+centre de notifications, un bandeau texte pour OBS ou une barre d'etat, et un
+gabarit shell pour ne reagir qu'aux buts qu'on veut.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependance la aussi : rien que la bibliotheque standard de Python, ou le
+shell de la machine. Pas de `curl` suppose present, pas de `jq`. Un secret -
+URL de webhook, jeton - se lit dans une variable d'environnement et ne passe
+**jamais** par la ligne de commande, qui se lit dans `ps` et que
+`butbutbut --status` reaffiche. Le mode d'emploi, les reglages de chacune et ou
+poser le secret selon le systeme sont dans
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md).
+
+Ces recettes voyagent avec le code source, et pas dans le paquet installe par
+`pipx` : butbutbut ne les lance jamais lui-meme, c'est toi qui le fais. Un test
+du depot compare les variables `BUT_*` qu'elles lisent a celles que le crochet
+publie vraiment - une recette ne peut pas pourrir en silence en promettant un
+detail qui n'existe pas.
 
 **Ce que le crochet promet :**
 
@@ -1612,7 +1731,15 @@ Il interroge la source pour de vrai, puis verifie que chaque cle lue par
 `butbutbut/espn.py` est encore la, et du bon type. Il va meme repasser la
 reponse a `espn.parse()`, le code que le daemon execute : des cles presentes
 qui ne produisent plus ni match, ni but, ni buteur seraient une derive tout
-aussi grave. Le rapport donne une ligne par cle :
+aussi grave.
+
+Une cle peut aussi rester en place et **changer de forme**, ce qui ne se voit
+nulle part ailleurs. Le canari relit donc la minute des buts avec le lecteur du
+journal, celui dont sort l'histogramme de `--stats` : une horloge que plus
+personne ne sait lire vaut une ligne rouge. Le football seul est tenu a cette
+regle - `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+
+Le rapport donne une ligne par cle :
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2340,7 +2467,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1074 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1195 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
