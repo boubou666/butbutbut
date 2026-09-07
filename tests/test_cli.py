@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, i18n, leagues, pinned, state, watcher
+from butbutbut import cli, espn, i18n, leagues, pinned, sound, state, watcher
 
 from helpers import event, goal_detail, payload
 
@@ -875,6 +875,109 @@ class TestSpoilerFreeCommands(unittest.TestCase):
         _code, _printed, err = self.run_cli(
             ["--status", "--teams", "marseile", "--spoiler-free", "marseile"])
         self.assertEqual(err.count("marseile"), 1)
+
+
+class TestContextualSound(unittest.TestCase):
+    """Le pont entre un but et le nom des fichiers du dossier `sound`."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = cli.paths()["sound"]
+        self.folder.mkdir(parents=True)
+
+    def drop(self, *names):
+        for name in names:
+            (self.folder / name).write_bytes(b"x")
+
+    def args(self, *extra):
+        # --duration fige la duree : sans lui, chaque appel irait mesurer un
+        # faux mp3 de trois octets.
+        return cli.build_parser().parse_args(
+            ["--quiet", "--duration", "1"] + list(extra))
+
+    def goal(self, side="home", kind=watcher.GOAL):
+        matches = espn.parse(
+            payload(event(home="Marseille",
+                          away=("Paris Saint-Germain", "Paris SG", "PSG"),
+                          state="in", home_score=1)),
+            leagues.BY_SLUG["fra.1"])
+        match = matches[0]
+        home = side == "home"
+        return watcher.Event(kind=kind, match=match, side=side,
+                             team=match.home if home else match.away,
+                             opponent=match.away if home else match.home,
+                             home_score=1, away_score=0, delta=1, play=None)
+
+    def chosen(self, args, event_=None):
+        path, _duration = cli.resolve_sound(args, event_)
+        return path.name
+
+    def test_a_team_file_plays_only_when_that_team_scores(self):
+        self.drop("om.mp3", "corne.mp3")
+        args = self.args()
+        self.assertEqual(self.chosen(args, self.goal("home")), "om.mp3")
+        self.assertEqual(self.chosen(args, self.goal("away")), "corne.mp3")
+
+    def test_a_followed_team_conceding_gets_the_conceded_file(self):
+        self.drop("contre.mp3", "corne.mp3")
+        args = self.args("--teams", "om")
+        # Le PSG marque : l'OM, qu'on suit, vient de prendre un but.
+        self.assertEqual(self.chosen(args, self.goal("away")), "contre.mp3")
+        self.assertEqual(self.chosen(args, self.goal("home")), "corne.mp3")
+
+    def test_without_teams_nobody_concedes_at_home(self):
+        self.drop("contre.mp3", "corne.mp3")
+        self.assertEqual(self.chosen(self.args(), self.goal("away")),
+                         "corne.mp3")
+
+    def test_the_league_file_takes_over_when_no_team_is_named(self):
+        self.drop("l1.mp3", "corne.mp3")
+        self.assertEqual(self.chosen(self.args(), self.goal("home")), "l1.mp3")
+
+    def test_no_event_keeps_the_old_draw(self):
+        # --test, et les cartes muettes : tout le dossier reste candidat.
+        self.drop("om.mp3")
+        self.assertEqual(self.chosen(self.args()), "om.mp3")
+
+    def test_a_silent_card_has_no_context(self):
+        args = self.args()
+        self.assertIsNone(cli.sound_context(args, None))
+        self.assertIsNone(cli.sound_context(args, self.goal(kind=watcher.KICKOFF)))
+
+    def test_the_context_knows_who_scored_and_who_took_it(self):
+        context = cli.sound_context(self.args("--teams", "om"),
+                                    self.goal("away"))
+        self.assertTrue(context.names_scorer("psg"))
+        self.assertTrue(context.names_beaten("om"))
+        self.assertTrue(context.conceded)
+        self.assertTrue(context.names_league("l1"))
+
+    def test_status_says_what_each_file_arms(self):
+        self.drop("contre.mp3", "l1.mp3", "om.mp3", "corne.mp3")
+        rows = dict(cli._sound_arming(sound.custom_sounds(self.folder),
+                                      self.args("--teams", "om"),
+                                      [leagues.BY_SLUG["fra.1"]]))
+        self.assertIn("encaisse", rows["contre.mp3"])
+        self.assertIn("Ligue 1", rows["l1.mp3"])
+        self.assertIn("marque", rows["om.mp3"])
+        self.assertIn("general", rows["corne.mp3"])
+
+    def test_status_warns_that_conceded_needs_a_followed_team(self):
+        self.drop("contre.mp3")
+        rows = dict(cli._sound_arming(sound.custom_sounds(self.folder),
+                                      self.args(), [leagues.BY_SLUG["fra.1"]]))
+        self.assertIn("--teams", rows["contre.mp3"])
+
+    def test_status_flags_a_sound_for_a_league_nobody_watches(self):
+        self.drop("pl.mp3")
+        rows = dict(cli._sound_arming(sound.custom_sounds(self.folder),
+                                      self.args(), [leagues.BY_SLUG["fra.1"]]))
+        self.assertIn("non suivie", rows["pl.mp3"])
 
 
 if __name__ == "__main__":

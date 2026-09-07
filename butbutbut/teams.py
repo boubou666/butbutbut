@@ -113,6 +113,16 @@ def _hit(token: str, names) -> bool:
     return False
 
 
+def designates(token, names) -> bool:
+    """Vrai si ce mot designe l'une de ces equipes, surnoms compris.
+
+    L'entree publique de _hit() : le choix du son par nom de fichier pose la
+    meme question que le filtre, hors de tout Filter - `om.mp3` designe-t-il
+    l'equipe qui vient de marquer ?
+    """
+    return _hit(normalize(expand(token)), names)
+
+
 class Filter:
     """Les equipes suivies, et celles dont on ne veut rien savoir."""
 

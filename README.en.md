@@ -487,6 +487,61 @@ Formats: wav, mp3, ogg, opus, flac, m4a, aac. Several files? One is drawn at
 random on every goal. No need to restart the daemon: the folder is re-read
 every time.
 
+#### One sound per context, decided by the file name
+
+The **name** of the file says when it plays. Nothing to configure: renaming is
+enough.
+
+| File name | When it plays |
+| --- | --- |
+| `contre.mp3`, `against.mp3` | when a **followed** team (`--teams`) **concedes** |
+| `om.mp3`, `barca.mp3`, `marseille.mp3`, `olm.mp3` | when **that team scores** |
+| `fra.1.mp3`, `l1.mp3`, `ligue1.mp3`, `ucl.mp3` | only for a goal in **that competition** |
+| `corne.mp3`, anything else | the background pool, drawn at random as before |
+
+Team names are the ones `--teams` accepts (nicknames, abbreviations, accents
+dropped) and competition names the ones `--list` lists (ESPN code or alias).
+The conceding word also spells `encaisse` or `conceded`.
+
+**Several files for the same thing?** A suffix after `-`, `_`, a space or a dot
+is enough: `om-1.mp3`, `om-2.mp3`, `contre 2.ogg`. One of them is drawn at
+random, as before.
+
+**Which one wins when several could play**: the order runs from the narrowest
+to the widest, so that a precise intent is never buried under a broader one.
+
+| | Tier | What it can claim |
+| --- | --- | --- |
+| 1 | the team that scores | the goals of a single club |
+| 2 | `contre` | every goal conceded by the followed clubs |
+| 3 | the competition | a whole competition |
+| 4 | the background pool | everything |
+
+An empty tier hands over to the next one: a folder holding only `contre.mp3`
+and `corne.mp3` plays `corne.mp3` the rest of the time. That is what makes an
+**OM - PSG** worth listening to: with those two files and `--teams om`, a goal
+for OM sounds different from a goal against, without looking at the screen.
+
+```bash
+butbutbut --status            # what butbutbut made of each file
+```
+
+```
+  son         : 4 fichier(s), le nom dit quand ils jouent
+                contre.mp3             quand une equipe suivie encaisse
+                corne.mp3              tirage general
+                fra.1.mp3              les buts de Ligue 1
+                om.mp3                 quand cette equipe marque
+```
+
+> One caveat: to keep a team file out of the *other* matches, butbutbut has to
+> know that the word names a club - which it does for the usual nicknames
+> (`om`, `ol`, `barca`, `manu`, `juve`, `bvb`...) and for anything passed to
+> `--teams`. Any other name (`angers.mp3`) does play for Angers when Angers
+> scores, but joins the background pool elsewhere: there is no offline team
+> catalogue to settle it. `--teams angers` removes the ambiguity, and
+> `--status` then files it under the right tier.
+
 ```bash
 butbutbut --no-sound          # silent
 butbutbut --no-overlay        # just the sound and the log, no card

@@ -7,6 +7,12 @@ Ordre de priorite :
      machine ne sait lire le mp3 (Linux minimal sans mpv/ffmpeg/sox/vlc)
 
 Formats acceptes : wav, mp3, ogg, opus, flac, m4a, aac.
+
+Le **nom** des fichiers deposes parle : `om.mp3` ne sort que quand l'OM marque,
+`fra.1.mp3` que pour un but de Ligue 1, `contre.mp3` quand une equipe suivie
+encaisse. Le reste est le fond sonore, tire au hasard comme avant. Tout se
+joue dans armed_sounds(), une fonction pure : le dossier est relu a chaque but,
+et le classement se teste sans jouer une note.
 """
 
 from __future__ import annotations
@@ -19,6 +25,8 @@ import subprocess
 import sys
 import wave
 from pathlib import Path
+
+from . import leagues, teams
 
 SAMPLE_RATE = 44100
 TOTAL_SECONDS = 2.10
@@ -47,6 +55,25 @@ LINUX_PLAYERS = (
 )
 
 MCI_ALIAS = "butsound"
+
+# --- Les etages du choix par contexte ----------------------------------------
+
+TIER_TEAM = "team"          # om.mp3 : cette equipe vient de marquer
+TIER_CONCEDED = "conceded"  # contre.mp3 : une equipe suivie vient d'encaisser
+TIER_LEAGUE = "league"      # fra.1.mp3, l1.mp3 : un but de cette competition
+TIER_GENERAL = "general"    # tout le reste : le fond sonore
+
+# L'ordre de priorite. Sa justification est dans armed_sounds().
+TIERS = (TIER_TEAM, TIER_CONCEDED, TIER_LEAGUE, TIER_GENERAL)
+
+# Le seul nom que butbutbut impose. Plusieurs ecritures, deux langues : autant
+# qu'il se devine, personne ne va lire une table pour deposer un fichier.
+CONCEDED_WORDS = ("contre", "encaisse", "against", "conceded")
+_CONCEDED = frozenset(teams.normalize(word) for word in CONCEDED_WORDS)
+
+# Ce qui separe un nom de sa variante : om-1.mp3 et om-2.mp3 arment le meme
+# etage. Le point en fait partie pour que `fra.1-b.mp3` retombe sur `fra.1`.
+VARIANT_SEPARATORS = "-_ ."
 
 
 # ------------------------------------------------------------- synthese ------
@@ -130,9 +157,179 @@ def bundled_sound() -> Path | None:
     return BUNDLED_SOUND if BUNDLED_SOUND.is_file() else None
 
 
-def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55) -> Path:
-    """Son a jouer : perso d'abord, puis celui fourni, puis la corne synthetisee."""
-    customs = custom_sounds(custom_dir)
+# ------------------------------------------------------ le nom qui parle -----
+
+def name_candidates(path) -> list:
+    """Le nom du fichier, puis ses prefixes, du plus long au plus court.
+
+    Sans ca, deux sons pour la meme equipe seraient impossibles : `om-1.mp3`
+    ne designe rien, alors que `om` designe Marseille. On rogne donc la
+    variante de droite jusqu'a tomber sur un mot qui parle - ou sur rien, et
+    le fichier rejoint le fond sonore.
+
+    Les noms a rallonge ne sont pas casses pour autant : `saint-etienne`
+    est essaye entier avant de perdre son `-etienne`.
+    """
+    stem = Path(path).stem.strip()
+    found = []
+    while stem:
+        if stem not in found:
+            found.append(stem)
+        cut = max(stem.rfind(char) for char in VARIANT_SEPARATORS)
+        if cut <= 0:
+            break
+        stem = stem[:cut].strip()
+    return found
+
+
+class Context:
+    """Ce qu'un but dit de lui-meme au moment de choisir le son.
+
+    Volontairement plat, et ignorant de watcher.Event : le module du son n'a
+    pas a savoir comment un but est detecte, et une fonction de choix qui ne
+    prend que des donnees se teste sans reseau, sans ecran et sans jouer une
+    note. C'est cli.sound_context() qui fait le pont.
+    """
+
+    __slots__ = ("league", "scorer_names", "beaten_names", "conceded", "clubs")
+
+    def __init__(self, league=None, scorer_names=(), beaten_names=(),
+                 conceded=False, clubs=()):
+        self.league = league                     # leagues.League, ou None
+        # Toutes les ecritures connues des deux equipes (nom complet, nom
+        # court, abreviation) : c'est ce qu'un nom de fichier doit accrocher.
+        self.scorer_names = tuple(scorer_names)
+        self.beaten_names = tuple(beaten_names)
+        # Vrai quand c'est une equipe SUIVIE qui vient d'encaisser. Sans
+        # --teams il n'y a personne a suivre, donc jamais de `contre.mp3`.
+        self.conceded = bool(conceded)
+        # Les mots dont on sait qu'ils designent un club meme s'il ne joue pas
+        # ici : voir names_a_club().
+        self.clubs = tuple(clubs)
+
+    def names_scorer(self, name) -> bool:
+        return teams.designates(name, self.scorer_names)
+
+    def names_beaten(self, name) -> bool:
+        return teams.designates(name, self.beaten_names)
+
+    def names_league(self, name) -> bool:
+        found = leagues.designates(name)
+        return (found is not None and self.league is not None
+                and found.slug == self.league.slug)
+
+    def names_a_club(self, name) -> bool:
+        """Vrai si ce mot designe un club, meme absent de ce match-ci.
+
+        Sert a ne PAS verser `psg.mp3` dans le fond sonore pendant un
+        Angers - Rennes : un nom de club arme un etage, il ne devient jamais
+        le son par defaut de tous les autres buts.
+
+        Hors du match en cours, butbutbut n'a pas de catalogue d'equipes sous
+        la main - il faudrait le reseau. Le vocabulaire se limite donc aux
+        surnoms usuels et a ce qui a ete passe a --teams ; c'est documente, et
+        ca couvre le cas qui compte, celui de quelqu'un qui suit un club.
+        """
+        token = teams.normalize(teams.expand(name))
+        if not token:
+            return False
+        if teams.normalize(name) in teams.ALIASES:
+            return True
+        return any(token == teams.normalize(teams.expand(club))
+                   for club in self.clubs)
+
+
+def tier_of(path, context):
+    """L'etage arme par ce nom de fichier pour ce but, ou None.
+
+    None ne veut pas dire "general" : il veut dire "ce fichier parle d'autre
+    chose" - une autre competition, l'equipe qui vient justement d'encaisser.
+    Ces fichiers-la sont ecartes du tirage, pas verses dedans.
+    """
+    for name in name_candidates(path):
+        if teams.normalize(name) in _CONCEDED:
+            return TIER_CONCEDED if context.conceded else None
+        if context.names_scorer(name):
+            return TIER_TEAM
+        if context.names_beaten(name):
+            return None                  # elle vient d'encaisser : elle se tait
+        found = leagues.designates(name)
+        if found is not None:
+            return TIER_LEAGUE if context.names_league(name) else None
+        if context.names_a_club(name):
+            return None                  # un club, mais pas un des deux ici
+    return TIER_GENERAL
+
+
+def sounds_by_tier(files, context) -> dict:
+    """Les fichiers ranges par etage. Ceux qui visent ailleurs disparaissent."""
+    pools = {tier: [] for tier in TIERS}
+    for path in files:
+        tier = tier_of(path, context)
+        if tier is not None:
+            pools[tier].append(path)
+    return pools
+
+
+def armed_sounds(files, context=None) -> list:
+    """Les fichiers a tirer au sort pour ce but : l'etage le plus precis servi.
+
+    L'ordre est **equipe > contre > competition > general**, et il se lit comme
+    un entonnoir : chaque etage peut reclamer plus de buts que le precedent.
+    `om.mp3` ne parle que des buts de l'OM ; `contre.mp3` de tous les buts
+    encaisses par les clubs suivis - avec `--teams om,psg,ol`, ca en fait
+    beaucoup ; `fra.1.mp3` de toute une competition ; le fond sonore, de tout.
+    Trier du plus etroit au plus large, c'est garantir qu'une intention precise
+    n'est jamais recouverte par une plus large : qui depose `om.mp3` l'entend a
+    chaque but de l'OM, meme s'il a aussi un son de Ligue 1.
+
+    Deux consequences voulues. Un OM - PSG avec `om.mp3` et `contre.mp3` sonne
+    differemment selon qui marque, et c'est exactement ce qu'on cherchait :
+    entendre la difference entre "on a marque" et "on a pris". Et un etage vide
+    passe la main au suivant plutot que de rendre le silence - un dossier qui
+    n'a que `contre.mp3` et `corne.mp3` joue `corne.mp3` le reste du temps.
+
+    Sans contexte (`--test`, une carte muette), rien ne change : tout le
+    dossier est candidat, comme avant.
+    """
+    files = list(files)
+    if context is None:
+        return files
+    pools = sounds_by_tier(files, context)
+    for tier in TIERS:
+        if pools[tier]:
+            return pools[tier]
+    return []
+
+
+def declared(path, clubs=()) -> tuple:
+    """Ce qu'un nom de fichier annonce sans match sous la main : (etage, cible).
+
+    Sert a `--status`, qui doit dire ce qui est arme avant le prochain but.
+    Faute de match, l'etage equipe ne se reconnait qu'au vocabulaire de
+    names_a_club() ; un nom de club inconnu passe donc pour du fond sonore, et
+    n'en jouera pas moins pour son equipe le jour ou elle marque.
+    """
+    for name in name_candidates(path):
+        if teams.normalize(name) in _CONCEDED:
+            return (TIER_CONCEDED, None)
+        found = leagues.designates(name)
+        if found is not None:
+            return (TIER_LEAGUE, found)
+        if Context(clubs=clubs).names_a_club(name):
+            return (TIER_TEAM, name)
+    return (TIER_GENERAL, None)
+
+
+def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55,
+               context=None) -> Path:
+    """Son a jouer : perso d'abord, puis celui fourni, puis la corne synthetisee.
+
+    `context` (sound.Context) laisse le nom des fichiers designer une equipe,
+    une competition ou un but encaisse ; sans lui, tirage au hasard dans tout
+    le dossier, comme avant.
+    """
+    customs = armed_sounds(custom_sounds(custom_dir), context)
     if customs:
         return random.choice(customs)
 

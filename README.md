@@ -488,6 +488,61 @@ Formats : wav, mp3, ogg, opus, flac, m4a, aac. Plusieurs fichiers ? Le tirage
 est au hasard a chaque but. Pas besoin de redemarrer le daemon : le dossier est
 relu a chaque fois.
 
+#### Un son par contexte, decide par le nom du fichier
+
+Le **nom** du fichier dit quand il joue. Rien a configurer : renommer suffit.
+
+| Nom du fichier | Quand il joue |
+| --- | --- |
+| `contre.mp3` | quand une equipe **suivie** (`--teams`) **encaisse** |
+| `om.mp3`, `barca.mp3`, `marseille.mp3`, `olm.mp3` | quand **cette equipe marque** |
+| `fra.1.mp3`, `l1.mp3`, `ligue1.mp3`, `ucl.mp3` | seulement pour un but de **cette competition** |
+| `corne.mp3`, tout le reste | le fond sonore, tire au hasard comme avant |
+
+Les noms d'equipe sont ceux de `--teams` (surnoms, abreviations, accents en
+moins) et les noms de competition ceux de `--list` (code ESPN ou alias). Le
+mot pour "encaisse" s'ecrit aussi `encaisse`, `against` ou `conceded`.
+
+**Plusieurs fichiers pour la meme chose ?** Un suffixe apres `-`, `_`, un
+espace ou un point suffit : `om-1.mp3`, `om-2.mp3`, `contre 2.ogg`. Le tirage
+se fait au hasard entre eux, comme avant.
+
+**Ce qui gagne quand plusieurs fichiers pourraient jouer** : l'ordre va du plus
+etroit au plus large, pour qu'une intention precise ne soit jamais recouverte
+par une plus large.
+
+| | Etage | Ce qu'il peut reclamer |
+| --- | --- | --- |
+| 1 | l'equipe qui marque | les buts d'un seul club |
+| 2 | `contre` | tous les buts encaisses par les clubs suivis |
+| 3 | la competition | toute une competition |
+| 4 | le fond sonore | tout |
+
+Un etage vide passe la main au suivant : un dossier qui n'a que `contre.mp3` et
+`corne.mp3` joue `corne.mp3` le reste du temps. C'est ce qui rend un
+**OM - PSG** interessant : avec ces deux fichiers et `--teams om`, un but de
+l'OM sonne autrement qu'un but encaisse, sans regarder l'ecran.
+
+```bash
+butbutbut --status            # ce que butbutbut a compris de chaque fichier
+```
+
+```
+  son         : 4 fichier(s), le nom dit quand ils jouent
+                contre.mp3             quand une equipe suivie encaisse
+                corne.mp3              tirage general
+                fra.1.mp3              les buts de Ligue 1
+                om.mp3                 quand cette equipe marque
+```
+
+> Une precision : pour ecarter un fichier d'equipe des *autres* matchs,
+> butbutbut doit savoir que ce mot designe un club - c'est le cas des surnoms
+> usuels (`om`, `ol`, `barca`, `manu`, `juve`, `bvb`...) et de tout ce qui est
+> passe a `--teams`. Un autre nom (`angers.mp3`) joue bien pour Angers quand
+> Angers marque, mais rejoint le fond sonore ailleurs : il n'existe pas de
+> catalogue d'equipes hors ligne pour trancher. `--teams angers` suffit a lever
+> l'ambiguite, et `--status` le range alors au bon etage.
+
 ```bash
 butbutbut --no-sound          # muet
 butbutbut --no-overlay        # juste le son et le journal, pas de carte
