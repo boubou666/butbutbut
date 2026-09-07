@@ -7,6 +7,34 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Une equipe reduite a dix se voit sur toutes les cartes du match.** Un
+  rectangle rouge par expulsion, pose contre le chiffre de l'equipe qui l'a
+  prise, sur la carte de but comme sur la carte epinglee ou celle de fin de
+  match. L'information existait deja - `--red-cards` lui donne une carte a
+  elle - mais elle ne durait que six secondes : vingt minutes plus tard, le
+  1-2 qui s'affichait ne disait plus qu'il avait ete marque a onze contre dix.
+  Les cartons sont **alignes sur le score** et non sur le nom, pour que deux
+  d'un cote et un de l'autre tombent dans la meme colonne ; et leur place est
+  **reservee des deux cotes**, sur le camp le plus sanctionne, pour que le
+  score reste au centre de la carte - une reserve par camp l'aurait fait
+  glisser a chaque expulsion. Ils suivent `--scale`, ne dependent pas de
+  `--red-cards` (l'option ouvre une carte, elle ne fabrique pas
+  l'information) et ne coutent aucune requete : les expulsions arrivent dans
+  le meme tableau d'actions que les buts.
+- **Un sport sait maintenant s'il expulse** (`Sport.red_cards`). Le hockey
+  punit par deux minutes sur le banc et non par un carton : il ne compte rien,
+  et le garde-fou est ce drapeau plutot que le hasard d'un tableau d'actions
+  vide. Le rugby, lui, compte ses cartons rouges - et pas ses jaunes, qui ne
+  sont qu'une exclusion de dix minutes.
+- Une expulsion dont la source ne nomme pas l'equipe n'est comptee d'aucun
+  cote : faire jouer a dix la mauvaise equipe serait pire que de se taire.
+- 1313 -> **1335 tests** : le compte par camp, le sport qui n'expulse pas,
+  l'expulsion sans equipe, la reserve symetrique, le score qui reste centre,
+  les cartons qui ne mordent ni sur le nom ni sur le score, et le dessin -
+  un rectangle rouge par carton, pas un de plus.
+
 ## [1.10.2] - 2026-09-07
 
 ### Corrige

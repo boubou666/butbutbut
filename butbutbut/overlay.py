@@ -13,6 +13,14 @@ La fin du match en ajoute quelques-unes, une par camp qui a marque :
     Angers : M. Lopez 12'
     Stade Rennais : A. Kalimuendo 58', L. Blas 77'
 
+Une equipe reduite a dix le dit sans un mot : un rectangle rouge par
+expulsion, pose contre le chiffre de l'equipe qui l'a prise, sur toutes les
+cartes et pas seulement sur celle de l'expulsion.
+
+    BUT !   LIGUE 1                                            35'
+    (o) Angers   [] 1 - 2   Stade Rennais (o)
+    But de C. Arcus
+
 L'equipe qui vient de marquer et son chiffre sont ecrits dans la couleur de son
 club (voir crests.py : elle n'est prise que si elle se lit sur ce fond tres
 sombre), le filet vertical garde celle de la competition et le nom du buteur
@@ -61,6 +69,7 @@ CARD_EDGE = "#232936"
 TEXT = "#f3f5f9"
 MUTED = "#8b95a7"
 CANCEL_ACCENT = "#ffa63d"
+RED_CARD = "#e5484d"
 
 PAD_X = 22
 PAD_Y = 16
@@ -74,6 +83,15 @@ MAX_EXTRA_LINES = 4      # au-dela, la carte serait plus haute qu'utile
 
 LOGO_RATIO = 1.35        # cote de l'ecusson, en hauteurs de ligne d'equipe
 LOGO_GAP = 10            # espace entre un ecusson et le nom de son equipe
+
+# Le carton rouge est dessine, jamais ecrit : un rectangle se reconnait de
+# loin et ne demande pas de police, la ou un "1 rouge" demanderait de lire.
+# Ses proportions sont celles d'un vrai carton, et sa taille suit celle de la
+# ligne d'equipe - donc --scale, sans avoir a s'en souvenir.
+RED_RATIO = 0.56         # hauteur d'un carton, en hauteurs de ligne d'equipe
+RED_ASPECT = 0.68        # largeur d'un carton, en hauteurs de carton
+RED_GAP = 3              # espace entre deux cartons du meme camp
+RED_NAME_GAP = 9         # espace entre les cartons et le nom de l'equipe
 
 MIN_WIDTH = 420          # largeur de confort : les cartes empilees s'alignent
 MAX_WIDTH = 720
@@ -98,6 +116,10 @@ LINUX_FONTS = ("Inter", "Cantarell", "DejaVu Sans", "Liberation Sans", "Noto San
 # leurs vrais numeros ESPN, pour que `--test` montre exactement ce que donne un
 # but. Chaque equipe : (nom, numero ESPN, couleur, couleur secondaire).
 #
+# `reds` - les expulsions (domicile, exterieur) - n'est pose que la ou il y en
+# a : `--test` doit montrer le carton rouge une fois, pas sur les cinq cartes
+# d'affilee, sans quoi il ne montre plus une expulsion mais une decoration.
+#
 # Le choix des buteurs n'est pas innocent : `--test 5` promene ainsi la couleur
 # du club sur les trois etages de crests.pick_accent. Le Bayern (dc052d) garde
 # sa couleur, Chelsea (144992) et Barcelone (990000) sont illisibles sur ce
@@ -110,7 +132,7 @@ DEMO = {
               "scorer": "I. Kebbal", "minute": "67'"},
     "eng.1": {"home": ("Arsenal", "359", "e20520", "003399"),
               "away": ("Chelsea", "363", "144992", "ffffff"),
-              "score": (1, 2), "side": "away",
+              "score": (1, 2), "side": "away", "reds": (1, 0),
               "scorer": "C. Palmer", "minute": "74'"},
     "esp.1": {"home": ("Real Madrid", "86", "ffffff", "1B4D3E"),
               "away": ("Barcelona", "83", "990000", "FCE38A"),
@@ -141,7 +163,7 @@ DEMO_BY_SPORT = {
                "title": "title_goal", "by": "goal_by"},
     "rugby": {"home": ("Stade Toulousain", "25922", "000000", ""),
               "away": ("Stade Francais", "25921", "cc0066", ""),
-              "score": (19, 14), "side": "home",
+              "score": (19, 14), "side": "home", "reds": (0, 1),
               "scorer": "A. Dupont", "minute": "63'",
               "title": "title_try", "by": "try_by"},
 }
@@ -188,11 +210,13 @@ class Card:
 
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
                  "away_score", "side", "parts", "accent", "title_color",
-                 "extra", "team_accent", "home_logo", "away_logo")
+                 "extra", "team_accent", "home_logo", "away_logo",
+                 "home_reds", "away_reds")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
                  side, detail, accent, title_color=None, extra=(),
-                 team_accent=None, home_logo=None, away_logo=None):
+                 team_accent=None, home_logo=None, away_logo=None,
+                 home_reds=0, away_reds=0):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -217,6 +241,12 @@ class Card:
         # telechargement, elle se passe de l'ecusson qui n'est pas encore la.
         self.home_logo = home_logo
         self.away_logo = away_logo
+        # Les expulsions de chaque camp, en nombre. Zero partout ou le sport
+        # n'a pas de carton rouge, et zero par defaut : une carte fabriquee a
+        # la main - un test, un appelant d'avant cette version - ne dessine
+        # aucun carton et reste exactement la carte qu'elle etait.
+        self.home_reds = int(home_reds or 0)
+        self.away_reds = int(away_reds or 0)
 
     @property
     def detail(self) -> str:
@@ -233,6 +263,7 @@ class Card:
         accent = event.league.accent
         title_color = accent
         team_accent = accent
+        reds = event.match.red_card_tally()
 
         if event.sober:
             # Temps forts, expulsion, avant-match : rien de tout ca ne doit
@@ -262,6 +293,11 @@ class Card:
             team_accent=team_accent,
             home_logo=_crest(crest, event.match.home_logo),
             away_logo=_crest(crest, event.match.away_logo),
+            # Toutes les expulsions du match, pas seulement celle qui a
+            # declenche la carte : une carte de but qui montre le carton pris
+            # dix minutes plus tot explique le but.
+            home_reds=reds[0],
+            away_reds=reds[1],
         )
 
     @classmethod
@@ -297,6 +333,8 @@ class Card:
                                            league.accent, CARD_BG),
             home_logo=_crest(crest, espn.logo_url(home[1], sport)),
             away_logo=_crest(crest, espn.logo_url(away[1], sport)),
+            home_reds=sample.get("reds", (0, 0))[0],
+            away_reds=sample.get("reds", (0, 0))[1],
         )
 
     @classmethod
@@ -314,6 +352,7 @@ class Card:
         des cartes muettes : rien ici ne declenche de son.
         """
         league = match.league
+        reds = match.red_card_tally()
         return cls(
             title=i18n.text("title_fulltime" if ended else "title_pinned"),
             league=league.label,
@@ -328,6 +367,8 @@ class Card:
             title_color=MUTED,
             home_logo=_crest(crest, match.home_logo),
             away_logo=_crest(crest, match.away_logo),
+            home_reds=reds[0],
+            away_reds=reds[1],
         )
 
     @classmethod
@@ -358,6 +399,8 @@ class Card:
             title_color=MUTED,
             home_logo=_crest(crest, espn.logo_url(home[1])),
             away_logo=_crest(crest, espn.logo_url(away[1])),
+            home_reds=sample.get("reds", (0, 0))[0],
+            away_reds=sample.get("reds", (0, 0))[1],
         )
 
     def text_line(self) -> str:
@@ -394,6 +437,22 @@ def _detail_font(fonts, strong):
 def _logo_size(fonts) -> int:
     """Cote de l'ecusson : cale sur la ligne d'equipe, il suit donc --scale."""
     return int(fonts["team"].metrics("linespace") * LOGO_RATIO)
+
+
+def _red_size(fonts) -> tuple:
+    """(largeur, hauteur) d'un carton rouge, calees sur la ligne d'equipe.
+
+    Au moins 3 pixels de cote : sur une carte reduite a l'extreme, un carton
+    d'un pixel disparaitrait dans le fond au lieu de dire qu'il manque un
+    joueur.
+    """
+    height = max(3, int(fonts["team"].metrics("linespace") * RED_RATIO))
+    return (max(3, int(height * RED_ASPECT)), height)
+
+
+def _red_span(width: int, count: int) -> int:
+    """La place que prennent `count` cartons cote a cote. Zero pour aucun."""
+    return count * (width + RED_GAP) - RED_GAP if count else 0
 
 
 def _make_click_through(window) -> None:
@@ -576,7 +635,15 @@ def _layout(card: Card, fonts):
     logo = _logo_size(fonts) if (card.home_logo or card.away_logo) else 0
     slot = (logo + LOGO_GAP) if logo else 0
 
-    middle_w = 2 * (half + slot) + 2 * GAP + score_w
+    # Les cartons se rangent entre le nom et le score, du cote du chiffre de
+    # leur equipe. Leur place est reservee des DEUX cotes, sur le camp le plus
+    # sanctionne : le score reste ainsi au centre de la carte, alors qu'une
+    # reserve par camp le decalerait a chaque expulsion.
+    reds = max(card.home_reds, card.away_reds)
+    red_w, red_h = _red_size(fonts) if reds else (0, 0)
+    red_slot = (_red_span(red_w, reds) + RED_NAME_GAP) if reds else 0
+
+    middle_w = 2 * (half + slot + red_slot) + 2 * GAP + score_w
     header_w = (fonts["title"].measure(card.title) + 18
                 + fonts["label"].measure(card.league) + 18
                 + fonts["label"].measure(card.minute))
@@ -597,7 +664,8 @@ def _layout(card: Card, fonts):
 
     # Plafond atteint (des noms a rallonge) : on raccourcit plutot que de
     # deborder. La carte reste dans ses bords, quoi qu'on lui donne.
-    room = max(20.0, (width - margins - score_w - 2 * GAP) / 2.0 - slot)
+    room = max(20.0,
+               (width - margins - score_w - 2 * GAP) / 2.0 - slot - red_slot)
     if half > room:
         home = _fit(fonts["team"], home, room)
         away = _fit(fonts["team"], away, room)
@@ -605,9 +673,15 @@ def _layout(card: Card, fonts):
     center = BAR_WIDTH + (width - BAR_WIDTH) / 2.0
     score_left = center - score_w / 2.0
 
+    # Les cartons sont colles au score, pas au nom : un camp qui en a un et
+    # l'autre deux gardent ainsi leurs cartons alignes sur la meme colonne, et
+    # chacun contre le chiffre qui le concerne.
+    home_x = score_left - GAP - red_slot
+    away_x = score_left + score_w + GAP + red_slot
+
     header_h = max(fonts["title"].metrics("linespace"), fonts["label"].metrics("linespace"))
     score_h = max(fonts["team"].metrics("linespace"),
-                  fonts["score"].metrics("linespace"), logo)
+                  fonts["score"].metrics("linespace"), logo, red_h)
     detail_h = max(fonts["detail"].metrics("linespace"),
                    fonts["scorer"].metrics("linespace")) if card.parts else 0
 
@@ -631,12 +705,15 @@ def _layout(card: Card, fonts):
         "right": width - PAD_X,
         "home": home,
         "away": away,
-        "home_x": score_left - GAP,                  # ancre "e"
-        "away_x": score_left + score_w + GAP,        # ancre "w"
+        "home_x": home_x,                            # ancre "e"
+        "away_x": away_x,                            # ancre "w"
         "logo": logo,                                # cote de l'ecusson, 0 = aucun
-        "home_logo_x": score_left - GAP - fonts["team"].measure(home) - LOGO_GAP,
-        "away_logo_x": (score_left + score_w + GAP
-                        + fonts["team"].measure(away) + LOGO_GAP),
+        "home_logo_x": home_x - fonts["team"].measure(home) - LOGO_GAP,
+        "away_logo_x": away_x + fonts["team"].measure(away) + LOGO_GAP,
+        "red_w": red_w,                              # 0 = aucune expulsion
+        "red_h": red_h,
+        "home_reds_x": score_left - GAP - _red_span(red_w, card.home_reds),
+        "away_reds_x": score_left + score_w + GAP,
         "score_x": score_left,
         "score_parts": score_parts,
         "score_widths": score_widths,
@@ -709,6 +786,17 @@ def _draw(canvas, card: Card, fonts, box, background, images=None):
 
     canvas.create_text(box["away_x"], box["score_y"], text=box["away"],
                        fill=away_color, font=fonts["team"], anchor="w")
+
+    # Les expulsions : un rectangle rouge par carton, contre le chiffre de
+    # l'equipe qui l'a pris. Rouge plein, quelle que soit la carte - c'est la
+    # seule couleur de la carte qui ne veut jamais dire autre chose.
+    for count, x0 in ((card.home_reds, box["home_reds_x"]),
+                      (card.away_reds, box["away_reds_x"])):
+        top = box["score_y"] - box["red_h"] / 2.0
+        for index in range(count):
+            x = x0 + index * (box["red_w"] + RED_GAP)
+            canvas.create_rectangle(x, top, x + box["red_w"], top + box["red_h"],
+                                    fill=RED_CARD, outline=RED_CARD)
 
     # --- ligne 3 : le buteur, seul morceau en clair
     x = box["left"]

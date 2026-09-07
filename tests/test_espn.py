@@ -9,6 +9,7 @@ from butbutbut import espn, i18n, leagues, sports
 from helpers import event, goal_detail, opener_for, payload, red_card_detail
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
+NHL = leagues.BY_SLUG["nhl"]
 
 
 def setUpModule():
@@ -189,6 +190,41 @@ class TestRedCards(unittest.TestCase):
                          [p.key for p in second.red_cards])
         # Un but et une expulsion de la meme equipe ne partagent pas de cle.
         self.assertNotEqual(first.plays[0].key, first.red_cards[0].key)
+
+    def test_the_tally_counts_each_camp_apart(self):
+        """Ce que la carte dessine : un compte par camp, pas un total."""
+        match = espn.parse(payload(event(details=(
+            red_card_detail("H1", "12'", "M. Sylla", index=1),
+            red_card_detail("A1", "62'", "J. Lefort", index=2),
+            red_card_detail("A1", "80'", "P. Gueye", index=3),
+        ))), LIGUE1)[0]
+        self.assertEqual(match.red_card_tally(), (1, 2))
+
+    def test_a_match_without_expulsion_counts_zero_on_both_sides(self):
+        match = espn.parse(payload(event(details=(goal_detail("H1"),))), LIGUE1)[0]
+        self.assertEqual(match.red_card_tally(), (0, 0))
+
+    def test_an_expulsion_without_a_team_is_counted_nowhere(self):
+        """Mieux vaut ne rien dire que de faire jouer a dix la mauvaise equipe."""
+        match = espn.parse(payload(event(
+            details=(red_card_detail("", "62'", "J. Lefort"),))), LIGUE1)[0]
+        self.assertEqual(len(match.red_cards), 1)
+        self.assertEqual(match.red_card_tally(), (0, 0))
+
+    def test_a_sport_without_red_cards_never_counts_one(self):
+        """Le garde-fou est le drapeau du sport, pas la chance d'un tableau vide.
+
+        Le match est lu au football - donc avec ses expulsions - puis rattache
+        a une competition de hockey. Le compte tombe a zero parce que le sport
+        n'expulse pas, et non parce que la source s'est tue : c'est ce qui
+        protege le jour ou elle publierait pour le hockey un tableau d'actions
+        qu'elle n'a jamais publie.
+        """
+        match = espn.parse(payload(event(
+            details=(red_card_detail("H1"),))), LIGUE1)[0]
+        self.assertEqual(match.red_card_tally(), (1, 0))
+        match.league = NHL
+        self.assertEqual(match.red_card_tally(), (0, 0))
 
     def test_the_side_of_a_red_card_is_found_from_its_team(self):
         match = espn.parse(payload(event(

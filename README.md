@@ -1399,6 +1399,48 @@ Elle ne depend pas de `--no-phase-cards` : couper les temps forts du match ne
 doit pas couper ce qu'on a explicitement demande. C'est `--red-cards` qui
 l'allume, et rien d'autre qui l'eteint.
 
+#### Un rectangle rouge par expulsion, sur toutes les cartes
+
+Une carte d'expulsion passe et s'efface ; l'equipe, elle, reste a dix jusqu'au
+coup de sifflet final. Toutes les cartes du match le disent donc, et pas
+seulement celle du carton : **un rectangle rouge par expulsion**, pose contre
+le chiffre de l'equipe qui l'a prise.
+
+```
+BUT !   PREMIER LEAGUE                                            74'
+Arsenal  []  1 - 2  Chelsea
+But de C. Palmer
+```
+
+C'est ce qui explique le but qui suit. Un 1-2 a onze contre dix ne se lit pas
+comme un 1-2 ordinaire, et cette information ne vivait jusqu'ici que dans une
+carte vue six secondes, vingt minutes plus tot.
+
+Trois details, tous pour la meme raison : la carte ne doit pas bouger parce que
+le match derape.
+
+- **La place est reservee des deux cotes**, sur le camp le plus sanctionne. Le
+  score reste au centre de la carte, la ou l'oeil va le chercher ; une reserve
+  par camp le ferait glisser a chaque expulsion.
+- **Les rectangles sont alignes sur le score**, pas sur le nom : deux cartons
+  d'un cote et un de l'autre tombent dans la meme colonne, chacun contre le
+  chiffre qui le concerne.
+- **Ils ne dependent pas de `--red-cards`.** L'option ouvre une carte pour
+  l'expulsion, avec son titre et le nom du joueur ; les rectangles, eux, sont
+  la sans rien demander. Ils ne coutent aucune requete : les expulsions
+  arrivent dans le meme tableau d'actions que les buts.
+
+Ils suivent `--scale` comme le reste de la ligne, et se dessinent sur la carte
+epinglee comme sur les autres. Un sport qui n'expulse pas n'en montre jamais :
+le **hockey** punit par deux minutes sur le banc, pas par un carton (et la
+source ne publie de toute facon aucune action pour lui). Le **rugby**, si -
+mais son carton jaune est une exclusion temporaire de dix minutes, et n'est
+donc pas compte.
+
+```bash
+butbutbut --test --leagues eng.1     # une carte de demonstration en montre un
+```
+
 ### L'annonce d'avant match
 
 ```bash
