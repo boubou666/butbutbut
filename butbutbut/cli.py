@@ -41,6 +41,24 @@ LEAGUES_SHOWN = 3              # competitions nommees sur la ligne d'une journee
 # Les jours de la semaine, abreges et sans accent, comme tout le reste du code.
 # strftime() rendrait la langue du systeme : le journal, lui, parle francais.
 WEEKDAYS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
+# --next : une semaine par defaut. C'est la maille du calendrier - un club joue
+# une fois par semaine, deux quand il a une coupe - donc sept jours contiennent
+# toujours le prochain match de qui que ce soit, sans deverser un mois
+# d'affiches pour repondre a "c'est quand, le prochain ?".
+DEFAULT_NEXT_DAYS = 7
+# Au-dela, la source elle-meme n'a plus grand-chose a dire : les calendriers ne
+# sont publies qu'a quelques semaines. Cette borne evite surtout de demander
+# une annee entiere par megarde.
+MAX_NEXT_DAYS = 30
+# Meme espacement que Watcher.prime() : avec --leagues all ce sont 36 requetes,
+# et une rafale finit par se faire jeter par la source.
+NEXT_PAUSE = 0.2
+
+# Les jours de la semaine, ecrits ici plutot que tires de la locale : %A rend
+# ce que la machine veut bien (parfois de l'anglais, parfois des accents), et
+# l'affichage doit etre le meme partout.
+WEEKDAYS_FULL = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi",
+                 "dimanche")
 
 
 # --------------------------------------------------------------- chemins -----
@@ -1008,6 +1026,200 @@ def _kickoff_text(match, now) -> str:
     return "{:%d/%m %H:%M}".format(local)
 
 
+# ------------------------------------------------------- prochains matchs ----
+
+def _next_request(value) -> tuple:
+    """Ce que --next a recu : (jours, equipes).
+
+    Une valeur faite de chiffres est une fenetre, tout le reste est un nom
+    d'equipe. Aucun club ne s'appelle "7" et personne n'ecrit une duree en
+    lettres : l'ambiguite ne se produit pas. La liste est acceptee pour pouvoir
+    tout dire d'un coup - `--next om,psg,3`.
+    """
+    days = DEFAULT_NEXT_DAYS
+    wanted = []
+    for token in str(value or "").replace(";", ",").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if token.isdigit():
+            days = max(1, min(MAX_NEXT_DAYS, int(token)))
+        else:
+            wanted.append(token)
+    return days, ",".join(wanted)
+
+
+def _next_filter(args, wanted):
+    """Le filtre par equipe de --next : celui de --teams, plus ce qui suit --next.
+
+    Le nom donne a --next n'est pas confronte au catalogue comme le fait
+    --teams : la verification coute une requete par competition, ce qui
+    doublerait le cout d'une commande ponctuelle. Une faute de frappe se voit
+    autrement, dans la phrase du calendrier vide, qui repete le mot cherche.
+    """
+    both = ",".join(part for part in (args.teams, wanted) if part)
+    chosen = teams.Filter(both, args.exclude_teams)
+    return chosen if chosen.active else None
+
+
+def next_matches(matches, now, days, today=None) -> list:
+    """Ceux de ces matchs qui restent a jouer dans la fenetre demandee.
+
+    Un match commence n'est plus un prochain match : `--scores` est la pour ce
+    qui se joue. Un match dont l'heure est passee sans que rien ne demarre
+    (retard, report) ne repond pas non plus a la question posee.
+
+    La borne haute est la fin du dernier jour **local** de la fenetre, et non
+    "dans N fois 24 h" : une fenetre qui se refermerait au milieu d'une soiree
+    couperait une affiche en deux sans que personne comprenne pourquoi.
+    """
+    today = today or datetime.now().date()
+    last_day = today + timedelta(days=max(1, days) - 1)
+
+    kept = []
+    for match in matches:
+        if match.start is None or match.live or match.finished:
+            continue
+        if match.start <= now:
+            continue
+        if match.start.astimezone().date() > last_day:
+            continue
+        kept.append(match)
+    kept.sort(key=lambda match: (match.start, match.league.name, match.home))
+    return kept
+
+
+def group_by_day(matches) -> list:
+    """[(jour, [(competition, [matchs])])], dans l'ordre chronologique.
+
+    Le regroupement se fait sur le jour **local** et non sur celui d'UTC : un
+    match du samedi 21 h a Marseille se joue le samedi, pas le dimanche a 1 h
+    du matin comme la source l'ecrit.
+    """
+    order = []
+    days = {}
+    for match in matches:
+        day = match.start.astimezone().date()
+        if day not in days:
+            days[day] = []
+            order.append(day)
+        rows = days[day]
+        for name, group in rows:
+            if name == match.league.name:
+                group.append(match)
+                break
+        else:
+            rows.append((match.league.name, [match]))
+    return [(day, days[day]) for day in order]
+
+
+def _day_title(day, today) -> str:
+    """"mardi 08/09", et le mot du jour quand il y en a un."""
+    line = "{} {:%d/%m}".format(WEEKDAYS[day.weekday()], day)
+    elapsed = (day - today).days
+    if elapsed == 0:
+        return line + " (aujourd'hui)"
+    if elapsed == 1:
+        return line + " (demain)"
+    return line
+
+
+def _delay_text(seconds) -> str:
+    """Le temps qui reste avant le coup d'envoi, en une poignee de signes.
+
+    L'heure du match dit *quand*, cette colonne dit *dans combien de temps* :
+    c'est la vraie reponse a la question, et elle evite de compter les jours
+    sur ses doigts.
+    """
+    if seconds < 3600:
+        return "dans {} min".format(max(1, int(seconds // 60)))
+    if seconds < 48 * 3600:
+        return "dans {} h".format(int(seconds // 3600))
+    return "dans {} j".format(int(seconds // 86400))
+
+
+def _nothing_text(days, chosen, selection) -> str:
+    """La phrase du calendrier vide.
+
+    Un tableau sans ligne laisse croire a une panne. Il faut dire ce qui a ete
+    cherche, ou, et sur combien de temps : c'est aussi ce qui rend visible une
+    faute de frappe dans le nom d'equipe.
+    """
+    where = leagues.describe(selection)
+    if chosen is not None and chosen.wanted_tokens:
+        where = "{} dans {}".format(", ".join(chosen.wanted_tokens), where)
+    if days == 1:
+        return "Rien au programme aujourd'hui pour {}.".format(where)
+    return "Rien au programme dans les {} prochains jours pour {}.".format(
+        days, where)
+
+
+def do_next(args) -> int:
+    """Les prochains matchs, groupes par jour puis par competition."""
+    selection = leagues.resolve(args.leagues, args.exclude)
+    days, wanted = _next_request(args.next)
+    chosen = _next_filter(args, wanted)
+
+    now = datetime.now(timezone.utc)
+    today = datetime.now().date()
+    # La fenetre demandee a la source est elargie d'un jour de chaque cote :
+    # `dates` compte les jours dans le fuseau d'ESPN, pas dans le notre, et un
+    # match de 21 h en France peut y tomber la veille ou le lendemain. Le tri
+    # fin est fait ici, sur les vraies heures de coup d'envoi.
+    span = espn.date_span(today - timedelta(days=1),
+                          today + timedelta(days=days))
+
+    found = []
+    unreachable = []
+    total = len(selection)
+    for index, league in enumerate(selection):
+        try:
+            matches = espn.scoreboard(league, dates=span)
+        except espn.SourceError as exc:
+            # Une competition muette n'emporte pas les autres : mieux vaut un
+            # calendrier incomplet, et dit comme tel, qu'une erreur a la place
+            # de tout ce qui a bien repondu.
+            unreachable.append((league, exc))
+            matches = []
+        if chosen is not None:
+            matches = [match for match in matches if chosen.matches(match)]
+        found.extend(next_matches(matches, now, days, today=today))
+        if index + 1 < total:
+            time.sleep(NEXT_PAUSE)
+
+    found.sort(key=lambda match: (match.start, match.league.name, match.home))
+    grouped = group_by_day(found)
+
+    print(tr("butbutbut : prochains matchs - {}, {} jour(s)",
+             leagues.describe(selection), days))
+    if chosen is not None:
+        print(tr("  {}", chosen.describe()))
+
+    for day, rows in grouped:
+        print(tr("\n{}", _day_title(day, today)))
+        for name, matches in rows:
+            print(tr("  {}", name))
+            for match in matches:
+                print("      {:%H:%M}  {:>22} - {:<22} {}".format(
+                    match.start.astimezone(), match.home, match.away,
+                    _delay_text(match.seconds_until_kickoff(now))).rstrip())
+
+    if found:
+        print(tr("\n{} match(s) a venir dans {} competition(s), sur {} jour(s).",
+                 len(found), len({m.league.name for m in found}), days))
+    elif len(unreachable) == total:
+        print(tr("\nAucune competition n'a repondu : rien a annoncer."))
+    else:
+        print(tr("\n{}", _nothing_text(days, chosen, selection)))
+
+    for league, exc in unreachable:
+        print(tr("  ({} injoignable : {})", league.name, exc))
+    if unreachable and len(unreachable) < total:
+        print(tr("  (le calendrier ci-dessus est donc incomplet ; les autres "
+                 "competitions ont repondu)"))
+    return 1 if unreachable and len(unreachable) == total else 0
+
+
 def _print_activity(pid, quiet_teams=None) -> None:
     """L'activite du daemon, relue dans le fichier d'etat.
 
@@ -1662,6 +1874,15 @@ def build_parser() -> argparse.ArgumentParser:
                              "(defaut 1 ; --test 3 montre l'empilement)"))
     parser.add_argument("--scores", action="store_true",
                         help=tr("affiche les matchs du jour dans le terminal puis quitte"))
+    # nargs="?" avec un const vide : '--next' tout court doit se distinguer de
+    # '--next' absent, sans quoi la commande ne serait jamais declenchee.
+    parser.add_argument("--next", nargs="?", const="", default=None,
+                        metavar="EQUIPE|JOURS",
+                        help=tr("affiche les prochains matchs puis quitte. Sans "
+                                "rien : les {} prochains jours des competitions "
+                                "suivies. '--next om' cible une equipe, "
+                                "'--next 14' allonge la fenetre ({} au plus)",
+                                DEFAULT_NEXT_DAYS, MAX_NEXT_DAYS))
     parser.add_argument("--status", action="store_true",
                         help=tr("affiche l'etat (daemon, dernier releve, matchs "
                              "en cours, son, ecrans, connexion)"))
@@ -1937,6 +2158,8 @@ def main(argv=None) -> int:
         return do_scores(args)
     if args.test_hook:
         return do_test_hook(args)
+    if args.next is not None:
+        return do_next(args)
     if args.test:
         return do_test(args)
     if args.replay:

@@ -100,6 +100,7 @@ butbutbut                     # watch in the background (the default)
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
+butbutbut --next              # the fixtures to come, grouped by day
 butbutbut --list              # the competitions you can watch
 butbutbut --list-teams        # the teams in the competitions you follow
 butbutbut --status            # daemon, last poll, matches in play, sound, screens
@@ -412,6 +413,90 @@ Saturday:
 teams = om
 spoiler_free = om
 ```
+### The fixtures to come
+
+`--scores` says what is being played today. `--next` answers the question that
+comes right after: **when is the next match?**
+
+```bash
+butbutbut --next              # the fixtures to come in the competitions you follow
+butbutbut --next om           # ... for that team
+butbutbut --next 14           # ... over the next 14 days
+butbutbut --next om,psg,3     # both at once, in any order
+```
+
+```
+butbutbut : prochains matchs - Ligue 1, Ligue des champions, 7 jour(s)
+
+mardi 08/09 (demain)
+  Ligue des champions
+      18:45             Club Brugge - Aston Villa            dans 40 h
+      21:00       Borussia Dortmund - Villarreal             dans 42 h
+      21:00             Real Madrid - Internazionale         dans 42 h
+
+vendredi 11/09
+  Ligue 1
+      20:45           Stade Rennais - Marseille              dans 4 j
+
+samedi 12/09
+  Ligue 1
+      17:15              Strasbourg - AS Monaco              dans 5 j
+      20:45                Paris FC - Lyon                   dans 5 j
+
+6 match(s) a venir dans 2 competition(s), sur 7 jour(s).
+```
+
+Grouped **by day, then by competition**, in the **machine's local time**: the
+source only speaks UTC, where a Saturday 9 pm match in Marseille is written
+down as Sunday 1 am. The last column says how long there is to wait - the time
+answers *when*, that column answers *in how long*, and it saves counting days
+on your fingers.
+
+**Seven days by default**, because that is the grain of the calendar: a club
+plays once a week, twice when it has a cup tie. Seven days therefore always
+contain anybody's next match, without dumping a month of fixtures to answer a
+question that fits on one line. `--next 30` is the ceiling: beyond that the
+source itself has nothing left to say, calendars only being published a few
+weeks ahead.
+
+The window counts **whole days**, not 24-hour slices: `--next 1` is the rest of
+today, `--next 7` is today plus the six days after it. A window closing in the
+middle of an evening would cut a fixture list in half for no reason anybody
+could see.
+
+The team name is the one `--teams` already accepts - `om`, `barca`, `manu`,
+accented names without their accents, the start of a word: it is the same code.
+It adds to `--teams` when there is one.
+
+Nothing scheduled prints a sentence rather than an empty table, one that
+repeats what was looked for, where, and over how long:
+
+```
+Rien au programme dans les 7 prochains jours pour om dans Ligue 1.
+```
+
+That is also where a typo shows up: `--next` does not check the word against
+the club catalogue the way `--teams` does, a check that would cost one more
+request per competition on a command you fire off in passing.
+
+**One request per competition**, not one per day: the dashboard accepts a date
+range, so the whole window fits in a single call. Competitions are polled one
+after the other, spaced out just as they are when the daemon starts - with
+`--leagues all` that is 36 requests, and a burst ends up being turned away.
+**If one fails, the others carry on**: the calendar comes out anyway, with what
+is missing spelled out.
+
+```
+9 match(s) a venir dans 1 competition(s), sur 7 jour(s).
+  (Bundesliga injoignable : HTTP 500 sur ger.1)
+  (le calendrier ci-dessus est donc incomplet ; les autres competitions ont repondu)
+```
+
+When none of them answers, the command says so and exits with an error rather
+than letting you believe in a weekend without football.
+
+> The terminal output itself is in French, like `--scores` and `--status`: only
+> the cards follow the machine's language.
 
 ### Placing the cards
 
@@ -949,6 +1034,13 @@ updated live, and it gives the **scorer**, the **minute**, **own goals**,
 **penalties**, each club's **crest** and its **colours**. It is a public but
 undocumented API: everything is read defensively, and a key that disappears
 does not kill the daemon.
+
+Left alone, the endpoint only serves **the current day**: enough to watch for
+goals, not enough to say when the next match falls. For that it accepts a
+`dates` parameter, either one day (`?dates=20260908`) or a range
+(`?dates=20260908-20260915`), both ends included. That range is what lets
+`--next` cover a whole week in a single request per competition, where one day
+at a time would cost seven.
 
 ### How a goal is detected
 

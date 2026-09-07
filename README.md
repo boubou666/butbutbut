@@ -100,6 +100,7 @@ butbutbut                     # surveille en fond (comportement par defaut)
 butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
+butbutbut --next              # les prochains matchs, groupes par jour
 butbutbut --list              # les competitions surveillables
 butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
@@ -415,6 +416,87 @@ Le reglage a sa cle de configuration, pour ne pas le retaper le samedi suivant :
 teams = om
 spoiler_free = om
 ```
+### Les prochains matchs
+
+`--scores` dit ce qui se joue aujourd'hui. `--next` repond a la question
+d'apres : **c'est quand, le prochain match ?**
+
+```bash
+butbutbut --next              # les prochains matchs des competitions suivies
+butbutbut --next om           # ... de cette equipe
+butbutbut --next 14           # ... sur les 14 prochains jours
+butbutbut --next om,psg,3     # les deux a la fois, dans n'importe quel ordre
+```
+
+```
+butbutbut : prochains matchs - Ligue 1, Ligue des champions, 7 jour(s)
+
+mardi 08/09 (demain)
+  Ligue des champions
+      18:45             Club Brugge - Aston Villa            dans 40 h
+      21:00       Borussia Dortmund - Villarreal             dans 42 h
+      21:00             Real Madrid - Internazionale         dans 42 h
+
+vendredi 11/09
+  Ligue 1
+      20:45           Stade Rennais - Marseille              dans 4 j
+
+samedi 12/09
+  Ligue 1
+      17:15              Strasbourg - AS Monaco              dans 5 j
+      20:45                Paris FC - Lyon                   dans 5 j
+
+6 match(s) a venir dans 2 competition(s), sur 7 jour(s).
+```
+
+Groupe **par jour puis par competition**, a l'**heure locale de la machine** :
+la source ne parle qu'en UTC, ou un match du samedi 21 h a Marseille est ecrit
+le dimanche a 1 h du matin. La derniere colonne dit dans combien de temps -
+l'heure repond *quand*, elle repond *dans combien de temps*, et ca evite de
+compter les jours sur ses doigts.
+
+**Sept jours par defaut**, parce que c'est la maille du calendrier : un club
+joue une fois par semaine, deux quand il a une coupe. Sept jours contiennent
+donc toujours le prochain match de qui que ce soit, sans deverser un mois
+d'affiches pour repondre a une question qui tient en une ligne. `--next 30` est
+le maximum : au-dela la source elle-meme n'a plus rien a dire, les calendriers
+n'etant publies qu'a quelques semaines.
+
+La fenetre se compte en **jours entiers** et non en tranches de 24 h :
+`--next 1`, c'est le reste de la journee ; `--next 7`, aujourd'hui et les six
+jours suivants. Une fenetre qui se refermerait au milieu d'une soiree couperait
+une affiche en deux sans que personne comprenne pourquoi.
+
+Le nom d'equipe est celui que `--teams` accepte deja - `om`, `barca`, `manu`,
+les noms sans accents, un debut de mot : c'est le meme code. Il s'ajoute a
+`--teams` s'il y en a un.
+
+Rien au programme n'affiche pas un tableau vide mais une phrase, qui redit ce
+qui a ete cherche, ou, et sur combien de temps :
+
+```
+Rien au programme dans les 7 prochains jours pour om dans Ligue 1.
+```
+
+C'est aussi la que se voit une faute de frappe : `--next` ne confronte pas le
+mot au catalogue des clubs comme le fait `--teams`, verification qui couterait
+une requete de plus par competition sur une commande qu'on lance en passant.
+
+**Une requete par competition**, pas une par jour : le tableau de bord accepte
+un intervalle de dates, donc toute la fenetre tient dans un seul appel. Les
+competitions sont interrogees les unes apres les autres, espacees comme au
+demarrage du daemon - avec `--leagues all` ce sont 36 requetes, et une rafale
+finit par se faire jeter. **Si l'une echoue, les autres continuent** : le
+calendrier sort quand meme, avec ce qui manque dit en toutes lettres.
+
+```
+9 match(s) a venir dans 1 competition(s), sur 7 jour(s).
+  (Bundesliga injoignable : HTTP 500 sur ger.1)
+  (le calendrier ci-dessus est donc incomplet ; les autres competitions ont repondu)
+```
+
+Quand aucune ne repond, la commande le dit et sort en erreur plutot que de
+laisser croire a un week-end sans football.
 
 ### Placer les cartes
 
@@ -954,6 +1036,13 @@ surveiller, elle est mise a jour en direct, et elle donne le **buteur**, la
 **minute**, les **csc**, les **penaltys**, l'**ecusson** de chaque club et ses
 **couleurs**. C'est une API publique mais non documentee : tout est lu de facon
 defensive, une cle qui disparait ne tue pas le daemon.
+
+Sans rien de plus, l'endpoint ne sert que **la journee en cours** : assez pour
+guetter les buts, pas pour dire quand tombe le prochain match. Il accepte pour
+ca un parametre `dates`, un jour (`?dates=20260908`) ou un intervalle
+(`?dates=20260908-20260915`), bornes comprises. C'est ce dernier qui permet a
+`--next` de couvrir une semaine entiere en une seule requete par competition,
+la ou un jour a la fois en couterait sept.
 
 ### Comment un but est detecte
 
