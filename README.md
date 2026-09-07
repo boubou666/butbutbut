@@ -980,6 +980,21 @@ Un ecusson qui n'existe pas, un PNG corrompu, un dossier en lecture seule : la
 carte s'affiche sans image, et c'est tout. Le dossier peut etre efface a tout
 moment, il se remplira de nouveau.
 
+Ce qui se telecharge l'est **a la taille ou la carte l'affichera**. La source
+publie ses ecussons en 500x500 et sert le meme fichier redimensionne cote
+serveur : un ecusson passe de 37 ko a 5 ko, sept fois moins, et il est plus
+net - tkinter ne reduit qu'en rapports entiers, et diviser un 64x64 par deux
+rend mieux que diviser un 500x500 par quinze. La taille demandee suit
+`--scale`, et au-dela d'une carte de projection c'est l'original qui repart.
+
+Cette URL-la est la seule que butbutbut **fabrique** au lieu de la lire dans la
+reponse : elle n'est donc qu'une preference. Elle n'est meme pas fabriquee pour
+une adresse d'une forme inattendue, et si elle ne rend pas un PNG exploitable -
+404, corps vide, autre chose qu'une image - c'est l'URL annoncee par la source
+qui est reprise aussitot. Rien ne se voit sur la carte. Les ecussons pris par
+les versions precedentes, eux, etaient ranges sous leur seule URL : ils ne sont
+plus consultes, et leurs remplacants arrivent au fil des buts.
+
 **La couleur du club**, pour l'equipe qui marque et son chiffre. Attention, ces
 couleurs sont choisies pour un fond blanc, et le fond de la carte est presque
 noir : le bleu marine de Troyes (`0000bf`) y est illisible, et le noir du Paris

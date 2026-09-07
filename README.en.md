@@ -977,6 +977,21 @@ A crest that does not exist, a corrupt PNG, a read-only folder: the card shows
 without an image, and that's that. The folder can be wiped at any time, it
 will fill up again.
 
+What gets downloaded is downloaded **at the size the card will show it**. The
+source publishes its crests at 500x500 and serves the very same file resized
+server-side: a crest goes from 37 kB to 5 kB, seven times less, and it looks
+sharper - tkinter only shrinks by integer ratios, and halving a 64x64 beats
+dividing a 500x500 by fifteen. The size asked for follows `--scale`, and past a
+projection-sized card the original comes back instead.
+
+That URL is the only one butbutbut **builds** instead of reading it from the
+answer, so it is treated as a preference and nothing more. It is not even built
+for an address of an unexpected shape, and if it does not return a usable PNG -
+404, empty body, anything that is not an image - the URL the source announces
+is used instead, right away. Nothing shows on the card. Crests downloaded by
+earlier versions were filed under their URL alone: they are no longer looked
+up, and their replacements arrive as the goals come in.
+
 **The club colour**, for the team that scores and for its number. Careful,
 though: these colours are chosen for a white background, and the card's
 background is almost black. Troyes' navy blue (`0000bf`) is unreadable on it,
