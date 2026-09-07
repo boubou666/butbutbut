@@ -15,7 +15,8 @@ Trois garde-fous :
   - un trou dans le temps (veille, hibernation, processus gele) remet tous les
     championnats a l'etat "jamais photographie" : au reveil la source a des
     heures d'avance sur nous, la comparer a notre derniere photo n'a plus de
-    sens.
+    sens. A la demande (`catch_up`), la derniere photo d'avant le trou est
+    mise de cote et sert a resumer ce qu'on a manque, en UNE carte muette.
 
 Autour du but viennent des evenements plus discrets, tous muets : les temps
 forts du match (coup d'envoi, mi-temps, reprise, fin), les expulsions et
@@ -57,16 +58,17 @@ RESTART = "restart"
 FULLTIME = "fulltime"
 RED_CARD = "red_card"
 PREMATCH = "prematch"
+CATCHUP = "catchup"
 
 # Les cartes de deroulement du match : meme carte, mais jamais de son.
 PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
 
 # Les cartes au ton discret : titre gris, aucune equipe mise en avant, et
 # surtout aucun son. Seul un but fait du bruit, c'est ce qui le distingue.
-# L'expulsion et l'avant-match rejoignent les phases sur ce point, mais pas
-# sur --no-phase-cards : chacune a son propre interrupteur, et couper les
-# temps forts ne doit pas couper ce qu'on a explicitement demande.
-SOBER = PHASES + (RED_CARD, PREMATCH)
+# L'expulsion, l'avant-match et le rattrapage rejoignent les phases sur ce
+# point, mais pas sur --no-phase-cards : chacune a son propre interrupteur, et
+# couper les temps forts ne doit pas couper ce qu'on a explicitement demande.
+SOBER = PHASES + (RED_CARD, PREMATCH, CATCHUP)
 
 # Une cle de traduction par sorte d'evenement : la formulation vit dans
 # i18n.py, pas ici.
@@ -79,6 +81,7 @@ TITLE_KEYS = {
     FULLTIME: "title_fulltime",
     RED_CARD: "title_red_card",
     PREMATCH: "title_prematch",
+    CATCHUP: "title_catchup",
 }
 
 
@@ -139,14 +142,52 @@ def _countdown(seconds: float, lang=None) -> str:
     return i18n.text("kickoff_in", lang=lang, minutes=minutes)
 
 
+class Change:
+    """Ce qu'un match a pris pendant qu'on ne regardait pas.
+
+    Le score d'avant le trou, le match tel qu'il est au reveil (il porte le
+    score d'apres et les noms), et les buts dont la cle ne figurait pas encore
+    dans notre derniere photo. C'est ce dernier point qui rend le rattrapage
+    possible sans inventer : la source publie chaque action avec une cle
+    stable, on sait donc exactement lesquelles on n'a jamais vues.
+    """
+
+    __slots__ = ("match", "before_home", "before_away", "plays")
+
+    def __init__(self, match, before_home, before_away, plays):
+        self.match = match
+        self.before_home = before_home
+        self.before_away = before_away
+        self.plays = list(plays)
+
+
+def _change_parts(change, full=False, lang=None) -> list:
+    """Une ligne de rattrapage, en morceaux : (texte, mis_en_valeur).
+
+    `full` : la ligne se suffit a elle-meme, avec les deux noms et le score
+    d'apres. Sans lui, elle commente le score deja affiche juste au-dessus et
+    ne rappelle donc que celui d'avant, sans le repeter en double.
+    """
+    before = i18n.text("catchup_before", lang=lang,
+                       score="{} - {}".format(change.before_home,
+                                              change.before_away))
+    head = "{} ({})".format(change.match.score_line(), before) if full else before
+    scorers = ", ".join(_scorer_text(play, lang=lang) for play in change.plays)
+    if scorers:
+        return [(head + " : ", False), (scorers, True)]
+    return [(head, False)]
+
+
 class Event:
     """Ce qui vient de se passer : un but, une expulsion, un temps fort."""
 
     __slots__ = ("kind", "match", "side", "team", "opponent", "home_score",
-                 "away_score", "delta", "play", "at", "countdown")
+                 "away_score", "delta", "play", "at", "countdown", "changes",
+                 "gap")
 
     def __init__(self, kind, match, side, team, opponent, home_score,
-                 away_score, delta, play, at=None, countdown=None):
+                 away_score, delta, play, at=None, countdown=None,
+                 changes=(), gap=0.0):
         self.kind = kind
         self.match = match
         self.side = side              # "home" ou "away"
@@ -162,6 +203,11 @@ class Event:
         # francais il ne pourrait plus etre rendu dans une autre langue - la
         # carte et le journal n'en veulent pas la meme.
         self.countdown = countdown
+        # Le rattrapage de sortie de veille : un Change par match qui a bouge
+        # pendant le trou, et la duree du trou en secondes. Vides partout
+        # ailleurs. Meme raison qu'au-dessus pour garder la duree en secondes.
+        self.changes = list(changes)
+        self.gap = float(gap or 0.0)
 
     @property
     def league(self):
@@ -196,6 +242,13 @@ class Event:
             # Rien n'a commence : l'horloge d'un match a venir ne dit rien, et
             # la date complete que la source y met deborde de l'en-tete.
             return ""
+        if self.kind == CATCHUP:
+            # Une carte de resume couvre plusieurs matchs : aucune minute de
+            # jeu ne lui appartient. On y met la duree du trou, qui dit d'un
+            # coup d'oeil de quelle absence on parle.
+            if not self.gap:
+                return ""
+            return i18n.text("catchup_gap", minutes=int(self.gap // 60))
         if self.play is not None and self.play.minute:
             return self.play.minute
         return self.match.clock or self.match.detail or ""
@@ -230,6 +283,13 @@ class Event:
             if self.countdown is None:
                 return []
             return [(_countdown(self.countdown, lang=lang), False)]
+        if self.kind == CATCHUP:
+            # La carte affiche au-dessus le score du premier match concerne :
+            # cette ligne le commente (score d'avant, buteurs manques), les
+            # autres matchs prennent une ligne chacun dans extra_parts().
+            if not self.changes:
+                return []
+            return _change_parts(self.changes[0], lang=lang)
         if self.kind == RED_CARD:
             # L'equipe se lit ici plutot que dans la couleur du score : voir
             # une equipe passer en couleur, sur cette carte, ressemblerait a
@@ -269,10 +329,20 @@ class Event:
     def extra_parts(self, lang=None) -> list:
         """Les lignes supplementaires de la carte, en morceaux.
 
-        Seule la fin du match en a : le score seul ne dit pas qui a marque,
-        alors que c'est la premiere chose qu'on cherche quand on n'a pas vu le
-        match. Un camp sans but n'a pas de ligne du tout.
+        Deux cartes en ont. La fin du match, parce que le score seul ne dit pas
+        qui a marque, alors que c'est la premiere chose qu'on cherche quand on
+        n'a pas vu le match ; un camp sans but n'a pas de ligne du tout. Et le
+        rattrapage de sortie de veille, une ligne par match qui a bouge.
+
+        Ni l'une ni l'autre ne borne sa liste ici : c'est `overlay._layout` qui
+        coupe, sur la hauteur (MAX_EXTRA_LINES) comme sur la largeur (des
+        points de suspension). Le journal, lui, garde tout.
         """
+        if self.kind == CATCHUP:
+            # Le premier match est deja decrit par la ligne de detail : il ne
+            # se repete pas ici.
+            return [_change_parts(change, full=True, lang=lang)
+                    for change in self.changes[1:]]
         if self.kind != FULLTIME:
             return []
 
@@ -344,7 +414,8 @@ class Watcher:
                  idle_interval=DEFAULT_IDLE_INTERVAL,
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
                  opener=None, on_log=None, teams=None, clock=None,
-                 red_cards=False, before_kickoff=0.0, monotonic=None):
+                 red_cards=False, before_kickoff=0.0, catch_up=False,
+                 monotonic=None):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
@@ -353,6 +424,10 @@ class Watcher:
         # match n'interessent pas tout le monde, elles ne s'invitent pas.
         self.red_cards = bool(red_cards)
         self.before_kickoff = max(0.0, float(before_kickoff))   # en secondes
+        # Le rattrapage de sortie de veille. Eteint par defaut : le silence au
+        # reveil reste le comportement livre, celui qui ne raconte jamais rien
+        # de faux.
+        self.catch_up = bool(catch_up)
         self.interval = max(5.0, float(interval))
         self.idle_interval = max(self.interval, float(idle_interval))
         self.kickoff_window = float(kickoff_window)
@@ -379,6 +454,10 @@ class Watcher:
         self._primed = set()       # championnats deja photographies une fois
         self._planned = 0.0        # attente annoncee a la boucle de surveillance
         self._planned_at = None    # ... et l'heure a laquelle on l'a annoncee
+        # La derniere photo d'avant le trou, mise de cote le temps que tous les
+        # championnats soient rephotographies : match_id -> (score, cles vues).
+        self._missed = None
+        self._missed_gap = 0.0     # duree cumulee du (ou des) trou(s) en cours
 
     # ------------------------------------------------------------ cadence ---
 
@@ -497,6 +576,9 @@ class Watcher:
         events = []
         for league in self.due_leagues(now):
             events.extend(self.refresh(league, now=now))
+        # Le resume vient apres les releves, et donc apres les evenements
+        # normaux du meme passage : il raconte le passe, il passe en dernier.
+        events.extend(self._catch_up())
         return events
 
     def _check_gap(self) -> float:
@@ -506,16 +588,102 @@ class Watcher:
         sortirait une carte "BUT" de delta 3 avec une minute perimee, voire un
         "COUP D'ENVOI" pour un match deja fini. Le silence du premier releve
         est exactement le bon comportement : on le rejoue.
+
+        Avec `catch_up`, la photo d'avant le trou n'est pas jetee pour autant :
+        elle part de cote, et servira a dire en une carte muette ce qu'on a
+        manque. Le silence du releve, lui, ne bouge pas d'un pouce.
         """
         gap = self._gap()
         if not gap:
             return 0.0
-        self.on_log("trou de {:.0f} min dans le temps (veille, hibernation ou "
-                    "processus gele) - on rephotographie les scores sans rien "
-                    "annoncer".format(gap / 60.0))
+        if self.catch_up:
+            self._remember_missed(gap)
+            self.on_log("trou de {:.0f} min dans le temps (veille, hibernation "
+                        "ou processus gele) - on rephotographie les scores, et "
+                        "on resume ce qu'on a manque".format(gap / 60.0))
+        else:
+            self.on_log("trou de {:.0f} min dans le temps (veille, hibernation "
+                        "ou processus gele) - on rephotographie les scores sans "
+                        "rien annoncer".format(gap / 60.0))
         self._primed.clear()
         self._planned_at = None
         return gap
+
+    def _remember_missed(self, gap: float) -> None:
+        """Met de cote la derniere photo d'avant le trou.
+
+        Une machine qui se rendort aussitot reveillee produit un second trou
+        avant que le resume ait pu sortir : la premiere photo est alors gardee,
+        pas remplacee, sinon le resume ne raconterait que le second sommeil. Le
+        set des cles est copie, la photo d'origine etant mise a jour en place
+        par le releve suivant.
+        """
+        self._missed_gap += gap
+        if self._missed is None:
+            self._missed = {key: (snap.home_score, snap.away_score,
+                                  set(snap.seen_plays))
+                            for key, snap in self._snapshots.items()}
+
+    def _catch_up(self) -> list:
+        """UNE carte de resume, une fois tous les championnats rephotographies.
+
+        Une seule, et muette : rejouer trois cartes avec des minutes perimees
+        et un coup de corne pour un but vieux d'une heure est exactement ce que
+        le silence du reveil evitait.
+
+        On attend que TOUS les championnats aient ete relus : sous Linux
+        `time.monotonic()` gele pendant la veille, les echeances ne retombent
+        donc pas toutes au meme releve, et un resume a trous vaudrait moins que
+        rien. Un match jamais photographie avant le trou (commence et fini
+        pendant) n'y figure pas non plus : on n'a rien suivi, meme regle que
+        pour la carte de fin de match.
+        """
+        if self._missed is None:
+            return []
+        if any(league.slug not in self._primed for league in self.leagues):
+            return []
+
+        before, gap = self._missed, self._missed_gap
+        self._missed, self._missed_gap = None, 0.0
+
+        changes = []
+        for match in self.all_matches():
+            known = before.get(match.id)
+            if known is None:
+                continue
+            home, away, seen = known
+            if match.home_score == home and match.away_score == away:
+                continue
+            if self.teams is not None and not self.teams.matches(match):
+                continue
+            changes.append(Change(match, home, away,
+                                  [p for p in match.plays if p.key not in seen]))
+
+        minutes = gap / 60.0
+        if not changes:
+            # Rien a dire, donc pas de carte - mais le journal note quand meme
+            # le rattrapage : sans cette ligne, "aucune carte" et "le
+            # rattrapage n'a pas tourne" seraient indistinguables.
+            self.on_log("rattrapage : personne n'a marque pendant les "
+                        "{:.0f} min d'absence".format(minutes))
+            return []
+
+        self.on_log("rattrapage : {} match(s) ont bouge pendant les {:.0f} min "
+                    "d'absence".format(len(changes), minutes))
+        head = changes[0].match
+        return [Event(
+            kind=CATCHUP,
+            match=head,
+            side=None,
+            team="",
+            opponent="",
+            home_score=head.home_score,
+            away_score=head.away_score,
+            delta=0,
+            play=None,
+            changes=changes,
+            gap=gap,
+        )]
 
     def prime(self, pause: float = 0.2, now=None) -> None:
         """Premier passage sur tout : photographie l'existant, sans alerte.

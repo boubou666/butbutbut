@@ -52,8 +52,10 @@ class TestParser(unittest.TestCase):
         self.assertFalse(args.no_sound)
         self.assertFalse(args.no_overlay)
         self.assertFalse(args.no_phase_cards)
-        # Les deux nouvelles cartes ne s'invitent pas : il faut les demander.
+        # Les nouvelles cartes ne s'invitent pas : il faut les demander.
         self.assertFalse(args.red_cards)
+        # Le silence au reveil reste le comportement livre.
+        self.assertFalse(args.catch_up)
         self.assertEqual(args.before_kickoff, 0)
         self.assertFalse(args.quiet)
         self.assertEqual(args.retry_fullscreen, 0.0)
@@ -68,9 +70,12 @@ class TestParser(unittest.TestCase):
             45.0)
 
     def test_the_new_cards_are_opt_in(self):
-        args = self.parser.parse_args(["--red-cards", "--before-kickoff", "5"])
+        args = self.parser.parse_args(["--red-cards", "--before-kickoff", "5",
+                                       "--catch-up"])
         self.assertTrue(args.red_cards)
         self.assertEqual(args.before_kickoff, 5)
+        self.assertTrue(args.catch_up)
+
 
     def test_a_negative_countdown_is_read_as_disabled(self):
         with mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
@@ -526,6 +531,35 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         row = state.read(self.paths["state"])["pinned"]
         self.assertEqual(row["home"], "Angers")
         self.assertEqual(row["home_score"], 1)
+
+    def catch_up_event(self, stopping):
+        """Le resume de sortie de veille, tel que le watcher le rendrait."""
+        matches = espn.parse(payload(event(state="in", home_score=2)),
+                             leagues.BY_SLUG["fra.1"])
+        summary = watcher.Event(
+            kind=watcher.CATCHUP, match=matches[0], side=None, team="",
+            opponent="", home_score=2, away_score=0, delta=0, play=None,
+            changes=[watcher.Change(matches[0], 0, 0, matches[0].plays)],
+            gap=40 * 60.0)
+        return OneShot(matches, [summary], stopping)
+
+    def test_the_catch_up_card_is_shown_without_a_sound(self):
+        # Le point de l'option : une carte au reveil, et surtout pas la corne
+        # pour un but vieux d'une heure.
+        stopping = threading.Event()
+        stack = FakeStack(self.paths["state"])
+        stack.stopping = stopping
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            cli._watch_with_cards(self.catch_up_event(stopping), self.args,
+                                  stopping, stack, self.reporter(),
+                                  pinned.Pin(""))
+
+        self.assertEqual(len(stack.cards), 1)
+        # La duree du trou plutot qu'une minute de jeu : c'est bien le resume.
+        # Elle s'ecrit pareil dans les cinq langues, le test tient donc sur une
+        # machine anglaise comme celles de la CI.
+        self.assertEqual(stack.cards[0].minute, "40 min")
+        horn.assert_not_called()
 
 
 class TestPinOption(unittest.TestCase):

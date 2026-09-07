@@ -491,6 +491,7 @@ volume = 0.55
 no_sound = non
 no_overlay = non
 no_phase_cards = non
+catch_up = non
 quiet = non
 ```
 
@@ -747,9 +748,13 @@ stale minute, or even a `COUP D'ENVOI` for a match that has already finished.
 Before every poll, the daemon compares the wall-clock time that has actually
 elapsed with the time it meant to wait. Beyond **two minutes of lateness**
 (enough to let a loaded machine, or a poll dragged out by the 8 s HTTP
-timeout, pass without a murmur), it concludes that it has jumped through time:
-it **re-photographs every score in silence**, exactly as on the first poll,
-and notes it in the log:
+timeout, pass without a murmur), it concludes that it has jumped through time.
+Two behaviours from there, depending on what you asked for.
+
+#### By default: silence
+
+It **re-photographs every score**, exactly as on the first poll, and notes it
+in the log:
 
 ```
 2026-09-06 21:14:07  trou de 47 min dans le temps (veille, hibernation ou processus gele) - on rephotographie les scores sans rien annoncer
@@ -759,9 +764,59 @@ Watching then resumes as normal, and the next goal is announced as usual. The
 goals that went in during the sleep, however, are lost: that is the price of
 not talking nonsense.
 
+#### With `--catch-up`: one summary card
+
+```bash
+butbutbut --catch-up
+```
+
+The photograph taken before the gap is no longer thrown away: it is set aside,
+then compared with the one taken on waking. Because the source publishes each
+match's table of events with **stable keys**, we know exactly which goals we
+never saw - and therefore what can be told without making anything up.
+
+```
+PENDANT TON ABSENCE   LIGUE 1                                     47 min
+Angers              0 - 2              Stade Rennais
+avant 0 - 0 : A. Kalimuendo 58', L. Blas 77'
+Lens 1 - 0 Lille (avant 0 - 0) : F. Sotoca 23'
+```
+
+What that card does **not** do matters as much as what it says:
+
+- **one card**, never one per goal. Replaying three cards with stale minutes on
+  them is precisely what the silence was avoiding;
+- **no sound.** An hour-old goal does not get the horn. It is a discreet card,
+  like half-time or a red card - and like them it has its own switch:
+  `--no-phase-cards` does not turn it off;
+- **nothing to say, no card at all.** If nobody scored during the sleep the
+  screen stays empty; the log still records the catch-up;
+- the **team filter** applies: with `--teams om`, only Marseille's matches show
+  up on it;
+- a match that **started and finished during the sleep** is left out too: we
+  followed none of it, the same rule as for the full-time card.
+
+The first match concerned takes the score line, the others get one line each
+below it. A whole night of World Cup fixtures will not make the card overflow:
+it is cut in height as well as in width, by the very mechanism that already
+trims the list of scorers on the full-time card. The log keeps everything:
+
+```
+2026-09-06 21:14:07  trou de 47 min dans le temps (veille, hibernation ou processus gele) - on rephotographie les scores, et on resume ce qu'on a manque
+2026-09-06 21:14:09  rattrapage : 2 match(s) ont bouge pendant les 47 min d'absence
+2026-09-06 21:14:09  PENDANT TON ABSENCE [Ligue 1] Angers 0 - 2 Stade Rennais - avant 0 - 0 : A. Kalimuendo 58', L. Blas 77' - Lens 1 - 0 Lille (avant 0 - 0) : F. Sotoca 23' (47 min)
+```
+
+`butbutbut --status` shows which of the two behaviours is armed on its
+"rattrapage" line, and the `catch_up` key in the configuration file turns it on
+without retyping the option.
+
 The measurement is taken on the wall clock and not on `time.monotonic()`: on
 Linux, monotonic is frozen during sleep and would therefore see no gap at all,
-whereas on Windows it carries on ticking.
+whereas on Windows it carries on ticking. That is also why the summary waits
+until **every** competition being followed has been re-photographed: their due
+times do not all come round on the same poll, and a summary with holes in it
+would be worth less than nothing.
 
 ### Polling rate
 
@@ -1218,7 +1273,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**678 tests**, with no network and no screen: the source is simulated by an
+**701 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

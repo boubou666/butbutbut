@@ -9,6 +9,47 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **`--catch-up` : rattraper ce qui s'est passe pendant la veille.** Au reveil,
+  au lieu de se taire, butbutbut affiche UNE carte de resume - les matchs qui
+  ont bouge, leur score avant et apres, et les buteurs. La photo d'avant le
+  trou n'est plus jetee : elle est confrontee a celle du reveil, et comme la
+  source publie le tableau des actions avec des cles stables, on sait
+  exactement quels buts on n'a jamais vus.
+- La cle `catch_up` du fichier de configuration, et une ligne « rattrapage »
+  dans `--status` qui rappelle lequel des deux comportements est arme.
+
+### Change
+
+- Rien par defaut : l'option est **eteinte**, le silence au reveil reste le
+  comportement livre. C'est celui qui ne raconte jamais rien de faux, et
+  changer d'avis pour tout le monde en montant de version serait une surprise.
+
+### Interne
+
+- Les arbitrages de la carte de resume, tous pris contre le reflexe de tout
+  dire : **une seule** carte et non une par but (rejouer trois cartes avec des
+  minutes perimees est exactement ce que le silence evitait) ; **aucun son**
+  (on n'annonce pas au klaxon un but vieux d'une heure) ; **pas de carte du
+  tout** quand personne n'a marque, le journal notant quand meme le rattrapage
+  pour que « aucune carte » et « le rattrapage n'a pas tourne » restent
+  distinguables ; le filtre `--teams` respecte ; et un match commence et fini
+  pendant la veille laisse de cote, meme regle que pour la carte de fin de
+  match - on n'en a rien suivi.
+- La troncature de la carte n'est pas reecrite : la liste des matchs passe par
+  `extra_parts()` et se fait couper en hauteur et en largeur par le mecanisme
+  qui coupe deja la liste des buteurs de la fin de match.
+- Le resume attend que **toutes** les competitions suivies aient ete
+  rephotographiees. Sous Linux `time.monotonic()` gele pendant la veille : les
+  echeances ne retombent pas au meme releve, et un resume a trous vaudrait
+  moins que rien.
+- Deux sommeils d'affilee avant que le resume ait pu sortir gardent la photo la
+  plus ancienne, pas la plus recente : c'est elle qui dit tout ce qu'on a
+  manque.
+
+
+
+### Ajoute
+
 - **La carte epinglee** : `butbutbut --pin om`. Tant qu'un match de l'equipe
   demandee est en cours, une carte **reste a l'ecran** et se met a jour a
   chaque releve (le score et la minute), au lieu de n'apparaitre qu'aux buts.

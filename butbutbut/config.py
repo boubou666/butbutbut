@@ -171,6 +171,11 @@ OPTIONS = (
            "Annoncer un match ce nombre de minutes avant le coup d'envoi, une "
            "seule fois et sans son. 0 desactive l'annonce.",
            "5", fallback="desactive"),
+    Option("catch_up", _flag,
+           "Au reveil apres une veille, resumer en UNE carte muette les buts "
+           "tombes pendant l'absence. Non : le reveil reste silencieux, comme "
+           "avant.",
+           "oui"),
     Option("no_logos", _flag,
            "Pas d'ecusson sur les cartes, et rien de telecharge. Les couleurs "
            "des clubs, elles, restent.",
