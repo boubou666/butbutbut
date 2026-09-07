@@ -197,4 +197,76 @@ MESSAGES = {
     'butbutbut : dossier de donnees inutilisable : {}':
         'butbutbut : Datenordner nicht nutzbar : {}',
     'injoignable ({})': 'nicht erreichbar ({})',
+
+    # --- les valeurs, et plus seulement les libelles -------------------------
+    # Une ligne de --status traduite dont la valeur reste francaise se lit a
+    # moitie : l'age du dernier releve, l'origine du son, l'etat du plein
+    # ecran passent donc ici aussi.
+    'il y a {} s': 'vor {} s',
+    'il y a {} min': 'vor {} Min',
+    'il y a {} h {:02d}': 'vor {} h {:02d}',
+    'date inconnue': 'Zeitpunkt unbekannt',
+    # Valeurs de la ligne 'Abfrage' : feminin en allemand, d'ou 'keine'.
+    "aucun pour l'instant": 'noch keine',
+    "aucun (le daemon efface son etat en s'arretant)":
+        'keine (der Daemon entfernt seinen Zustand beim Stoppen)',
+    '  (absent, voir --write-config)': '  (fehlt, siehe --write-config)',
+    'fourni': 'mitgeliefert',
+    'corne synthetisee': 'erzeugte Fanfare',
+    # 'ausgelost' evite le 'zufaellig' qui demanderait un trema.
+    ' (+{} autre(s), tirage au hasard)': ' (+{} weitere, eine wird ausgelost)',
+    'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)':
+        'KEINER (mpv/ffmpeg/pipewire/alsa-utils installieren)',
+    'detecte (la carte masquee est notee au journal)':
+        'erkannt (eine verdeckte Karte kommt in die Logdatei)',
+    'non detectable sur cette plateforme':
+        'auf dieser Plattform nicht erkennbar',
+    '{} match(s)': '{} Spiel(e)',
+    ' sur {} au programme': ' von {} angesetzten',
+    # 'Verbindung' fait un signe de plus que 'Connexion' : une espace de moins
+    # avant le deux-points, et la colonne de --status ne bouge pas.
+    '\n  Connexion   : ': '\n  Verbindung  : ',
+
+    # --- l'etat des matchs, colonne de droite de --scores --------------------
+    'en cours': 'live',
+    'termine': 'beendet',
+    'a venir': 'geplant',
+    'imminent': 'gleich',
+    'dans {} min': 'in {} Min',
+    '  (aucun match au programme)': '  (keine Spiele angesetzt)',
+    '  (aucun match de ces equipes)': '  (keine Spiele dieser Teams)',
+
+    # --- les ecrans ----------------------------------------------------------
+    '1 ecran ({}x{})': '1 Monitor ({}x{})',
+    '{} ecrans [{}]': '{} Monitore [{}]',
+    '  (principal)': '  (Hauptmonitor)',
+
+    # --- le catalogue de competitions ---------------------------------------
+    'les 5 grands championnats': 'die 5 Topligen',
+    'tout le catalogue ({} competitions)':
+        'der ganze Katalog ({} Wettbewerbe)',
+    '{} et {} autres': '{} und {} weitere',
+    'Les 5 grands (defaut)': 'Die 5 Topligen (Standard)',
+    # 'Ausserdem verfuegbar' demanderait deux tremas et un eszett.
+    'Aussi disponibles': 'Weitere Wettbewerbe',
+    'butbutbut : competitions surveillables\n':
+        'butbutbut : verfolgbare Wettbewerbe\n',
+    'butbutbut : aucun daemon en cours.': 'butbutbut : kein Daemon aktiv.',
+
+    # --- l'en-tete de --help -------------------------------------------------
+    # Le verbe francais ('tombe') n'a pas d'equivalent sans trema ('faellt') :
+    # la phrase allemande se passe donc de verbe pour son sujet.
+    ('Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga '
+     ": le son part et le score s'affiche a l'ecran."):
+        ('Ein Tor in Ligue 1, Premier League, LaLiga, Serie A oder Bundesliga '
+         ': der Ton geht los und der Spielstand erscheint auf dem '
+         'Bildschirm.'),
+
+    # --- les metavariables de --help ----------------------------------------
+    # CODE et LISTE s'ecrivent pareil en allemand : pas d'entree.
+    'CHEMIN': 'PFAD',
+    'COIN': 'ECKE',
+    'CHOIX': 'AUSWAHL',
+    'SECONDES': 'SEKUNDEN',
+    'MINUTES': 'MINUTEN',
 }
