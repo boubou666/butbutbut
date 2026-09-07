@@ -109,6 +109,7 @@ butbutbut --week              # the last 7 days
 butbutbut --month             # the last 30 days
 butbutbut --since 2026-09-01  # since that date
 butbutbut --top-scorers       # the ranking of the scorers seen going by
+butbutbut --stats             # the shapes hidden in the log
 butbutbut --record m.jsonl    # watch, and box up the raw polls as well
 butbutbut --replay m.jsonl    # replay a recording, cards and sounds included
 butbutbut --stop              # stop the daemon
@@ -1841,6 +1842,114 @@ the total, never in the ranking, and the footer announces them.
 
 ---
 
+## The shapes of the log
+
+The log piles up months of goals. `--today`, `--week`, `--month`, `--since` and
+`--top-scorers` all read them back, but all five return a **list**: one goal,
+one line, in the order they fell. Yet a pile of goals has shapes no list ever
+shows. Are more goals really scored late in a match? Which competition fills
+the log? Which was the best evening of the summer? `--stats` looks at the very
+same lines, in a pile.
+
+```bash
+butbutbut --stats                     # the whole log
+butbutbut --stats --week              # over the last 7 days
+butbutbut --stats --since 2026-08-09  # since that date
+butbutbut --stats --teams om          # only the matches of OM
+```
+
+```
+butbutbut : ce que le journal raconte du dim. 09/08/2026 au lun. 07/09/2026
+
+Par minute de match
+    1-10  #######                                 6   4%
+   11-20  #####                                   4   3%
+   21-30  ##############                         12   8%
+   31-40  ######################                 18  13%
+   41-50  #########################              21  15%
+   51-60  ###################                    16  11%
+   61-70  ##############                         12   8%
+   71-80  #############################          24  17%
+   81-90  ####################################   30  21%
+
+Par competition
+  Ligue 1              ####################################   43  30%
+  Premier League       ################################       38  27%
+  LaLiga               ######################                 26  18%
+  Bundesliga           ##################                     22  15%
+  Serie A              #######                                 8   6%
+  Ligue des champions  #####                                   6   4%
+
+Les soirees les plus prolifiques
+  mer. 19/08/2026    15 but(s)
+  ven. 21/08/2026    14 but(s)
+  mer. 12/08/2026    12 but(s)
+
+Nature des buts
+  But                       113  79%
+  But contre son camp        11   8%
+  Penalty                    19  13%
+
+143 but(s) confirme(s) sur 144 signale(s), dans 6 competition(s).
+53 match(s) avec au moins un but signale, 2.7 but(s) par match.
+Un 0-0 ne laisse aucune trace dans le journal, ni dans cette moyenne.
+1 but(s) retire(s) par la VAR, deduit(s) de tout ce qui precede.
+17 but(s) dans le temps additionnel, comptes dans la tranche de leur minute.
+```
+
+**Ten-minute slices**, because that is the grain football is told in: "right
+before half-time", "in the last quarter of an hour". To the minute it would
+take ninety lines to show nothing but noise. A goal at `90+3'` stays a goal of
+the 90th and goes into the `81-90` slice: putting it elsewhere would flatten
+the very bump one comes to see. And the histogram always covers the full ninety
+minutes, even when the window holds three goals in the 12th: an empty slice is
+a shape too, and stopping at the last goal would erase it. Extra time, in turn,
+stretches the frame up to the 120th.
+
+**An evening is not a calendar day.** The log turns the page at midnight, a
+football evening does not: a 9 p.m. kick-off that goes to extra time, a South
+American fixture, an NHL game watched from Europe. The goal at 11:50 p.m. and
+the one at 12:12 a.m. belong to the same evening, and counting by date would
+make two half-evenings, neither of which existed. Six in the morning cuts the
+night. **Three evenings are named**, and any ties with the third are counted on
+one more line - `... et 17 autre(s) soiree(s) a 6 but(s).` Naming them all would
+push the rest of the output off the screen on a multiplex night; stopping at
+three without counting the others would suggest a podium that does not exist.
+
+**A goal the VAR turned down counts nowhere**, exactly as in
+[the scorers' ranking](#the-scorers-ranking): the positional matching is the
+same code, not a second one. Not in the histogram, not in the competition, not
+in the evening. Annulments whose goal fell before the window opened are
+reported separately.
+
+**The nature of a goal comes from the head of its line**, the only thing that
+carries it: `BUT SUR PENALTY`, `BUT CONTRE SON CAMP`, `ESSAI`, `PENALITE`,
+`DROP`. When the source publishes the play too late, the goal is written `BUT`
+and counts as one: that share is a floor, not an exact total. A single nature
+in the window gets no table - "143 goals out of 143 are goals" teaches nobody
+anything.
+
+**And what is missing is missing out of honesty.** The log only writes what
+moves: a 0-0 leaves no line at all, so `--stats` knows of no goalless match,
+and its average is that of the matches **where a goal fell** - mechanically
+higher than a season's, which the footer spells out. The assist, the foot, the
+distance, possession: the source does not publish them, so nobody can count
+them here. A minute the log does not write as a minute of play - an ice hockey
+clock, a phase label, a line from a version we can no longer read - stays out
+of the histogram, and the footer counts it rather than forcing it in sideways.
+
+**The arithmetic happens offline**: it is all already in the file. One caveat,
+the same one `--top-scorers` carries: naming a team first checks that name
+against the catalogue, and that check does need the network. It is deliberate -
+`--stats --teams om` returning an empty page over a typo would be worse than
+silent - and an unreachable source says so, then lets the command through.
+Without `--teams` or `--exclude-teams`, nothing leaves the machine.
+
+A missing log, an empty one, or one where no line falls inside the window says
+so in plain words, just like `--today`.
+
+---
+
 ## Log
 
 ```
@@ -1958,7 +2067,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**939 tests**, with no network and no screen: the source is simulated by an
+**983 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

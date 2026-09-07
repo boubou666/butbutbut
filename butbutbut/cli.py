@@ -38,6 +38,12 @@ MONTH_DAYS = 30                # --month : idem, sur trente jours
 SCREEN_LINES = 36
 SCORERS_SHOWN = 20             # buteurs affiches par --top-scorers
 LEAGUES_SHOWN = 3              # competitions nommees sur la ligne d'une journee
+# --stats. La barre la plus longue fait 36 signes : avec le libelle, le compte
+# et le pourcentage autour, la ligne la plus large tient dans 72 colonnes, donc
+# dans les 80 d'un terminal qui n'a jamais ete redimensionne.
+STATS_BAR = 36
+STATS_LEAGUES = 8              # competitions detaillees par --stats
+STATS_EVENINGS = 3             # soirees nommees par --stats
 # Les jours de la semaine, abreges et sans accent, comme tout le reste du code.
 # strftime() rendrait la langue du systeme : le journal, lui, parle francais.
 WEEKDAYS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
@@ -1708,6 +1714,172 @@ def do_top_scorers(args) -> int:
     return 0
 
 
+def _bar(count, top) -> str:
+    """Un baton d'histogramme, a l'echelle du plus haut.
+
+    Un signe au minimum des qu'il y a un but : arrondir a rien effacerait de
+    l'histogramme la tranche ou il s'est passe quelque chose, ce qui est
+    exactement ce qu'on vient y lire. Un '#' plutot qu'un caractere de
+    remplissage : le journal, la carte et le terminal restent en ASCII pur, et
+    une barre en unicode ressort en points d'interrogation sur la moitie des
+    consoles Windows.
+    """
+    if count <= 0 or top <= 0:
+        return ""
+    return "#" * max(1, int(round(count * STATS_BAR / float(top))))
+
+
+def _share(count, total) -> str:
+    """La part d'un compte dans un total, arrondie au point de pourcentage."""
+    if not total:
+        return ""
+    return "{:>3}%".format(int(round(100.0 * count / total)))
+
+
+def do_stats(args) -> int:
+    """Les formes que le journal cache : minutes, competitions, soirees.
+
+    Rien de nouveau n'est lu ici. Ce sont les lignes de `--today` et de
+    `--top-scorers`, la meme fenetre, le meme filtre par equipe - mais
+    regardees en tas plutot qu'une par une, et un tas de buts a des formes
+    qu'aucune liste ne montre. Sans fenetre c'est tout le journal, pour la
+    meme raison qu'un classement de buteurs : une forme se voit sur la duree.
+
+    Ce qui n'est pas ici manque parce que le journal ne le sait pas. Il n'ecrit
+    que ce qui bouge : un 0-0 n'y laisse pas une ligne, et aucun compte de
+    matchs sans but n'est donc possible. Le passeur, le pied, la distance : la
+    source ne les publie pas. On mesure ce qui est ecrit, et on dit le reste.
+    """
+    try:
+        window = window_of(args, whole_by_default=True)
+    except ValueError as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+
+    p = paths()
+    entries = _window_goals(args, window)
+
+    print(tr("butbutbut : ce que le journal raconte {}", window.describe()))
+    if not entries:
+        print(_empty_note(window, p["log"]))
+        print(tr("\nJournal : {}", p["log"]))
+        return 0
+
+    found = journal.survey(entries)
+    if not found.confirmed:
+        # Tout ce qui suit compte des buts debout : sans un seul, chaque
+        # tableau serait une colonne de zeros, et l'histogramme un cadre vide.
+        print(tr("\n  (aucun but debout dans cette fenetre : {} signale(s), "
+                 "{} repris par la VAR)", found.signalled, found.cancelled))
+        print(tr("\nJournal : {}", p["log"]))
+        return 0
+
+    _print_minutes(found)
+    _print_leagues(found)
+    _print_evenings(found)
+    _print_natures(found)
+    _print_survey(found)
+    print(tr("\nJournal : {}", p["log"]))
+    return 0
+
+
+def _print_minutes(found) -> None:
+    """L'histogramme des minutes : la forme qu'on vient chercher en premier.
+
+    Des tranches de dix minutes, parce que c'est la maille ou le football se
+    raconte ("juste avant la mi-temps", "dans le dernier quart d'heure"), et
+    parce qu'a la minute pres il faudrait quatre-vingt-dix lignes pour ne
+    montrer que du bruit. Les buts du temps additionnel restent dans la tranche
+    de leur minute : un but a 90+3' est un but de la 90e, et l'entasser
+    ailleurs aplatirait justement la bosse qu'on cherche a voir.
+    """
+    print(tr("\nPar minute de match"))
+    if not found.timed:
+        print(tr("  (aucune minute de jeu lisible dans cette fenetre)"))
+        return
+    top = max(count for _low, _high, count in found.buckets)
+    for low, high, count in found.buckets:
+        print("  {:>3}-{:<3} {:<{}} {:>4} {:>4}".format(
+            low, high, _bar(count, top), STATS_BAR, count,
+            _share(count, found.timed)).rstrip())
+
+
+def _print_leagues(found) -> None:
+    """La repartition par competition, la plus fournie en tete."""
+    print(tr("\nPar competition"))
+    top = found.leagues[0][1]
+    for name, count in found.leagues[:STATS_LEAGUES]:
+        print("  {:<20.20} {:<{}} {:>4} {:>4}".format(
+            name, _bar(count, top), STATS_BAR, count,
+            _share(count, found.confirmed)).rstrip())
+    hidden = len(found.leagues) - STATS_LEAGUES
+    if hidden > 0:
+        print(tr("  ... et {} autre(s) competition(s) plus bas.", hidden))
+
+
+def _print_evenings(found) -> None:
+    """Les soirees les plus prolifiques.
+
+    Une soiree n'est pas un jour de calendrier : voir journal.evening_of(),
+    qui rattache a la veille ce qui tombe apres minuit. A egalite on ne
+    departage pas - annoncer une seule "meilleure soiree" quand trois se
+    valent serait faux - on les annonce toutes, et le compte des ex aequo
+    tient en une ligne quand ils sont trop nombreux pour la liste.
+    """
+    print(tr("\nLes soirees les plus prolifiques"))
+    shown = found.evenings[:STATS_EVENINGS]
+    for day, count in shown:
+        print(tr("  {:<16} {:>4} but(s)", _stamp(day, "%d/%m/%Y"), count))
+    tied = [row for row in found.evenings[len(shown):]
+            if row[1] == shown[-1][1]]
+    if tied:
+        print(tr("  ... et {} autre(s) soiree(s) a {} but(s).",
+                 len(tied), tied[0][1]))
+
+
+def _print_natures(found) -> None:
+    """La nature des buts : penaltys, csc, essais, ce que l'en-tete sait dire.
+
+    C'est l'en-tete de la ligne qui porte la nature ("BUT SUR PENALTY"), et
+    rien d'autre : quand la source publie l'action en retard, le but est ecrit
+    "BUT" et compte comme tel. Cette part est donc un plancher, jamais un
+    total exact, et le pied de sortie le rappelle.
+
+    Une seule nature dans la fenetre ne merite pas un tableau : "36 buts sur
+    36 sont des buts" n'apprend rien a personne.
+    """
+    if len(found.natures) < 2:
+        return
+    print(tr("\nNature des buts"))
+    for key, count in found.natures:
+        print("  {:<24.24} {:>4} {:>4}".format(
+            journal.label_of(key), count,
+            _share(count, found.confirmed)).rstrip())
+
+
+def _print_survey(found) -> None:
+    """Le pied de sortie : les totaux, et tout ce qu'ils ne disent pas."""
+    print(tr("\n{} but(s) confirme(s) sur {} signale(s), dans "
+             "{} competition(s).", found.confirmed, found.signalled,
+             len(found.leagues)))
+    print(tr("{} match(s) avec au moins un but signale, {:.1f} but(s) par "
+             "match.", found.matches, found.per_match))
+    print(tr("Un 0-0 ne laisse aucune trace dans le journal, ni dans cette "
+             "moyenne."))
+    if found.cancelled:
+        print(tr("{} but(s) retire(s) par la VAR, deduit(s) de tout ce qui "
+                 "precede.", found.cancelled))
+    if found.orphans:
+        print(tr("{} annulation(s) sans but a retirer dans cette fenetre "
+                 "(le but est tombe avant).", found.orphans))
+    if found.added:
+        print(tr("{} but(s) dans le temps additionnel, comptes dans la "
+                 "tranche de leur minute.", found.added))
+    if found.untimed:
+        print(tr("{} but(s) sans minute de jeu lisible, hors histogramme.",
+                 found.untimed))
+
+
 def do_status(args) -> int:
     p = paths()
     pid = running_pid()
@@ -1943,6 +2115,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("classe les buteurs vus passer, buts annules "
                              "par la VAR deduits. Sur tout le journal, ou sur "
                              "la fenetre de --week, --month ou --since"))
+    parser.add_argument("--stats", action="store_true",
+                        help=tr("les formes cachees dans le journal : les buts "
+                             "par minute de match (histogramme), par "
+                             "competition, les soirees les plus prolifiques. "
+                             "Meme fenetre et memes filtres que --top-scorers"))
     parser.add_argument("--stop", action="store_true", help=tr("arrete le daemon en cours"))
     parser.add_argument("--paths", action="store_true", help=tr("affiche les chemins utilises"))
     parser.add_argument("--screens", action="store_true", help=tr("liste les ecrans detectes"))
@@ -2221,6 +2398,10 @@ def main(argv=None) -> int:
         return do_status(args)
     if args.top_scorers:
         return do_top_scorers(args)
+    # Avant le recapitulatif : `--stats --week` demande les formes de la
+    # semaine, pas la liste des buts de la semaine.
+    if args.stats:
+        return do_stats(args)
     if args.today or args.week or args.month or args.since is not None:
         return do_recap(args)
     if args.scores:
