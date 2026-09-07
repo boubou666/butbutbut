@@ -44,14 +44,23 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   reponse finie, pas un flux, et un fichier coupe doit refuser de s'ouvrir
   plutot que de mentir de trois lignes en silence.
 - **La sortie standard ne recoit que des donnees.** La fenetre, les totaux, les
-  avertissements, le chemin du journal et la confirmation des noms passes a
-  `--teams` partent tous sur la sortie d'erreur : `--export csv > buts.csv`
-  doit rendre un fichier, pas un fichier plus un commentaire.
+  avertissements, le chemin du journal, la confirmation des noms passes a
+  `--teams` et jusqu'a la ligne de `--regen-sound` partent tous sur la sortie
+  d'erreur : `--export csv > buts.csv` doit rendre un fichier, pas un fichier
+  plus un commentaire. `--regen-sound` merite sa mention parce qu'elle se
+  declenche AVANT l'export et que sa ligne ne se serait meme pas collee au bon
+  endroit : l'export ecrit sous la couche texte de `sys.stdout`, dont le tampon
+  n'est vide qu'a la fin du programme, donc elle serait ressortie derriere les
+  donnees.
 - Un journal absent, vide, ou une fenetre sans le moindre but restent des
   **reponses valides** - un tableau JSON vide, un CSV reduit a son en-tete - et
   l'explication va a cote. Un consommateur n'a jamais a distinguer "rien" de
   "casse". Un tuyau referme en cours de route (`--export csv | head`) ne remonte
-  pas non plus.
+  pas non plus : ni comme trace, ni comme les deux lignes que Python imprime en
+  s'arretant quand il ne peut plus vider une sortie standard qu'on lui a fermee
+  au nez. L'export n'habille donc pas le flux d'octets d'un `TextIOWrapper` -
+  celui-ci ferme ce qu'il habille en se detruisant, et son `detach()` commence
+  par un `flush()` qui echoue justement sur un tuyau casse.
 - La sortie est ecrite en **UTF-8 quoi qu'annonce la console** : une console
   Windows revendique volontiers du cp1252, et l'export mourrait sur le premier
   accent s'il la croyait.

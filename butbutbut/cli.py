@@ -2142,6 +2142,65 @@ EXPORT_FORMATS = ("json", "csv")
 _TITLE_PREFIX = "title_"
 
 
+def _mute_stdout() -> None:
+    """Rebranche la sortie standard sur le trou noir, apres un tuyau referme.
+
+    Sans quoi Python, en s'arretant, vide lui-meme sys.stdout - dans ce meme
+    tuyau ferme - et imprime "Exception ignored while flushing sys.stdout"
+    par-dessus le message qu'on venait d'ecrire proprement a cote. C'est la
+    recette de la documentation Python pour un programme qui parle dans un
+    tuyau : reouvrir le descripteur sur /dev/null (NUL sous Windows) avant de
+    rendre la main.
+
+    Tout echoue en silence ici, et c'est voulu : on est deja sur le chemin de
+    sortie d'une erreur, et une sortie detournee en memoire - ce que fait
+    n'importe quel test - n'a meme pas de descripteur a rebrancher.
+    """
+    try:
+        target = sys.stdout.fileno()
+    except Exception:
+        return
+    try:
+        black_hole = os.open(os.devnull, os.O_WRONLY)
+    except Exception:
+        return
+    try:
+        os.dup2(black_hole, target)
+    except Exception:
+        pass
+    finally:
+        os.close(black_hole)
+
+
+class _Utf8Writer:
+    """Un objet-fichier texte qui pose ses octets en UTF-8 sur un flux binaire.
+
+    Vingt lignes de moins auraient suffi avec io.TextIOWrapper, et c'est ce
+    qu'on avait ecrit. Mais un TextIOWrapper ferme le flux qu'il habille en se
+    detruisant : il faut donc le detacher, et son detach() commence par un
+    flush. Sur un tuyau referme (`--export csv | head`) ce flush echoue, le
+    detachement n'a jamais lieu, et le finaliseur vient fermer la sortie
+    standard du programme en imprimant sa propre trace par-dessus le message
+    qu'on venait d'ecrire proprement a cote.
+
+    Un objet sans finaliseur et sans etat n'a pas ce probleme : le tuyau casse
+    remonte de write(), la ou on l'attend et ou on sait quoi en dire.
+
+    Le module csv et json.dump n'ont besoin que de write().
+    """
+
+    __slots__ = ("_raw",)
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def write(self, text):
+        return self._raw.write(text.encode("utf-8"))
+
+    def flush(self):
+        self._raw.flush()
+
+
 @contextmanager
 def _data_stream():
     """La sortie standard, garantie en UTF-8 et sans traduction de fin de ligne.
@@ -2165,17 +2224,8 @@ def _data_stream():
         yield stream
         stream.flush()
         return
-    dressed = io.TextIOWrapper(raw, encoding="utf-8", newline="",
-                               write_through=True)
-    try:
-        yield dressed
-    finally:
-        dressed.flush()
-        # detach() et pas close() : en se detruisant, un TextIOWrapper ferme le
-        # flux qu'il habille. Sans cette ligne, la sortie standard du programme
-        # serait fermee des la fin de l'export, et tout ce qui viendrait apres
-        # tomberait dans le vide.
-        dressed.detach()
+    yield _Utf8Writer(raw)
+    raw.flush()
 
 
 def _export_row(entry, standing: bool) -> dict:
@@ -2390,6 +2440,7 @@ def do_export(args) -> int:
         # Un tuyau referme en cours de route (`--export csv | head`), une
         # console qui refuse un octet : on le dit a cote et on s'en va. Une
         # trace d'erreur irait se coller a la fin des donnees deja ecrites.
+        _mute_stdout()
         print(tr("butbutbut : export interrompu : {}", exc), file=sys.stderr)
         return 1
 
@@ -2905,7 +2956,13 @@ def main(argv=None) -> int:
 
     if args.regen_sound:
         sound.ensure_wav(p["wav"], args.volume, force=True)
-        print(tr("butbutbut : corne regeneree -> {}", p["wav"]))
+        # Meme regle que pour la confirmation des equipes plus bas : sous
+        # --export, la sortie standard ne porte que des donnees. Cette ligne-la
+        # n'y arriverait d'ailleurs meme pas dans l'ordre - l'export ecrit sous
+        # la couche texte de sys.stdout, dont le tampon ne se vide qu'a la fin
+        # du programme, donc elle se collerait DERRIERE les donnees.
+        print(tr("butbutbut : corne regeneree -> {}", p["wav"]),
+              file=sys.stderr if args.export else sys.stdout)
 
     if args.list_leagues:
         return do_list(args)

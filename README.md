@@ -2192,7 +2192,7 @@ timestamp,evening,kind,nature,standing,league,home,away,home_score,away_score,te
 | `timestamp` | Le moment ou butbutbut a vu le but, en ISO 8601 : `2026-09-06T18:43:27` |
 | `evening` | La soiree du but, qui n'est pas toujours son jour (voir plus bas) |
 | `kind` | `goal` ou `cancellation` : la forme de la ligne du journal |
-| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `cancelled` |
+| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `points`, et `cancelled` / `points_cancelled` pour ce que la VAR a retire |
 | `standing` | Le but tient-il encore, une fois la VAR passee ? |
 | `league` | La competition, telle que le journal l'a ecrite |
 | `home`, `away` | Le recevant et le visiteur |
@@ -2431,7 +2431,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1049 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1051 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

@@ -2182,7 +2182,7 @@ timestamp,evening,kind,nature,standing,league,home,away,home_score,away_score,te
 | `timestamp` | When butbutbut saw the goal, in ISO 8601: `2026-09-06T18:43:27` |
 | `evening` | The goal's evening, which is not always its day (see below) |
 | `kind` | `goal` or `cancellation`: the shape of the log line |
-| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `cancelled` |
+| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `points`, plus `cancelled` / `points_cancelled` for what the VAR took back |
 | `standing` | Is the goal still standing, once the VAR has been through? |
 | `league` | The competition, as the log wrote it |
 | `home`, `away` | Home and away sides |
@@ -2421,7 +2421,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1049 tests**, with no network and no screen: the source is simulated by an
+**1051 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

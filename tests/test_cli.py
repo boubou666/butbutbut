@@ -958,6 +958,34 @@ class ConsoleStdout:
         pass
 
 
+class _ClosedPipe(io.BytesIO):
+    """Un flux d'octets qui se referme apres les premiers octets."""
+
+    def __init__(self, allowed=1):
+        io.BytesIO.__init__(self)
+        self.allowed = allowed
+
+    def write(self, data):
+        if self.allowed <= 0:
+            raise OSError(32, "Broken pipe")
+        self.allowed -= 1
+        return io.BytesIO.write(self, data)
+
+
+class BrokenPipeStdout(ConsoleStdout):
+    """La meme sortie, dont le tuyau se referme au milieu : `--export | head`.
+
+    Le piege de ce cas-la n'est pas l'erreur elle-meme mais ce qui arrive
+    APRES : un flux mal referme imprime sa propre trace par-dessus le message
+    qu'on venait d'ecrire proprement a cote, et emporte la sortie standard du
+    programme avec lui.
+    """
+
+    def __init__(self, allowed=1):
+        ConsoleStdout.__init__(self)
+        self.buffer = _ClosedPipe(allowed)
+
+
 class TestExport(unittest.TestCase):
     """--export json|csv : le journal en donnees, sur des journaux fabriques."""
 
@@ -1240,6 +1268,22 @@ class TestExport(unittest.TestCase):
                 rows, _errors = self.export("--export", "json")
         self.assertEqual(len(rows), 1)
 
+    def test_the_only_other_talker_moves_aside_too(self):
+        """--regen-sound est la seule autre option qui ecrit sur stdout.
+
+        Elle se declenche avant l'export dans main(), et sa ligne se serait
+        collee aux donnees - derriere elles, meme, l'export ecrivant sous la
+        couche texte de sys.stdout dont le tampon ne se vide qu'a la fin.
+        """
+        self.write_log((days_ago(0), "20:00:00", self.goal()))
+        with mock.patch.object(sound, "ensure_wav", lambda *a, **k: None):
+            code, printed, errors = self.run_cli(
+                ["--export", "json", "--regen-sound"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("corne regeneree", printed)
+        self.assertIn("corne regeneree", errors)
+        self.assertEqual(len(json.loads(printed)), 1)
+
     # ------------------------------------------------- rien, mais pas casse --
 
     def test_a_missing_journal_still_gives_valid_data(self):
@@ -1316,6 +1360,31 @@ class TestExport(unittest.TestCase):
             code, _printed, errors = self.run_cli(["--export", "json"])
         self.assertEqual(code, 1)
         self.assertIn("export interrompu", errors)
+
+    def test_a_closed_pipe_goes_through_the_real_byte_stream(self):
+        """Le meme cas, mais par le vrai flux d'octets.
+
+        Le test ci-dessus remplace _write_json : il n'atteint jamais le flux,
+        donc il ne peut pas voir ce que celui-ci laisse derriere lui. Vert et
+        aveugle, autrement dit. Celui-ci emprunte le chemin d'un vrai tuyau.
+        """
+        self.write_log((days_ago(0), "20:00:00", self.goal()))
+        for shape in ("json", "csv"):
+            console = BrokenPipeStdout()
+            errors = io.StringIO()
+            with mock.patch.object(sys, "stdout", console):
+                with redirect_stderr(errors):
+                    code = cli.main(["--export", shape])
+            self.assertEqual(code, 1, shape)
+            self.assertIn("export interrompu", errors.getvalue(), shape)
+            # Les premiers octets sont bien passes par le flux avant la
+            # coupure : c'est ce qui distingue ce test du precedent, qui
+            # n'atteignait jamais le flux.
+            self.assertTrue(console.buffer.getvalue(), shape)
+        # Ce qu'aucun test en memoire ne peut voir, faute d'interprete qui
+        # s'arrete : la trace que Python imprimait ensuite par-dessus le
+        # message ci-dessus. Elle se verifie dans un vrai tuyau, a la main
+        # (`--export csv | head`), et c'est dit dans les deux README.
 
     # ------------------------------------------------------------ la ligne --
 
