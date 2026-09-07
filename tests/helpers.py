@@ -198,6 +198,70 @@ def payload(*events):
     return {"events": list(events)}
 
 
+# --- Le resume d'un match ----------------------------------------------------
+# L'autre porte, celle que seul le hockey pousse : `/summary?event=<id>`. Ce
+# que la vraie source y met, releve sur un match de NHL - 302 actions dont 14
+# buts, et les buteurs que le tableau de bord n'a jamais eus.
+
+def hockey_play(team_id="H1", minute="0:29", period=1, scorer="M. Sasson",
+                assists=("F. Hronek", "Z. Buium"), index=0, type_id="505",
+                text="Goal"):
+    """Un but tel que `plays[]` le publie : un type, une equipe, des roles.
+
+    Rien ici ne ressemble a `details` : pas de `athletesInvolved`, pas de
+    `ownGoal`, pas de minute de jeu. Un tableau `participants` ou chaque entree
+    porte son role, et une horloge qui repart a zero a chaque tiers-temps.
+    """
+    people = []
+    if scorer:
+        people.append({"type": "scorer",
+                       "athlete": {"id": "S" + str(index), "shortName": scorer},
+                       "ytdGoals": 12})
+    for rank, name in enumerate(assists):
+        people.append({"type": "assister",
+                       "athlete": {"id": "A{}{}".format(index, rank),
+                                   "shortName": name},
+                       "ytdAssists": 35})
+    return {
+        "type": {"id": type_id, "text": text},
+        "text": "{} {} ({})".format(scorer or "?", text, index + 1),
+        "scoringPlay": True,
+        "scoreValue": 1,
+        "period": {"number": period, "displayValue": "{}st".format(period)},
+        "clock": {"displayValue": minute},
+        "team": {"id": team_id},
+        "participants": people,
+    }
+
+
+def hockey_noise(team_id="H1", index=0):
+    """Une action qui n'est pas un but : le gros du resume, et rien pour nous.
+
+    Sur les 302 actions d'un match, 288 sont de cette espece. Les melanger aux
+    buts dans les tests est le seul moyen de verifier que le tri tient.
+    """
+    return {
+        "type": {"id": "506", "text": "Shot"},
+        "scoringPlay": False,
+        "period": {"number": 1, "displayValue": "1st"},
+        "clock": {"displayValue": "4:1{}".format(index)},
+        "team": {"id": team_id},
+        "participants": [{"type": "shooter",
+                          "athlete": {"id": "X", "shortName": "P. Kane"}}],
+    }
+
+
+def hockey_summary(*plays):
+    """Le resume d'un match, reduit a ce que butbutbut y lit.
+
+    La vraie reponse porte aussi `boxscore`, `rosters`, `leaders`, `odds`,
+    `videos`, `news` et `standings` - 450 ko en tout. On n'en reproduit rien :
+    le programme ne lit que `plays[]`, et une fabrique qui recopierait le reste
+    donnerait a croire qu'on s'en sert.
+    """
+    return {"plays": list(plays)}
+
+
 # --- Les classements ---------------------------------------------------------
 # Le classement a un endpoint et une forme a lui, releves sur la vraie source :
 # un objet, un tableau `children` de blocs (un championnat en a un, la NHL deux,

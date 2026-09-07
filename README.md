@@ -391,15 +391,33 @@ disent pas la meme chose, et butbutbut ne fait jamais semblant du contraire.
 | --- | --- | --- | --- |
 | Score, horloge, phase | oui | oui | oui |
 | Ecusson, couleurs du club | oui | oui | oui (une seule couleur) |
-| Tableau d'actions | oui | **non** | oui, mais sans drapeaux |
-| Buteur, minute de l'action | oui | **non** | oui |
+| Tableau d'actions | oui | **non** (voir plus bas) | oui, mais sans drapeaux |
+| Buteur, minute de l'action | oui | oui, via le resume du match | oui |
+| Passeurs | non | **oui** | non |
 | Cartons rouges (`--red-cards`) | oui | sans objet | oui |
 | Classement (`--table`) | oui | oui, par conference | oui, points de bonus compris |
 
-**Le hockey ne publie aucun tableau d'actions** - ni pendant le match, ni
-apres. On a le score, l'horloge et la periode ; jamais le buteur. La carte le
-dit en ne disant rien : elle affiche le score et la minute, sans troisieme
-ligne. Mieux vaut une carte honnete qu'un nom invente.
+**Le hockey ne publie aucun tableau d'actions dans le tableau de bord** - ni
+pendant le match, ni apres. Ses buteurs vivent ailleurs, dans le resume du
+match, une reponse de **450 ko** qu'aucun client suivant 36 competitions ne
+peut demander a chaque tour de boucle. Il est donc demande **apres un but, et
+pour le seul match concerne** : six a sept fois par match, jamais toutes les
+vingt-cinq secondes. La carte de hockey y gagne son buteur, et ses deux
+passeurs sur une ligne a eux.
+
+Une seule requete du programme se glisse ainsi entre un but detecte et la carte
+qui l'annonce, et elle a donc son propre plafond : **1,5 s**, la ou un tableau
+de bord a droit a huit secondes. Passe ce delai - ou si le resume ne repond
+pas, ou s'il ne nomme personne - la carte sort comme avant, avec le score et la
+minute, et le journal note pourquoi. Mieux vaut une carte honnete qu'un nom
+invente, et mieux vaut le buteur precedent nulle part que sur la carte du but
+suivant : le nom affiche est celui du n-ieme but de l'equipe qui vient de
+passer a n, et seulement si le resume en compte exactement autant que le
+tableau de bord.
+
+La carte de fin de match aligne les buteurs des deux camps, comme au football,
+a une condition : que la liste explique exactement le score. Un resume rate en
+cours de match laisse donc une carte de fin muette plutot qu'une liste a trous.
 
 **Le rugby publie tout, mais sans un seul drapeau** : la ou le football marque
 un but par `scoringPlay` et une expulsion par `redCard`, le rugby ne donne
@@ -1830,9 +1848,10 @@ buteur.
 
 C'est exactement pour cette raison que les autres sports n'ont rien coute a la
 detection : un score qui monte est un score qui monte, qu'il gagne 1 au
-football et au hockey ou 5 au rugby. Le hockey, qui ne publie aucune action,
-est donc suivi aussi bien que le reste - il a simplement des cartes sans nom de
-buteur.
+football et au hockey ou 5 au rugby. Le hockey, qui ne publie aucune action
+dans le tableau de bord, est donc suivi aussi bien que le reste - c'est apres
+coup, et seulement pour lui, qu'un resume de match va chercher le nom du
+buteur (voir "Ce que chaque sport publie vraiment").
 
 Deux garde-fous :
 
@@ -2054,6 +2073,16 @@ Il interroge la source pour de vrai, puis verifie que chaque cle lue par
 reponse a `espn.parse()`, le code que le daemon execute : des cles presentes
 qui ne produisent plus ni match, ni but, ni buteur seraient une derive tout
 aussi grave.
+
+Le programme de la visite depend du sport, parce que les trois ne publient pas
+la meme chose. Le football et le rugby ont leur tableau d'actions dans le
+tableau de bord ; le hockey n'en a pas du tout, et lui reclamer `details` serait
+guetter tous les matins une cle dont on sait qu'elle n'existe pas. Ses buteurs
+etant dans le resume d'un match, `hockey:nhl` fait partie des competitions
+interrogees par defaut et les cles de `plays[]` - le type de l'action, le role
+de chaque participant, le nom du joueur - sont surveillees pour lui seul. Un
+resume par competition et par passage : c'est 450 ko, et la question se repond
+sur un match aussi bien que sur trente.
 
 Une cle peut aussi rester en place et **changer de forme**, ce qui ne se voit
 nulle part ailleurs. Le canari relit donc la minute des buts avec le lecteur du
@@ -2323,6 +2352,15 @@ Deux choses ramenent ca a une taille raisonnable :
   decompression a la lecture, sans rien demander. Du JSON d'API se comprime
   autour de vingt fois : les 40 Mo d'un match tiennent dans 2 Mo, et le fichier
   reste lisible avec `zcat`.
+
+Une soiree de hockey ajoute a cela **450 ko par but** : le resume du match, que
+le programme va lire pour y prendre le buteur, passe par le meme `opener` et
+est donc enregistre comme le reste. Il a sa propre cle - `hockey:nhl@401809123`
+plutot que `hockey:nhl` - sans quoi il irait s'ajouter a la file du tableau de
+bord et le rejeu servirait un resume a qui demandait des scores. Un
+enregistrement fait avant cette version n'en porte aucun : le rejeu redemande
+un resume que le fichier n'a pas, la carte sort sans buteur et le journal le
+note. Rien ne casse, on perd juste les noms.
 
 ```bash
 butbutbut --record match.jsonl.gz --leagues l1

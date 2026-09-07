@@ -51,9 +51,21 @@ TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/teams"
 # 200 avec un objet vide `{}`, ce qui ressemblerait a une intersaison alors que
 # c'est juste la mauvaise adresse. Une faute qu'on n'a pas envie de refaire.
 STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/{sport}/{slug}/standings"
+# Le resume d'un match, et la seule adresse de ce fichier qu'on n'appelle pas a
+# chaque tour : elle rend 450 ko. Voir summary() pour ce qui l'autorise.
+SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/summary"
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
+
+# Le delai du resume, et il est court expres. Un tableau de bord peut se
+# permettre huit secondes : personne n'attend devant. Le resume, lui, est
+# demande entre un but detecte et la carte qui l'annonce - c'est le seul
+# endroit du programme ou une seconde de reseau se voit a l'ecran. 1,5 s est
+# donc un plafond, pas une esperance : gzip ramene les 450 ko a une petite
+# centaine de ko, et la reponse arrive d'ordinaire en trois fois moins. Passe
+# ce delai on laisse tomber le nom, jamais la carte.
+SUMMARY_TIMEOUT = 1.5
 
 # Le tableau de bord accepte un parametre `dates` : un jour (AAAAMMJJ) ou un
 # intervalle (AAAAMMJJ-AAAAMMJJ), bornes comprises. Sans lui, il ne sert que la
@@ -159,10 +171,12 @@ class Play:
     """
 
     __slots__ = ("key", "team_id", "minute", "kind", "scorer", "own_goal",
-                 "penalty", "shootout", "red_card", "kind_key", "points")
+                 "penalty", "shootout", "red_card", "kind_key", "points",
+                 "assists")
 
     def __init__(self, key, team_id, minute, kind, scorer, own_goal, penalty,
-                 shootout, red_card=False, kind_key="", points=None):
+                 shootout, red_card=False, kind_key="", points=None,
+                 assists=()):
         self.key = key
         self.team_id = team_id
         self.minute = minute          # 35' ou vide
@@ -180,6 +194,13 @@ class Play:
         # expulsion. Sert a choisir l'action la plus parlante quand plusieurs
         # tombent entre deux releves.
         self.points = points if points is not None else (0 if red_card else 1)
+        # Les passeurs, quand la source les nomme - elle ne le fait qu'au
+        # hockey, et seulement dans le resume du match. Vide partout ailleurs :
+        # le football publie bien une passe decisive quelque part, mais pas
+        # dans le tableau d'actions qu'on lit ici, et aller la chercher
+        # couterait le meme demi-mega que le buteur du hockey pour un sport qui
+        # a deja son nom.
+        self.assists = tuple(assists)
 
     def _default_key(self) -> str:
         if self.red_card:
@@ -917,6 +938,144 @@ def scoreboard(league, timeout: float = DEFAULT_TIMEOUT, opener=None,
     sport = getattr(league, "sport", None) or sports.DEFAULT
     return parse(fetch(league.slug, timeout=timeout, opener=opener,
                        sport=sport, dates=dates), league)
+
+
+# ------------------------------------------------------- resume d'un match ---
+# Le hockey n'a pas de buteur dans le tableau de bord, il en a un dans le
+# resume du match. Tout ce qui suit sert a l'y prendre, et rien d'autre : le
+# resume n'est jamais lu pour lui-meme, ni pour un sport qui a deja ses actions.
+
+# Ce qu'ESPN appelle un but dans `plays[]` : le numero, et le libelle en
+# secours. Deux lectures pour la meme chose, comme au rugby - le jour ou les
+# numeros bougent, le libelle sauve la carte, et le canari signale la derive.
+GOAL_PLAY_TYPES = ("505",)
+GOAL_PLAY_TEXT = "goal"
+
+# Les roles publies sous `participants[].type`.
+ROLE_SCORER = "scorer"
+ROLE_ASSISTER = "assister"
+
+
+def summary(league, event_id, timeout: float = SUMMARY_TIMEOUT,
+            opener=None) -> dict:
+    """Le resume brut d'UN match. 450 ko : a n'appeler qu'a bon escient.
+
+    Passe par _read_json comme tout le reste - memes en-tetes, meme gzip, meme
+    traduction des pannes en SourceError. Une seconde facon d'appeler ESPN
+    aurait fini par diverger de la premiere, et c'est celle qui parle le moins
+    souvent qui aurait derive sans qu'on le voie.
+
+    L'appelant, lui, est tenu par sports.Sport.summary_plays : c'est ce drapeau
+    qui dit quels sports en ont besoin, et watcher.py ne le demande qu'apres un
+    but detecte, pour le seul match concerne.
+    """
+    sport = getattr(league, "sport", None) or sports.DEFAULT
+    url = SUMMARY_URL.format(sport=sport.code, slug=league.slug)
+    url += "?" + urllib.parse.urlencode({"event": str(event_id)})
+    return _read_json(url, timeout, opener,
+                      "{} / match {}".format(league.slug, event_id))
+
+
+def _summary_minute(play) -> str:
+    """"P2 12:07" : le tiers-temps en chiffre, l'horloge derriere.
+
+    L'horloge seule ne suffit pas au hockey - elle repart a zero trois fois par
+    match, et "0:29" ne dit pas de quel tiers-temps on parle. ESPN nomme bien
+    la periode, mais en anglais ("1st", "OT") : la recopier ferait la seule
+    ligne non traduite d'une carte allemande. Le numero, lui, se lit dans les
+    cinq langues, et c'est pour ca qu'il est prefere au mot.
+    """
+    clock = str((play.get("clock") or {}).get("displayValue") or "").strip()
+    if not clock:
+        return ""
+    try:
+        return "P{} {}".format(int((play.get("period") or {}).get("number")),
+                               clock)
+    except (TypeError, ValueError):
+        return clock
+
+
+def _summary_participants(play) -> tuple:
+    """(buteur, passeurs) d'une action de resume.
+
+    Aucun repli sur "le premier participant" quand personne n'est marque
+    `scorer` : un but de hockey nomme jusqu'a trois joueurs, et prendre le
+    premier venu afficherait un passeur en gros a la place du buteur. Le jour
+    ou ce role changerait de nom, la carte redeviendrait muette - ce que le
+    canari verrait le lendemain matin, la ou un faux nom ne se voit jamais.
+    """
+    scorer = ""
+    assists = []
+    for part in play.get("participants") or []:
+        if not isinstance(part, dict):
+            continue
+        athlete = part.get("athlete") or {}
+        if not isinstance(athlete, dict):
+            continue
+        name = (athlete.get("shortName")
+                or athlete.get("displayName") or "").strip()
+        if not name:
+            continue
+        role = str(part.get("type") or "").strip().lower()
+        if role == ROLE_SCORER and not scorer:
+            scorer = name
+        elif role == ROLE_ASSISTER:
+            assists.append(name)
+    return scorer, tuple(assists)
+
+
+def summary_goals(payload: dict) -> list:
+    """Les buts d'un resume, dans l'ordre ou la source les publie.
+
+    Tout le reste de `plays[]` est jete : sur un match releve, 302 actions dont
+    14 buts - les tirs, les mises au jeu et les penalites n'habillent aucune
+    carte. Une action mal formee est ignoree comme ailleurs, elle ne fait pas
+    echouer le lot.
+    """
+    goals = []
+    for index, play in enumerate(payload.get("plays") or []):
+        if not isinstance(play, dict):
+            continue
+        kind = play.get("type") or {}
+        if not isinstance(kind, dict):
+            continue
+        type_id = str(kind.get("id") or "").strip()
+        text = str(kind.get("text") or "").strip()
+        if type_id not in GOAL_PLAY_TYPES and text.lower() != GOAL_PLAY_TEXT:
+            continue
+
+        team_id = str(((play.get("team") or {}).get("id") or "")).strip()
+        minute = _summary_minute(play)
+        scorer, assists = _summary_participants(play)
+        goals.append(Play(
+            key="|".join((team_id, minute, text or "Goal", str(index))),
+            team_id=team_id,
+            minute=minute,
+            kind=text or "Goal",
+            scorer=scorer,
+            own_goal=False,
+            penalty=False,
+            shootout=False,
+            assists=assists,
+        ))
+    return goals
+
+
+def summary_scorer(goals, team_id, score: int):
+    """Le but qui vient de porter cette equipe a `score`, ou None.
+
+    On ne prend pas "le dernier but publie" mais le `score`-ieme, et seulement
+    si le resume en compte exactement autant que le tableau de bord. C'est la
+    seule facon de ne jamais coller le buteur precedent sur la carte du but
+    suivant : un resume en retard d'un releve, une fusillade dont le but
+    vainqueur n'est publie nulle part, une equipe que le resume ne nomme pas -
+    les trois donnent le meme resultat, aucun nom, c'est-a-dire la carte de
+    hockey d'avant ce chantier. Un nom faux, lui, ne se rattrape pas.
+    """
+    if score <= 0 or not team_id:
+        return None
+    mine = [goal for goal in goals if goal.team_id == team_id]
+    return mine[-1] if len(mine) == score else None
 
 
 def catalogue(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:

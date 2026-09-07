@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 from butbutbut import espn, i18n, leagues, sports
 
-from helpers import event, goal_detail, opener_for, payload, red_card_detail
+from helpers import (event, goal_detail, hockey_noise, hockey_play,
+                     hockey_summary, opener_for, payload, red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 NHL = leagues.BY_SLUG["nhl"]
@@ -414,6 +415,140 @@ class TestDates(unittest.TestCase):
 
         espn.scoreboard(LIGUE1, opener=opener, dates="20260906-20260913")
         self.assertIn("dates=20260906-20260913", seen[0])
+
+
+class TestTheMatchSummary(unittest.TestCase):
+    """L'autre porte : 450 ko, et les buteurs que le tableau de bord n'a pas."""
+
+    def test_the_url_names_the_sport_the_competition_and_the_match(self):
+        seen = []
+
+        def opener(url, _timeout):
+            seen.append(url)
+            return b'{"plays": []}'
+
+        espn.summary(NHL, "401809123", opener=opener)
+        self.assertEqual(
+            seen,
+            ["https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/"
+             "summary?event=401809123"])
+
+    def test_it_goes_through_the_same_read_as_everything_else(self):
+        # Meme chemin, donc memes en-tetes et meme traduction des pannes : une
+        # seconde facon d'appeler ESPN aurait fini par diverger de la premiere.
+        def opener(_url, _timeout):
+            raise OSError("le reseau est parti")
+
+        with self.assertRaises(espn.SourceError):
+            espn.summary(NHL, "1", opener=opener)
+
+    def test_its_deadline_is_shorter_than_a_scoreboard(self):
+        """Une carte attend derriere cet appel : il ne peut pas durer huit secondes."""
+        seen = []
+
+        def opener(_url, timeout):
+            seen.append(timeout)
+            return b'{"plays": []}'
+
+        espn.summary(NHL, "1", opener=opener)
+        self.assertEqual(seen, [espn.SUMMARY_TIMEOUT])
+        self.assertLess(espn.SUMMARY_TIMEOUT, espn.DEFAULT_TIMEOUT)
+
+    def test_only_the_goals_are_kept(self):
+        goals = espn.summary_goals(hockey_summary(
+            hockey_noise(index=0),
+            hockey_play(team_id="H1", index=0),
+            hockey_noise(index=1),
+            hockey_play(team_id="A1", index=1, scorer="C. Makar", assists=()),
+        ))
+        self.assertEqual([play.team_id for play in goals], ["H1", "A1"])
+        self.assertEqual([play.scorer for play in goals],
+                         ["M. Sasson", "C. Makar"])
+
+    def test_a_goal_recognised_by_its_label_when_the_number_moves(self):
+        # Comme au rugby : deux lectures pour la meme chose, et le canari
+        # signale celle qui a bouge.
+        goals = espn.summary_goals(hockey_summary(
+            hockey_play(type_id="9999", text="Goal")))
+        self.assertEqual(len(goals), 1)
+
+    def test_the_scorer_and_the_assists_come_from_their_role(self):
+        goal = espn.summary_goals(hockey_summary(hockey_play()))[0]
+        self.assertEqual(goal.scorer, "M. Sasson")
+        self.assertEqual(goal.assists, ("F. Hronek", "Z. Buium"))
+        self.assertEqual(goal.kind_key, "goal")
+        self.assertEqual(goal.points, 1)
+
+    def test_without_the_role_nobody_is_named_rather_than_someone_wrong(self):
+        """Un but nomme jusqu'a trois joueurs : le premier venu n'est pas le buteur."""
+        play = hockey_play()
+        for participant in play["participants"]:
+            participant["type"] = ""
+        goal = espn.summary_goals(hockey_summary(play))[0]
+        self.assertEqual(goal.scorer, "")
+        self.assertEqual(goal.assists, ())
+
+    def test_the_period_travels_with_the_clock(self):
+        # L'horloge du hockey repart a zero trois fois : "0:29" seul ne dit pas
+        # de quel tiers-temps on parle. Le numero se lit dans les cinq langues,
+        # le "1st" d'ESPN non.
+        goal = espn.summary_goals(hockey_summary(
+            hockey_play(minute="12:07", period=2)))[0]
+        self.assertEqual(goal.minute, "P2 12:07")
+
+    def test_a_clock_without_a_period_keeps_the_clock(self):
+        play = hockey_play()
+        play.pop("period")
+        self.assertEqual(espn.summary_goals(hockey_summary(play))[0].minute,
+                         "0:29")
+
+    def test_a_summary_without_plays_is_not_a_crash(self):
+        for broken in ({}, {"plays": None}, {"plays": []}, {"plays": ["x"]}):
+            self.assertEqual(espn.summary_goals(broken), [])
+
+    def test_keys_stay_stable_across_two_reads(self):
+        first = espn.summary_goals(hockey_summary(hockey_play(), hockey_play(index=1)))
+        second = espn.summary_goals(hockey_summary(hockey_play(), hockey_play(index=1)))
+        self.assertEqual([play.key for play in first],
+                         [play.key for play in second])
+        self.assertEqual(len(set(play.key for play in first)), 2)
+
+
+class TestWhichGoalIsBeingAnnounced(unittest.TestCase):
+    """Le buteur se choisit par le rang, jamais par "le dernier publie"."""
+
+    def goals(self, *teams):
+        return [espn.summary_goals(hockey_summary(
+            hockey_play(team_id=team, index=index)))[0]
+            for index, team in enumerate(teams)]
+
+    def test_the_nth_goal_of_the_team_that_just_scored(self):
+        goals = self.goals("H1", "A1", "H1")
+        self.assertIs(espn.summary_scorer(goals, "H1", 2), goals[2])
+        self.assertIs(espn.summary_scorer(goals, "A1", 1), goals[1])
+
+    def test_two_goals_in_one_poll_still_announce_the_last_one(self):
+        """Un releve saute : le score passe de 0 a 2, la carte nomme le 2-0."""
+        goals = self.goals("H1", "H1")
+        self.assertIs(espn.summary_scorer(goals, "H1", 2), goals[1])
+
+    def test_a_summary_running_late_names_nobody(self):
+        """Deux buts au tableau de bord, un seul publie : pas de nom, jamais le mauvais."""
+        goals = self.goals("H1")
+        self.assertIsNone(espn.summary_scorer(goals, "H1", 2))
+
+    def test_a_summary_running_ahead_names_nobody_either(self):
+        goals = self.goals("H1", "H1")
+        self.assertIsNone(espn.summary_scorer(goals, "H1", 1))
+
+    def test_a_team_the_summary_never_names(self):
+        goals = self.goals("H1")
+        self.assertIsNone(espn.summary_scorer(goals, "AUTRE", 1))
+        self.assertIsNone(espn.summary_scorer(goals, "", 1))
+
+    def test_nothing_to_announce_on_an_empty_list(self):
+        self.assertIsNone(espn.summary_scorer([], "H1", 1))
+        self.assertIsNone(espn.summary_scorer(self.goals("H1"), "H1", 0))
 
 
 if __name__ == "__main__":
