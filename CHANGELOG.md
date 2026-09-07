@@ -7,6 +7,22 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **L'attente de la voix ne depasse plus quinze secondes, meme d'une
+  picoseconde.** `--speak` retient l'heure a laquelle une phrase doit partir
+  (`monotonic() + MAX_DELAY`) et le fil de la voix en retranche l'heure qu'il
+  est. En arithmetique flottante, cette soustraction ne rend pas toujours ce
+  qu'on y a mis : pour un `monotonic()` de 262 141,39 - une machine allumee
+  depuis trois jours - (t + 15,0) - t vaut 15,000000000029. Personne n'entend
+  la difference, mais la promesse "un but annonce avec plus de quinze secondes
+  de retard n'est plus une nouvelle" cessait d'etre vraie au sens strict, et le
+  test qui la controlait echouait au hasard des machines - une fois sur quinze
+  environ, tombee sur la CI de la 1.10.1. Le calcul sort du fil et de l'horloge
+  (`speech.wait_before`), ou il se verifie sur les valeurs qui font mal plutot
+  que sur celles du jour.
+- 1310 -> **1313 tests**.
+
 ## [1.10.1] - 2026-09-07
 
 ### Corrige
