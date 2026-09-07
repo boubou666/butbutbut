@@ -2983,7 +2983,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1313 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1359 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -2995,6 +2995,66 @@ et les deux doivent rendre exactement la meme suite d'evenements.
 
 Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
 suite : c'est [le canari](#le-canari), `python tools/canari.py`.
+
+### Le plan d'une carte
+
+`overlay.py` dessine toutes les cartes du programme, et sa mise en page n'etait
+tenue que par des assertions ponctuelles : le score reste centre, un carton ne
+mord ni sur le nom ni sur le score. Chacune est juste, aucune ne dit a quoi
+ressemble la carte, et un decalage de deux pixels passait entre elles sans
+qu'un seul test bronche.
+
+Huit cartes sont donc figees en **plans ASCII** dans `tests/plans/` : la carte
+de but, la carte epinglee, la fin de match, une carte de rugby, une carte avec
+des cartons rouges des deux cotes, des noms qui se font tronquer, et la carte
+de but a deux autres `--scale`. Chaque plan porte un dessin et un tableau.
+
+```
+     0         80        160       240       320       400       480
+  0 |+------------------------------------------------------------------+|
+ 16 |##  BUT !  LIGUE 1                                            35'  ||
+ 40 |##           oooo                                            oooo  ||
+ 56 |##           oooo Angers     1  -    2    Stade Rennais      oooo  ||
+ 80 |##  But de C. Arcus                                                ||
+104 |+------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+titre              29     16     74     31  "BUT !"
+equipe dom.       143   46.5    209   66.5  "Angers"
+score dom.        235     43    250     70  "1"
+```
+
+Le dessin dit ou est le score, ou est le nom, ou sont les ecussons (`o`), les
+cartons rouges (`R`) et le filet de la competition (`#`) ; le tableau donne les
+memes boites au pixel pres. Deux pixels de marge en plus, et la ligne du titre
+passe de 29 a 31 : le decalage se **lit** dans le diff de la PR, au lieu de se
+deviner derriere un nombre qui change. Une image de reference aurait rendu le
+meme service, en binaire, illisible en revue et dependante de la police
+installee sur la machine.
+
+Le plan passe par le dessin (`_draw`) et pas seulement par la mise en page
+(`_layout`) : ce qui est fige est donc ce qui arrive vraiment a l'ecran, ordre
+de trace compris.
+
+Et il est **identique** sur les trois systemes et les cinq versions de Python
+de la CI - sans quoi il ne servirait qu'a mettre la CI au rouge. Les polices
+sont fausses et fixes (une largeur par caractere, un interligne), pas celles de
+tkinter, qui ne mesurent pas la meme chose sur un runner Ubuntu et sur un
+Windows ; et les cartes des scenarios sont ecrites dans `tests/blueprint.py`
+plutot que fabriquees par `Card.from_event`, parce qu'un plan fige une
+geometrie et n'a pas a casser le jour ou une traduction change.
+
+Apres un changement voulu de mise en page, **une** commande regenere les huit
+plans :
+
+```bash
+python tools/plans.py
+```
+
+C'est un script de `tools/` et non une option du programme, pour la meme raison
+que [le canari](#le-canari) : ces plans ne servent qu'au depot, et
+`butbutbut --help` n'a pas a porter a vie une ligne qui ne parle qu'aux tests.
 
 ### Ou elle tourne
 

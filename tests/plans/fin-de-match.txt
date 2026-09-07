@@ -1,0 +1,38 @@
+# Le sifflet final : une ligne de buteurs par camp, sous le score.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 464 x 128 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400
+  0 |+--------------------------------------------------------+|
+  8 |##                                                       ||
+ 16 |##  FIN DU MATCH   LIGUE                          90'+4' ||
+ 24 |##                                                       ||
+ 32 |##                                                       ||
+ 40 |##                                                       ||
+ 48 |##                                                       ||
+ 56 |##           Angers      1  -   2    Stade Rennais       ||
+ 64 |##                                                       ||
+ 72 |##                                                       ||
+ 80 |##  Angers : M. Lopez 12'                                ||
+ 88 |##                                                       ||
+ 96 |##                                                       ||
+104 |##  Stade Rennais : A. Kalimuendo 58', L. Blas 77'       ||
+112 |##                                                       ||
+120 |##-------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    463    127
+filet               3      7     10    121
+titre              29     16    137     31  "FIN DU MATCH"
+competition       151   17.5    200   29.5  "LIGUE 1"
+minute            400   17.5    442   29.5  "90'+4'"
+equipe dom.       106   46.5    172   66.5  "Angers"
+score dom.        198     43    213     70  "1"
+separateur        213     43    258     70  " - "
+score ext.        258     43    273     70  "2"
+equipe ext.       299   46.5    442   66.5  "Stade Rennais"
+ligne 1            29   76.5    101   90.5  "Angers : "
+ligne 1           101     76    209     91  "M. Lopez 12'"
+ligne 2            29   97.5    157  111.5  "Stade Rennais : "
+ligne 2           157     97    427    112  "A. Kalimuendo 58', L. Blas 77'"

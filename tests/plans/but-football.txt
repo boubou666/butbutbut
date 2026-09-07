@@ -1,0 +1,36 @@
+# La carte de but : trois lignes, deux ecussons, un buteur.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 538 x 111 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480
+  0 |+------------------------------------------------------------------+|
+  8 |##                                                                 ||
+ 16 |##  BUT !  LIGUE 1                                            35'  ||
+ 24 |##                                                                 ||
+ 32 |##                                                                 ||
+ 40 |##           oooo                                            oooo  ||
+ 48 |##           oooo                                            oooo  ||
+ 56 |##           oooo Angers     1  -    2    Stade Rennais      oooo  ||
+ 64 |##           oooo                                            oooo  ||
+ 72 |##                                                                 ||
+ 80 |##  But de C. Arcus                                                ||
+ 88 |##                                                                 ||
+ 96 |##                                                                 ||
+104 |+------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    537    110
+filet               3      7     10    104
+titre              29     16     74     31  "BUT !"
+competition        88   17.5    137   29.5  "LIGUE 1"
+minute            495   17.5    516   29.5  "35'"
+ecusson dom.      106     43    133     70
+ecusson ext.      489     43    516     70
+equipe dom.       143   46.5    209   66.5  "Angers"
+score dom.        235     43    250     70  "1"
+separateur        250     43    295     70  " - "
+score ext.        295     43    310     70  "2"
+equipe ext.       336   46.5    479   66.5  "Stade Rennais"
+detail             29   80.5     85   94.5  "But de "
+detail             85     80    157     95  "C. Arcus"

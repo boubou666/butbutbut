@@ -1,0 +1,34 @@
+# La meme carte de but a --scale 0.75 : elle garde sa largeur de confort (MIN_WIDTH) et perd de la hauteur.
+# echelle 0.75 - police (largeur/interligne) detail 6/10  label 5/9  score 11/20  scorer 6/11  team 8/15  title 6/11
+# carte 426 x 96 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400
+  0 |+----------------------------------------------------+|
+  8 |##                                                   ||
+ 16 |##  BUT  LIGUE                                   35  ||
+ 24 |##                                                   ||
+ 32 |##                                                   ||
+ 40 |##         ooo                                  ooo  ||
+ 48 |##         oooAngers    1 -  2    Stade Rennais ooo  ||
+ 56 |##         ooo                                  ooo  ||
+ 64 |##                                                   ||
+ 72 |##  But dC. Arc                                      ||
+ 80 |##                                                   ||
+ 88 |##---------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    425     95
+filet               3      7     10     89
+titre              29     16     59     27  "BUT !"
+competition        73     17    108     26  "LIGUE 1"
+minute            389     17    404     26  "35'"
+ecusson dom.       85     39    105     59
+ecusson ext.      384     39    404     59
+equipe dom.       115   41.5    163   56.5  "Angers"
+score dom.        189     39    200     59  "1"
+separateur        200     39    233     59  " - "
+score ext.        233     39    244     59  "2"
+equipe ext.       270   41.5    374   56.5  "Stade Rennais"
+detail             29   69.5     71   79.5  "But de "
+detail             71     69    119     80  "C. Arcus"

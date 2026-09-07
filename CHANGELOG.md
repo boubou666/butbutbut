@@ -7,6 +7,47 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **La mise en page des cartes est figee en plans ASCII de reference.** Huit
+  cartes - but, epinglee, fin de match, rugby, cartons rouges des deux cotes,
+  noms tronques, et deux autres `--scale` - sont rangees dans `tests/plans/`
+  sous la forme d'un dessin et d'un tableau de boites au pixel pres. Jusqu'ici
+  `overlay.py` (1285 lignes, toutes les cartes du programme) n'etait tenu que
+  par des assertions ponctuelles : les cartons rouges de la 1.11.0 ont demande
+  189 lignes de tests pour verifier a la main qu'un rectangle ne mordait ni sur
+  le nom ni sur le score, et **un decalage de deux pixels ne cassait toujours
+  rien**. Il casse desormais quatre tests, et le diff de la PR montre le
+  deplacement en clair - la ligne du titre passe de 29 a 31, l'ecusson glisse
+  d'une colonne dans le dessin - au lieu d'un nombre a deviner.
+- Pas d'image de reference : un PNG est binaire, illisible en revue, et il
+  dependrait de la police installee sur la machine. C'est du texte qu'on veut.
+- Le plan passe par `_draw` et pas seulement par `_layout` : ce qui est fige
+  est ce qui arrive vraiment a l'ecran, ordre de trace compris, et non une
+  seconde mise en page qui aurait fini par deriver de la premiere. `overlay.py`
+  n'a pas bouge d'une ligne - un canvas qui note au lieu de peindre a suffi.
+- Le plan est **identique sur les trois systemes et les cinq versions de Python
+  de la CI**, ce qui est tout l'interet de la chose : les metriques de tkinter,
+  elles, ne le sont pas. Les polices sont donc fausses et fixes - on prolonge
+  le `FakeFont` avec lequel `test_overlay.py` teste deja sans ecran - les
+  cartes des scenarios sont ecrites dans `tests/blueprint.py` plutot que
+  fabriquees par `Card.from_event` (un plan fige une geometrie, il n'a pas a
+  casser le jour ou une traduction change), et aucune coordonnee n'est ecrite
+  avec plus d'un dixieme de pixel.
+- **Une commande regenere les huit plans** : `python tools/plans.py`. Sans
+  elle, la premiere evolution legitime de mise en page aurait rendu ces tests
+  insupportables et quelqu'un les aurait supprimes. C'est un script de `tools/`
+  et non une option du programme, comme le canari : ces plans ne servent qu'au
+  depot, et `butbutbut --help` n'a pas a porter a vie une ligne qui ne parle
+  qu'aux tests.
+- Deux garde-fous de packaging avec : `MANIFEST.in` embarque les `.txt` de
+  `tests/`, sans quoi la suite du sdist n'aurait plus rien a quoi comparer, et
+  `.gitattributes` les fige en fins de ligne LF, sans quoi un checkout Windows
+  les mettrait tous au rouge d'un coup.
+- 1335 -> **1359 tests**, dont quatre qui deplacent une constante d'`overlay`
+  de deux pixels et exigent que le plan bouge : une reference qu'aucun decalage
+  ne fait broncher est un fichier mort.
+
 ## [1.11.0] - 2026-09-07
 
 ### Ajoute

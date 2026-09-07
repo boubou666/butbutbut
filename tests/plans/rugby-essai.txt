@@ -1,0 +1,37 @@
+# Le rugby : un essai vaut cinq points, et le detail de la carte le dit - une ligne plus longue qu'un but de football.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 634 x 111 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480       560
+  0 |+------------------------------------------------------------------------------+|
+  8 |##                                                                             ||
+ 16 |##  ESSAI !  TOP 14                                                       63'  ||
+ 24 |##                                                                             ||
+ 32 |##                                                                             ||
+ 40 |##  ooo                                                               oooo     ||
+ 48 |##  ooo                                                               oooo     ||
+ 56 |##  ooo Stade Toulousain          19  -    14     Stade Francais      oooo     ||
+ 64 |##  ooo                                                               oooo     ||
+ 72 |##                                                                             ||
+ 80 |##  Essai de A. Dupont  (+5)                                                   ||
+ 88 |##                                                                             ||
+ 96 |##                                                                             ||
+104 |+------------------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    633    110
+filet               3      7     10    104
+titre              29     16     92     31  "ESSAI !"
+competition       106   17.5    148   29.5  "TOP 14"
+minute            591   17.5    612   29.5  "63'"
+ecusson dom.       29     43     56     70
+ecusson ext.      563     43    590     70
+equipe dom.        66   46.5    242   66.5  "Stade Toulousain"
+score dom.        268     43    298     70  "19"
+separateur        298     43    343     70  " - "
+score ext.        343     43    373     70  "14"
+equipe ext.       399   46.5    553   66.5  "Stade Francais"
+detail             29   80.5    101   94.5  "Essai de "
+detail            101     80    182     95  "A. Dupont"
+detail            182   80.5    222   94.5  " (+5)"

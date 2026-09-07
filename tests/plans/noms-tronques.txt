@@ -1,0 +1,39 @@
+# Des noms a rallonge, des cartons et des ecussons : la carte bute sur son plafond de largeur et ce sont les noms qui cedent.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 720 x 111 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480       560       640
+  0 |+----------------------------------------------------------------------------------------+|
+  8 |##                                                                                       ||
+ 16 |##  BUT !  LIGUE 1                                                                   35' ||
+ 24 |##                                                                                       ||
+ 32 |##                                                                                       ||
+ 40 |##   oooo                                                                          ooo   ||
+ 48 |##   oooo                          RRR               RR                            ooo   ||
+ 56 |##   oooo Borussia Monche...       RRR   1  -   2    RR  Eintracht Frank...        ooo   ||
+ 64 |##   oooo                                                                          ooo   ||
+ 72 |##                                                                                       ||
+ 80 |##  But de C. Arcus                                                                      ||
+ 88 |##                                                                                       ||
+ 96 |##                                                                                       ||
+104 |+----------------------------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    719    110
+filet               3      7     10    104
+titre              29     16     74     31  "BUT !"
+competition        88   17.5    137   29.5  "LIGUE 1"
+minute            677   17.5    698   29.5  "35'"
+ecusson dom.       39     43     66     70
+ecusson ext.      661     43    688     70
+equipe dom.        76   46.5    274   66.5  "Borussia Monche..."
+score dom.        326     43    341     70  "1"
+separateur        341     43    386     70  " - "
+score ext.        386     43    401     70  "2"
+equipe ext.       453   46.5    651   66.5  "Eintracht Frank..."
+carton            283     51    290     62
+carton            293     51    300     62
+carton            427     51    434     62
+detail             29   80.5     85   94.5  "But de "
+detail             85     80    157     95  "C. Arcus"
