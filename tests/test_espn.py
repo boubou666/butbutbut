@@ -1,4 +1,7 @@
+import gzip
+import json
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 
 from butbutbut import espn, i18n, leagues, sports
@@ -253,6 +256,79 @@ class TestFetch(unittest.TestCase):
     def test_non_dict_json_becomes_source_error(self):
         with self.assertRaises(espn.SourceError):
             espn.fetch("fra.1", opener=lambda *_: b"[1, 2, 3]")
+
+
+class TestCompression(unittest.TestCase):
+    """La compression : huit fois moins d'octets, et rien d'autre qui bouge.
+
+    Ces tests sont les seuls du fichier a passer par `urlopen` plutot que par
+    un opener : c'est justement le morceau qu'un opener remplace, donc le seul
+    qu'aucun autre test ne regarde. Le reseau, lui, n'est pas touche - c'est un
+    faux `urlopen` qui rend les octets qu'on lui donne.
+    """
+
+    def urlopen_giving(self, body):
+        """Un faux `urlopen` qui rend ce corps-la."""
+        class Response:
+            def read(_self):
+                return body
+
+            def __enter__(_self):
+                return _self
+
+            def __exit__(_self, *_ignored):
+                return False
+
+        return lambda _request, timeout=None: Response()
+
+    def download_of(self, body, label="fra.1"):
+        with unittest.mock.patch.object(espn.urllib.request, "urlopen",
+                                        self.urlopen_giving(body)):
+            return espn.download("https://exemple.invalid/scoreboard", label=label)
+
+    def test_the_request_asks_for_it(self):
+        # Personne ne le demande a notre place : urllib n'annonce rien tout seul.
+        self.assertEqual(espn.headers()["Accept-Encoding"], "gzip")
+
+    def test_a_compressed_answer_comes_back_in_clear(self):
+        page = json.dumps(payload(event())).encode("utf-8")
+        self.assertEqual(self.download_of(gzip.compress(page)), page)
+
+    def test_a_clear_answer_passes_through_untouched(self):
+        # Le jour ou la source cesserait de compresser, ou un proxy qui
+        # decompresse en chemin : rien ne doit changer pour autant.
+        page = b'{"events": []}'
+        self.assertEqual(self.download_of(page), page)
+
+    def test_an_empty_answer_is_not_a_crash(self):
+        self.assertEqual(self.download_of(b""), b"")
+
+    def test_a_truncated_stream_names_the_competition(self):
+        broken = gzip.compress(b'{"events": []}')[:10]
+        with self.assertRaises(espn.SourceError) as caught:
+            self.download_of(broken)
+        # Le message doit dire ou ca casse, et que c'est la compression : relu
+        # comme du JSON, un flux tronque donnerait "reponse illisible", ce qui
+        # est vrai et n'aide personne.
+        self.assertIn("fra.1", str(caught.exception))
+        self.assertIn("compressee", str(caught.exception))
+
+    def test_the_whole_read_goes_through_it(self):
+        page = json.dumps(payload(event())).encode("utf-8")
+        with unittest.mock.patch.object(espn.urllib.request, "urlopen",
+                                        self.urlopen_giving(gzip.compress(page))):
+            matches = espn.scoreboard(LIGUE1)
+        self.assertEqual(matches[0].home, "Angers")
+
+    def test_an_opener_is_left_alone(self):
+        # Les tests et le rejeu passent par la, et rendent du JSON en clair :
+        # le contrat de `espn.download()` ne change pas d'un caractere.
+        state = {"payload": payload(event())}
+        matches = espn.scoreboard(LIGUE1, opener=opener_for(state))
+        self.assertEqual(matches[0].home, "Angers")
+
+    def test_what_is_not_bytes_is_not_touched(self):
+        self.assertEqual(espn.uncompress('{"events": []}'), '{"events": []}')
 
 
 class TestDates(unittest.TestCase):

@@ -7,6 +7,55 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Les releves sont compresses : neuf fois moins d'octets sur le fil.** La
+  source sert du gzip depuis toujours, mais uniquement a qui le demande, et
+  personne ne le demandait : `urllib` n'annonce aucun encodage tout seul et ne
+  decode rien tout seul non plus. Une ligne dans `espn.headers()`
+  (`Accept-Encoding: gzip`) et une decompression dans `espn.download()`
+  suffisent. Mesure contre la vraie source : le tableau de bord de la Ligue 1
+  passe de 33 832 a 4 145 octets, et un tour complet de `--leagues all` de
+  1 355 ko a 148 ko. Sur une soiree de deux heures a suivre les 36
+  competitions, 400 Mo deviennent 44 Mo - la difference entre un programme
+  qu'on laisse tourner sur un partage de connexion et un programme qu'on
+  coupe. Zero dependance : `gzip` est dans la bibliotheque standard.
+- **C'est la seule economie disponible, et c'etait la question a trancher.**
+  L'autre piste - ne redemander que ce qui a change - est morte : la source
+  n'envoie **ni `ETag` ni `Last-Modified`**, il n'y a donc rien a poser dans un
+  `If-None-Match`, et les 36 requetes par tour de `--leagues all` restent 36
+  requetes. Elles pesent simplement neuf fois moins.
+
+### Details qui ont demande un arbitrage
+
+- **On regarde les deux premiers octets, pas l'en-tete `Content-Encoding`.**
+  Un proxy d'entreprise qui decompresse en chemin ne pense pas toujours a
+  retirer l'en-tete, et l'inverse existe aussi ; les octets, eux, ne mentent
+  pas. Consequence heureuse : une reponse en clair traverse `uncompress()`
+  sans y toucher, donc les openers des tests, ceux du rejeu et le jour ou la
+  source cesserait de compresser passent tous par le meme chemin, sans cas
+  particulier.
+- **Une decompression qui echoue n'est pas une panne de reseau**, et elle est
+  donc levee hors du `try` qui les attrape : un flux tronque relu comme du
+  JSON aurait donne "reponse illisible pour fra.1", ce qui est vrai et envoie
+  chercher le defaut du mauvais cote. Le message dit maintenant "reponse
+  compressee illisible", avec le code de la competition.
+- **Le contrat de `espn.download()` ne change pas d'un caractere** : il rendait
+  des octets de JSON en clair, il en rend toujours. `replay.Recorder`, qui se
+  pose entre le programme et la source, enregistre donc exactement ce qu'il
+  enregistrait, et un fichier d'enregistrement d'hier se rejoue aujourd'hui.
+- **Le canari prend les en-tetes du daemon** (`espn.headers()`) au lieu d'en
+  recopier une version a lui. C'est un defaut qu'on n'aurait vu que trop tard :
+  le canari est cense voir ce que voit le programme, et une source qui
+  compresserait mal n'aurait casse que le daemon pendant que le canari
+  annoncait vert.
+- 1298 -> **1306 tests** : la requete qui demande la compression, une reponse
+  compressee relue en clair, une reponse en clair qui traverse intacte, un
+  flux tronque qui nomme la competition, une reponse vide, et le contrat des
+  openers qui ne bouge pas. Ce sont les seuls tests du depot qui passent par
+  `urlopen` plutot que par un opener - c'est justement le morceau qu'un opener
+  remplace, donc le seul qu'aucun autre test ne regardait.
+
 ### Teste
 
 - **`tests/test_shootout.py` dependait de la langue de la machine.** Il epingle

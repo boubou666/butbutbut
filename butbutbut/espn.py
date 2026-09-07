@@ -34,6 +34,7 @@ Rien d'autre que la stdlib : urllib + json.
 
 from __future__ import annotations
 
+import gzip
 import json
 import re
 import urllib.error
@@ -381,9 +382,45 @@ def headers() -> dict:
     return {
         "User-Agent": USER_AGENT,
         "Accept": "application/json",
+        # La source compresse si on le demande, et personne ne le demande a
+        # notre place : urllib n'annonce rien tout seul. Mesure sur le tableau
+        # de bord de la Ligue 1 : 33 832 octets sans, 4 145 avec. Huit fois
+        # moins, sur 36 requetes par tour pour `--leagues all`, et c'est la
+        # SEULE economie disponible - la source n'envoie ni ETag ni
+        # Last-Modified, donc pas de requete conditionnelle possible.
+        "Accept-Encoding": "gzip",
         "Accept-Language": "fr,en;q=0.8",
         "Cache-Control": "no-cache",
     }
+
+
+# Les deux octets qui commencent un flux gzip. C'est eux qu'on regarde, et non
+# l'en-tete `Content-Encoding` : un proxy qui decompresse en chemin ne pense
+# pas toujours a retirer l'en-tete, et on se retrouverait a vouloir
+# decompresser du JSON deja clair. L'inverse existe aussi. Les octets, eux, ne
+# mentent pas.
+GZIP_MAGIC = b"\x1f\x8b"
+
+
+def uncompress(body, label: str = "") -> bytes:
+    """Le corps d'une reponse, en clair, compresse ou non.
+
+    Une reponse qui n'est pas du gzip ressort telle quelle : c'est le cas de
+    tous les openers de test, qui rendent du JSON en clair, et ce doit rester
+    le cas le jour ou la source cesserait de compresser.
+
+    Une reponse annoncee gzip mais illisible, en revanche, est une panne
+    franche et non une reponse vide - un corps tronque relu comme du JSON
+    donnerait "reponse illisible", ce qui est vrai mais n'aide personne a
+    comprendre ou ca casse.
+    """
+    if not isinstance(body, bytes) or not body.startswith(GZIP_MAGIC):
+        return body
+    try:
+        return gzip.decompress(body)
+    except Exception as exc:
+        raise SourceError("reponse compressee illisible pour {} : {}".format(
+            label or "la source", exc)) from exc
 
 
 def download(url: str, timeout: float = DEFAULT_TIMEOUT, label: str = "") -> bytes:
@@ -398,12 +435,17 @@ def download(url: str, timeout: float = DEFAULT_TIMEOUT, label: str = "") -> byt
     request = urllib.request.Request(url, headers=headers())
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            body = response.read()
     except urllib.error.HTTPError as exc:
         raise SourceError("HTTP {} sur {}".format(exc.code, label)) from exc
     except Exception as exc:          # URLError, socket.timeout, ssl...
         raise SourceError("{} sur {} : {}".format(
             type(exc).__name__, label, exc)) from exc
+
+    # Hors du `try` ci-dessus, expres : une decompression qui echoue n'est pas
+    # une panne de reseau, et la faire passer pour telle enverrait chercher le
+    # defaut du mauvais cote.
+    return uncompress(body, label)
 
 
 def day_code(moment) -> str:

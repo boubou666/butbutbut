@@ -57,7 +57,6 @@ from butbutbut import (__version__, crests, espn, journal, leagues,  # noqa: E40
 
 SCOREBOARD_URL = espn.SCOREBOARD_URL
 TEAMS_URL = espn.TEAMS_URL
-USER_AGENT = espn.USER_AGENT
 
 # fra.1 et eng.1 sont les deux plus suivies ; esp.1 fait un troisieme avis, et
 # les trois ne jouent pas toujours les memes jours - de quoi trouver des buts.
@@ -535,14 +534,17 @@ def cross_check(payload, slug, tally, ledger):
 # --------------------------------------------------------------- reseau ------
 
 def http_opener(url, timeout):
-    """L'appel reel. Les tests passent leur propre callable a la place."""
-    request = urllib.request.Request(url, headers={
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json",
-        "Cache-Control": "no-cache",
-    })
+    """L'appel reel. Les tests passent leur propre callable a la place.
+
+    Les en-tetes sont ceux du daemon, pris chez lui (`espn.headers()`) et non
+    recopies : le canari est cense voir ce que voit le programme, pas ce qu'un
+    autre client verrait. C'est vrai depuis que la requete demande du gzip -
+    une source qui compresserait mal ne casserait que le daemon, et le canari
+    l'aurait annonce vert.
+    """
+    request = urllib.request.Request(url, headers=espn.headers())
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+        return espn.uncompress(response.read(), url)
 
 
 def fetch_json(url, opener, timeout=TIMEOUT, attempts=ATTEMPTS):
