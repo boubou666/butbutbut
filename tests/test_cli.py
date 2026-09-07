@@ -1985,5 +1985,61 @@ class TestNextCommand(unittest.TestCase):
             self.assertEqual(call[0][0], cli.NEXT_PAUSE)
 
 
+class Cp1252(io.TextIOWrapper):
+    """Une sortie sur la page de code ANSI de Windows, terminal ou non."""
+
+    def __init__(self, tty):
+        io.TextIOWrapper.__init__(self, io.BytesIO(), encoding="cp1252")
+        self._tty = tty
+
+    def isatty(self):
+        return self._tty
+
+
+class TestUtf8Output(unittest.TestCase):
+    # Un buteur dont le nom sort de la page de code ANSI : le 'n' polonais de
+    # Zielinski. C'est lui qui terminait '--scores > matchs.txt' sur une
+    # UnicodeEncodeError au lieu du score.
+    BUTEUR = "P. Zieli\u0144ski"
+
+    def test_a_redirected_output_switches_to_utf8(self):
+        flux = Cp1252(tty=False)
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "utf-8")
+        flux.write(self.BUTEUR)
+        flux.flush()
+        self.assertEqual(flux.buffer.getvalue().decode("utf-8"), self.BUTEUR)
+
+    def test_a_console_keeps_its_code_page_but_stops_crashing(self):
+        # La console sait ce qu'elle sait dessiner : on ne lui impose pas
+        # l'UTF-8, on lui retire seulement le droit de lever une exception.
+        flux = Cp1252(tty=True)
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "cp1252")
+        flux.write(self.BUTEUR)      # ne leve plus UnicodeEncodeError
+        flux.flush()
+        self.assertEqual(flux.buffer.getvalue(), b"P. Zieli?ski")
+
+    def test_stderr_is_reconfigured_too(self):
+        # Un message d'erreur peut nommer un club autant qu'une carte.
+        flux = Cp1252(tty=False)
+        with mock.patch.object(cli.sys, "stderr", flux):
+            cli.utf8_output()
+        self.assertEqual(flux.encoding, "utf-8")
+
+    def test_a_captured_output_is_left_alone(self):
+        # Sous pytest, ou ici meme, sys.stdout n'a pas de reconfigure().
+        with mock.patch.object(cli.sys, "stdout", io.StringIO()):
+            cli.utf8_output()   # ne leve pas
+
+    def test_a_closed_output_is_left_alone(self):
+        flux = Cp1252(tty=False)
+        flux.close()
+        with mock.patch.object(cli.sys, "stdout", flux):
+            cli.utf8_output()   # ne leve pas
+
+
 if __name__ == "__main__":
     unittest.main()

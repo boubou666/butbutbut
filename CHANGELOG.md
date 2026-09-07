@@ -7,6 +7,21 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Un nom polonais ne termine plus la commande sur une trace d'appels.**
+  Sous Windows, une sortie redirigee - `butbutbut --scores > matchs.txt`, un
+  pipe, le journal d'un service - n'herite pas de l'UTF-8 de la console mais de
+  la page de code ANSI, qui ne connait qu'une fraction des caracteres. Un
+  buteur nomme Zielinski, avec le vrai `n` polonais, suffisait a faire tomber
+  la commande sur une `UnicodeEncodeError` au lieu du score, alors que le meme
+  nom s'affichait sans probleme dans le terminal. La sortie standard et la
+  sortie d'erreur passent maintenant en UTF-8 des qu'elles ne sont pas un
+  terminal (`cli.utf8_output`), comme tous les fichiers ecrits par le projet.
+  Une console, elle, garde sa page de code - c'est elle qui sait ce qu'elle
+  peut dessiner - et herite seulement du remplacement : un accent approximatif
+  vaut mieux qu'une trace d'appels a la place des resultats.
+
 ## [1.8.0] - 2026-09-07
 
 ### Ajoute
