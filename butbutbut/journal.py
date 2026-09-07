@@ -1,4 +1,4 @@
-"""Relecture du journal : de quoi recapituler une journee de buts.
+"""Relecture du journal : de quoi recapituler une journee, ou un mois, de buts.
 
 Pourquoi relire du texte plutot que tenir la liste dans le fichier d'etat :
 
@@ -13,7 +13,16 @@ Pourquoi relire du texte plutot que tenir la liste dans le fichier d'etat :
     la fonction qui les ecrit, et le cout du texte se limite a ce module.
 
 Ce qui n'est pas parsable est ignore sans bruit : le journal contient aussi les
-lignes de demarrage, les erreurs reseau et tout ce qu'on y ajoutera demain.
+lignes de demarrage, les erreurs reseau et tout ce qu'on y ajoutera demain. Et
+il a pu tourner sur plusieurs versions du programme : une ligne d'un format
+qu'on ne connait plus est une ligne de moins, jamais une erreur.
+
+Une seule lecture, parametree par une fenetre de dates (`goals_between`), sert
+tous les recapitulatifs : la journee, la semaine, le mois, et le classement des
+buteurs. Les jours sont des chaines AAAA-MM-JJ d'un bout a l'autre, jamais des
+dates : c'est la forme du journal, elle se compare telle quelle (le tri
+alphabetique d'une date ISO est son tri chronologique), et le filtre tombe donc
+avant l'analyseur, ligne par ligne.
 """
 
 from __future__ import annotations
@@ -150,20 +159,30 @@ def parse_line(line: str):
                  team=team.strip(), detail=detail.strip(), minute=minute.strip())
 
 
-def goals(path, day=None) -> list:
-    """Les buts d'une journee, dans l'ordre du journal.
+def goals_between(path, since=None, until=None) -> list:
+    """Les buts d'une fenetre de dates, dans l'ordre du journal.
 
-    `day` au format 2026-09-06 ; par defaut aujourd'hui. Un journal absent
-    n'est pas une erreur : c'est une journee sans but de plus.
+    `since` et `until` sont des jours AAAA-MM-JJ, bornes comprises ; None
+    ouvre le cote correspondant, et les deux a None rendent tout le journal.
+    La comparaison est celle de deux chaines : voir l'en-tete du module.
+
+    Un journal absent, vide, illisible ou coupe en route n'est pas une erreur :
+    c'est une fenetre sans but de plus. Rendre ce qu'on a deja lu vaut mieux
+    qu'une trace d'erreur pour une commande dont tout l'interet est de repondre
+    quand plus rien ne tourne.
     """
-    day = day or "{:%Y-%m-%d}".format(datetime.now())
     found = []
     try:
         with Path(path).open("r", encoding="utf-8", errors="replace") as handle:
             for line in handle:
                 # Le filtre sur la date avant le parseur : un journal de
-                # plusieurs mois se lit alors sans travail inutile.
-                if not line.startswith(day):
+                # plusieurs mois se lit alors sans travail inutile. Une ligne
+                # sans horodatage (la suite d'un bloc, par exemple) commence
+                # par une espace, donc tombe avant toute borne.
+                day = line[:10]
+                if since is not None and day < since:
+                    continue
+                if until is not None and day > until:
                     continue
                 entry = parse_line(line)
                 if entry is not None:
@@ -173,13 +192,129 @@ def goals(path, day=None) -> list:
     return found
 
 
-def by_league(entries) -> list:
-    """[(competition, [buts])], dans l'ordre du premier but de la journee."""
+def goals(path, day=None) -> list:
+    """Les buts d'une journee, dans l'ordre du journal.
+
+    `day` au format 2026-09-06 ; par defaut aujourd'hui. Une journee n'est
+    qu'une fenetre d'un jour : tout le travail est dans goals_between().
+    """
+    day = day or "{:%Y-%m-%d}".format(datetime.now())
+    return goals_between(path, day, day)
+
+
+def _group(entries, key) -> list:
+    """[(valeur, [buts])], dans l'ordre d'apparition de chaque valeur."""
     order = []
     grouped = {}
     for entry in entries:
-        if entry.league not in grouped:
-            grouped[entry.league] = []
-            order.append(entry.league)
-        grouped[entry.league].append(entry)
-    return [(name, grouped[name]) for name in order]
+        value = key(entry)
+        if value not in grouped:
+            grouped[value] = []
+            order.append(value)
+        grouped[value].append(entry)
+    return [(value, grouped[value]) for value in order]
+
+
+def by_league(entries) -> list:
+    """[(competition, [buts])], dans l'ordre du premier but de la fenetre."""
+    return _group(entries, lambda entry: entry.league)
+
+
+def by_day(entries) -> list:
+    """[(jour, [buts])], du plus ancien au plus recent.
+
+    C'est l'ordre du journal, qui est ecrit au fil de l'eau : rien a trier.
+    """
+    return _group(entries, lambda entry: entry.day)
+
+
+def settle(entries) -> tuple:
+    """Les buts que la VAR a laisses debout. Rend ([buts], annulations orphelines).
+
+    Le journal ne dit pas QUEL but une annulation efface : la ligne
+    "BUT ANNULE" ne porte ni buteur ni minute du but d'origine, seulement le
+    score revenu en arriere (voir watcher.Event.log_line, qui n'a pas plus a
+    ecrire : la source annonce une baisse de score, pas l'action retiree). Le
+    rattachement ne peut donc etre que positionnel : une annulation retire le
+    dernier but encore debout de la meme equipe dans le meme match. C'est
+    exactement ce que fait l'arbitre video, et une pile par (competition,
+    match, equipe) suffit a le rejouer.
+
+    Les annulations orphelines sont celles qui ne trouvent aucun but a
+    retirer : le but est tombe avant le debut de la fenetre, ou sa ligne etait
+    illisible. On les compte a part plutot que de deduire un but au hasard -
+    un classement des buteurs qui vole un but a quelqu'un est pire qu'un
+    classement qui avoue son trou.
+    """
+    standing = {}       # (competition, match, equipe) -> pile d'index de buts
+    live = set()
+    orphans = 0
+    for index, entry in enumerate(entries):
+        key = (entry.league, entry.home, entry.away, entry.team)
+        if entry.goal:
+            standing.setdefault(key, []).append(index)
+            live.add(index)
+            continue
+        stack = standing.get(key)
+        if stack:
+            live.discard(stack.pop())
+        else:
+            orphans += 1
+    # sorted() : l'ordre du journal, que le passage par un ensemble a perdu.
+    return [entries[index] for index in sorted(live)], orphans
+
+
+class Board:
+    """Le classement des buteurs d'une fenetre du journal."""
+
+    __slots__ = ("rows", "signalled", "confirmed", "cancelled", "unknown",
+                 "orphans")
+
+    def __init__(self, rows, signalled, confirmed, cancelled, unknown,
+                 orphans):
+        self.rows = rows            # [(buteur, buts, equipes)], du haut vers le bas
+        self.signalled = signalled  # buts vus passer, annulations non comprises
+        self.confirmed = confirmed  # ce qu'il en reste une fois la VAR passee
+        self.cancelled = cancelled  # lignes "BUT ANNULE" de la fenetre
+        self.unknown = unknown      # buts confirmes dont le buteur manque
+        self.orphans = orphans      # annulations sans but a retirer
+
+    def __repr__(self):
+        return "<Board {} buteur(s) {} but(s)>".format(len(self.rows),
+                                                       self.confirmed)
+
+
+def scoreboard(entries) -> Board:
+    """Le classement des buteurs, buts annules deduits.
+
+    Un buteur ne garde pas un but que la VAR a refuse : c'est tout l'interet
+    de passer par settle() plutot que de compter les lignes "BUT".
+
+    Le journal ne connait pas toujours le buteur - la source publie ses actions
+    avec quelques secondes de retard, et un but detecte avant elle est ecrit
+    sans nom, definitivement. Ces buts-la sont comptes a part et jamais
+    attribues : mieux vaut un classement qui dit ce qui lui manque.
+    """
+    kept, orphans = settle(entries)
+    tally = {}
+    clubs = {}
+    unknown = 0
+    for entry in kept:
+        name = entry.scorer
+        if not name:
+            unknown += 1
+            continue
+        tally[name] = tally.get(name, 0) + 1
+        seen = clubs.setdefault(name, [])
+        # Un buteur peut changer de club en cours de journal, et marquer pour
+        # son club puis pour sa selection.
+        if entry.team and entry.team not in seen:
+            seen.append(entry.team)
+    # A egalite, l'ordre alphabetique : le meme journal doit rendre deux fois
+    # le meme classement, et l'ordre d'un dictionnaire ne le promet pas.
+    rows = [(name, tally[name], "/".join(clubs[name]))
+            for name in sorted(tally, key=lambda name: (-tally[name], name))]
+    cancelled = sum(1 for entry in entries if not entry.goal)
+    return Board(rows=rows, signalled=len(entries) - cancelled,
+                 confirmed=len(kept), cancelled=cancelled, unknown=unknown,
+                 orphans=orphans)

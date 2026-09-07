@@ -9,6 +9,54 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Le journal se relit plus loin que le jour meme** : `butbutbut --week` (les
+  7 derniers jours), `--month` (les 30 derniers), et `--since 2026-09-01`
+  depuis une date. Meme lecture, meme analyseur que `--today` : seule la
+  fenetre de dates change. `--since` l'emporte sur `--week` et `--month`, et
+  une date illisible est refusee avec le format attendu.
+- **`butbutbut --top-scorers`, le classement des buteurs vus passer.** Sur tout
+  le journal par defaut - un classement n'a d'interet qu'accumule - ou sur la
+  fenetre de `--week`, `--month` et `--since`. Les rangs sont partages a
+  egalite, et les vingt premiers suffisent a tenir sur un ecran.
+- **Un but retire par la VAR ne reste a personne.** Le journal ne dit pas quel
+  but une annulation efface : la ligne `BUT ANNULE` ne porte que le score revenu
+  en arriere. Le rattachement est donc positionnel, comme le fait l'arbitre
+  video - une annulation retire le dernier but encore debout de la meme equipe
+  dans le meme match. Une annulation dont le but est tombe avant la fenetre
+  n'est deduite de personne, et la sortie le dit.
+- Le filtre par equipe (`--teams`, `--exclude-teams`) vaut maintenant pour tous
+  les recapitulatifs, `--today` compris : `butbutbut --top-scorers --teams om`
+  ne classe que ce qui s'est passe dans les matchs de l'OM.
+
+### Change
+
+- Au-dela d'un jour, le recapitulatif change de forme : le jour devient le seul
+  titre, la competition passe en colonne et la minute du match remplace l'heure
+  de detection. Grouper par jour **et** par competition posait un en-tete toutes
+  les deux lignes. Et parce que trente jours de Ligue 1 font trois cents buts,
+  la densite se decide sur ce qu'il y a a montrer plutot que sur la fenetre
+  demandee : tant que la liste tient sur un ecran elle est donnee, au-dela
+  chaque journee se resume a sa ligne. `--today` ne bouge pas d'un caractere.
+- Un journal absent ou vide le dit maintenant en toutes lettres, au lieu de se
+  confondre avec une journee sans but.
+
+### Interne
+
+- Une seule lecture du journal, `journal.goals_between()`, parametree par une
+  fenetre de dates ; `journal.goals()` n'en est plus qu'un cas a un jour. Les
+  jours restent des chaines AAAA-MM-JJ d'un bout a l'autre : c'est la forme du
+  journal, le tri alphabetique d'une date ISO est son tri chronologique, et le
+  filtre tombe donc avant l'analyseur, ligne par ligne.
+- La prose des nouvelles commandes passe par `i18n.tr()` comme le reste de la
+  ligne de commande, mais n'est pas encore dans les catalogues : elle sort donc
+  en francais dans les cinq langues, degradee et jamais cassee.
+- 503 -> **540 tests** : fenetres, bascule de mois, VAR (annulation rattachee au
+  bon but, au bon buteur, et annulation orpheline), journal vide ou absent,
+  lignes qu'aucune version ne sait lire, classement, largeur des lignes.
+
+
+### Ajoute
+
 - **Un crochet a chaque but** : `--on-goal "commande"` lance la commande de son
   choix quand un but tombe, avec tout le detail du but dans des variables
   d'environnement `BUT_*` (`BUT_TEXT` porte la phrase toute faite). Plutot que

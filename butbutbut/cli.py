@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
@@ -28,6 +28,19 @@ CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs ligne
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
+
+# Les recapitulatifs du journal (--today, --week, --month, --since).
+WEEK_DAYS = 7                  # --week : aujourd'hui et les six jours d'avant
+MONTH_DAYS = 30                # --month : idem, sur trente jours
+# Le budget de lignes d'un recapitulatif detaille. Un terminal en fait 24 a 50 ;
+# on vise le milieu, et au-dela le recapitulatif se resume a une ligne par jour
+# plutot que de defiler hors de l'ecran.
+SCREEN_LINES = 36
+SCORERS_SHOWN = 20             # buteurs affiches par --top-scorers
+LEAGUES_SHOWN = 3              # competitions nommees sur la ligne d'une journee
+# Les jours de la semaine, abreges et sans accent, comme tout le reste du code.
+# strftime() rendrait la langue du systeme : le journal, lui, parle francais.
+WEEKDAYS = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
 
 
 # --------------------------------------------------------------- chemins -----
@@ -1115,17 +1128,196 @@ def _announced_cadence(data):
     return data.get(key, "?")
 
 
-def do_today(args) -> int:
-    """Le recapitulatif de la journee, relu dans le journal."""
-    p = paths()
-    entries = journal.goals(p["log"])
+def _day_of(moment) -> str:
+    """Un instant, ecrit comme le journal l'ecrit."""
+    return "{:%Y-%m-%d}".format(moment)
 
-    print(tr("butbutbut : buts signales le {:%d/%m/%Y}", datetime.now()))
+
+def _read_day(text) -> str:
+    """Le jour derriere un --since, ou ValueError disant le format attendu."""
+    try:
+        return _day_of(datetime.strptime(str(text).strip(), "%Y-%m-%d"))
+    except (ValueError, TypeError):
+        raise ValueError(tr(
+            "date illisible : {!r}. Format attendu : AAAA-MM-JJ, "
+            "par exemple --since {}", text, _day_of(datetime.now())))
+
+
+def _span_of(first, last) -> int:
+    """Le nombre de jours de `first` a `last`, bornes comprises (au moins 1)."""
+    start = datetime.strptime(first, "%Y-%m-%d")
+    end = datetime.strptime(last, "%Y-%m-%d")
+    return max(1, (end - start).days + 1)
+
+
+class Window:
+    """La periode d'un recapitulatif : deux jours du journal, bornes comprises.
+
+    Les bornes sont des chaines AAAA-MM-JJ, la forme meme du journal : elles
+    partent telles quelles dans journal.goals_between(), qui compare du texte.
+    """
+
+    __slots__ = ("first", "last", "span", "whole")
+
+    def __init__(self, first=None, last=None, span=0, whole=False):
+        self.first = first      # None : depuis la premiere ligne du journal
+        self.last = last
+        self.span = span        # jours couverts ; 0 quand la fenetre est tout
+        self.whole = whole
+
+    def describe(self) -> str:
+        if self.whole:
+            return tr("depuis le debut du journal")
+        if self.span == 1:
+            # Un seul jour : pas de jour de la semaine, c'est l'en-tete que
+            # `--today` rend depuis toujours.
+            return tr("le {}", _plain(self.first, "%d/%m/%Y"))
+        return tr("du {} au {}", _stamp(self.first, "%d/%m/%Y"),
+                  _stamp(self.last, "%d/%m/%Y"))
+
+
+def window_of(args, whole_by_default: bool = False) -> Window:
+    """La fenetre demandee par --today, --week, --month ou --since.
+
+    `--since` l'emporte sur `--week` et `--month` : c'est la plus explicite des
+    trois, et refuser la combinaison ferait une erreur de plus a expliquer.
+    Sans aucune des quatre, la fenetre est la journee en cours - le
+    comportement historique de `--today` - sauf pour le classement des
+    buteurs, qui n'a d'interet qu'accumule et prend alors tout le journal.
+    """
+    last = _day_of(datetime.now())
+    since = getattr(args, "since", None)
+    if since is not None:
+        # `is not None` et pas la simple verite : `--since ''` est une date
+        # vide, donc une erreur a expliquer, pas une option absente.
+        first = _read_day(since)            # leve ValueError si c'est illisible
+        return Window(first, last, _span_of(first, last))
+    if getattr(args, "month", False):
+        span = MONTH_DAYS
+    elif getattr(args, "week", False):
+        span = WEEK_DAYS
+    elif whole_by_default and not getattr(args, "today", False):
+        return Window(whole=True)
+    else:
+        span = 1
+    # Les 7 derniers jours, c'est aujourd'hui et les six d'avant : la journee
+    # en cours compte, sinon --week ne dirait rien du match de ce soir.
+    first = _day_of(datetime.now() - timedelta(days=span - 1))
+    return Window(first, last, span)
+
+
+def _window_goals(args, window) -> list:
+    """Les buts de la fenetre, une seule lecture, filtre par equipe applique."""
+    found = journal.goals_between(paths()["log"], window.first, window.last)
+    chosen = team_filter(args)
+    if chosen is None:
+        return found
+    # journal.Entry porte .home et .away : Filter.matches sait s'en contenter,
+    # a defaut des noms alternatifs que seul un match de la source connait.
+    return [entry for entry in found if chosen.matches(entry)]
+
+
+def _header(window) -> str:
+    """L'en-tete d'un recapitulatif.
+
+    Une journee garde mot pour mot la phrase de `--today`, catalogues de
+    traduction compris : c'est la meme commande, elle n'a pas a changer de
+    formulation en passant par le chemin commun.
+    """
+    if window.span == 1 and not window.whole:
+        return tr("butbutbut : buts signales le {:%d/%m/%Y}",
+                  datetime.strptime(window.first, "%Y-%m-%d"))
+    return tr("butbutbut : buts signales {}", window.describe())
+
+
+def _empty_note(window, log_path) -> str:
+    """La phrase d'une fenetre sans but : dire pourquoi, pas seulement quoi.
+
+    Le retour a la ligne et les deux espaces font partie de la phrase, comme
+    partout ici : c'est elle, entiere, qui sert de cle de traduction.
+    """
+    try:
+        blank = not log_path.exists() or log_path.stat().st_size == 0
+    except OSError:
+        blank = False
+    if blank:
+        return tr("\n  (journal vide : aucun but n'y a encore ete ecrit)")
+    if window.whole:
+        return tr("\n  (aucun but dans le journal)")
+    if window.span == 1:
+        return tr("\n  (aucun but pour l'instant)")
+    return tr("\n  (aucun but sur cette periode)")
+
+
+def _plain(day, shape) -> str:
+    """Un jour du journal, mis a l'endroit. Rendu tel quel s'il est illisible.
+
+    Le journal est une source a demi sure : ses dates sortent d'une expression
+    reguliere qui compte les chiffres sans verifier qu'ils font un calendrier.
+    """
+    try:
+        return "{:{}}".format(datetime.strptime(day, "%Y-%m-%d"), shape)
+    except (ValueError, TypeError):
+        return str(day)
+
+
+def _stamp(day, shape) -> str:
+    """Le meme jour, precede de son jour de semaine.
+
+    Sur plusieurs jours, c'est le jour de semaine qu'on cherche : personne ne
+    retient la date du samedi de la semaine derniere, tout le monde retient
+    qu'il y avait un match samedi.
+    """
+    try:
+        moment = datetime.strptime(day, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return str(day)
+    return "{} {:{}}".format(WEEKDAYS[moment.weekday()], moment, shape)
+
+
+def _who(entry) -> str:
+    """Le buteur et la minute du match, ou a defaut ce que le journal en dit."""
+    parts = (entry.scorer or entry.detail, entry.minute)
+    return " ".join(part for part in parts if part)
+
+
+def do_recap(args) -> int:
+    """Le recapitulatif des buts d'une fenetre de dates, relu dans le journal.
+
+    Un seul chemin pour --today, --week, --month et --since : meme lecture,
+    meme analyseur, seule la fenetre change. Ne restent propres a chacun que
+    l'en-tete et la densite de l'affichage, qui se decident a l'arrivee.
+    """
+    try:
+        window = window_of(args)
+    except ValueError as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+
+    p = paths()
+    entries = _window_goals(args, window)
+
+    print(_header(window))
     if not entries:
-        print(tr("\n  (aucun but pour l'instant)"))
+        print(_empty_note(window, p["log"]))
         print(tr("\nJournal : {}", p["log"]))
         return 0
 
+    if window.span == 1:
+        _print_one_day(entries)
+    else:
+        _print_many_days(entries)
+    return 0
+
+
+def _print_one_day(entries) -> None:
+    """Une journee : groupee par competition, une ligne par but.
+
+    La mise en forme historique de `--today`, et elle tient : une soiree c'est
+    une poignee de buts, la competition en tete de bloc se lit mieux qu'une
+    colonne repetee a chaque ligne, et l'heure de detection a encore un sens
+    quand on rouvre le terminal le lendemain matin.
+    """
     scored = 0
     cancelled = 0
     grouped = journal.by_league(entries)
@@ -1146,6 +1338,128 @@ def do_today(args) -> int:
     print(tr("\n{} but(s) dans {} competition(s).", scored, len(grouped)))
     if cancelled:
         print(tr("'-' = but retire par la VAR ({}).", cancelled))
+
+
+def _print_many_days(entries) -> None:
+    """Plusieurs jours : jour par jour, et d'autant plus serre qu'il y a a dire.
+
+    Grouper par jour ET par competition, comme le fait une journee seule,
+    poserait un titre toutes les deux lignes : illisible des la deuxieme
+    semaine. Le jour reste donc le seul en-tete et la competition passe en
+    colonne, alignee, l'oeil descendant une colonne au lieu de relire chaque
+    ligne.
+
+    Reste que le detail ne rentre pas toujours : trente jours de Ligue 1 font
+    trois cents buts, et une semaine des cinq championnats guere moins. La
+    densite se decide donc sur ce qu'il y a a montrer, pas sur la largeur de la
+    fenetre demandee : tant que la liste tient sur un ecran on la donne, au-dela
+    chaque journee se resume a sa ligne. Le detail reste a une fenetre plus
+    courte, et les noms a --top-scorers.
+    """
+    days = journal.by_day(entries)
+    # Deux lignes par jour (la respiration et le titre) plus une par but.
+    detailed = 2 * len(days) + len(entries) <= SCREEN_LINES
+
+    if not detailed:
+        print()
+    for day, rows in days:
+        if detailed:
+            print("\n" + _stamp(day, "%d/%m/%Y"))
+            for entry in rows:
+                # Colonnes fixes : competition, score, buteur. L'oeil descend
+                # une colonne au lieu de relire chaque ligne, et le tout tient
+                # dans 80 caracteres, y compris "Bayer 04 Leverkusen".
+                print("  {} {:<15.15}  {:<34.34}  {}".format(
+                    " " if entry.goal else "-", entry.league,
+                    entry.score_line(), _who(entry)).rstrip())
+        else:
+            print(_day_line(day, rows))
+
+    _print_total(entries, len(days), detailed)
+
+
+def _day_line(day, rows) -> str:
+    """Le resume d'une journee en une ligne : combien de buts, et dans quoi."""
+    scored = sum(1 for entry in rows if entry.goal)
+    cancelled = len(rows) - scored
+    counts = [(name, sum(1 for entry in items if entry.goal))
+              for name, items in journal.by_league(rows)]
+    # La competition la plus fournie en tete : c'est celle qu'on cherche.
+    counts.sort(key=lambda row: (-row[1], row[0]))
+    counts = [row for row in counts if row[1]]
+    # Trois competitions au plus, puis un compte : couper un nom en deux au
+    # bout de la ligne serait moins lisible que d'annoncer ce qu'on ne dit pas.
+    shown = ["{} {}".format(name, count)
+             for name, count in counts[:LEAGUES_SHOWN]]
+    if len(counts) > LEAGUES_SHOWN:
+        shown.append("+{}".format(len(counts) - LEAGUES_SHOWN))
+    return "  {:<11.11}{:>3} but(s)  {:<8}{:.46}".format(
+        _stamp(day, "%d/%m"), scored,
+        "-{} VAR".format(cancelled) if cancelled else "",
+        ", ".join(shown)).rstrip()
+
+
+def _print_total(entries, days, detailed) -> None:
+    """Le pied de sortie : le total, et ce que la VAR a repris."""
+    kept, _orphans = journal.settle(entries)
+    cancelled = sum(1 for entry in entries if not entry.goal)
+    print(tr("\n{} but(s) signale(s), {} jour(s), {} competition(s).",
+             len(entries) - cancelled, days, len(journal.by_league(entries))))
+    if cancelled:
+        print(tr("{} = but retire par la VAR ({}) : {} but(s) confirme(s).",
+                 "'-'" if detailed else "'-N VAR'", cancelled, len(kept)))
+
+
+def do_top_scorers(args) -> int:
+    """Le classement des buteurs vus passer, sur la fenetre demandee.
+
+    Sans --week, --month ni --since, c'est tout le journal : un classement n'a
+    d'interet qu'accumule, et le journal remonte a l'installation.
+    """
+    try:
+        window = window_of(args, whole_by_default=True)
+    except ValueError as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+
+    p = paths()
+    entries = _window_goals(args, window)
+    board = journal.scoreboard(entries)
+
+    print(tr("butbutbut : buteurs vus passer {}", window.describe()))
+    if not board.rows:
+        print(_empty_note(window, p["log"]) if not entries else tr(
+            "\n  (aucun buteur connu : la source n'avait pas encore publie "
+            "l'action)"))
+        print(tr("\nJournal : {}", p["log"]))
+        return 0
+
+    print()
+    rank = 0
+    for place, (name, count, clubs) in enumerate(board.rows[:SCORERS_SHOWN], 1):
+        # Rang partage a egalite : deux buteurs a 3 buts sont deuxiemes tous
+        # les deux, et le suivant quatrieme.
+        if place == 1 or count != board.rows[place - 2][1]:
+            rank = place
+        print("  {:>3}  {:<24.24}  {:>3}  {:.26}".format(
+            rank, name, count, clubs).rstrip())
+
+    hidden = len(board.rows) - SCORERS_SHOWN
+    if hidden > 0:
+        print(tr("  ... et {} autre(s) buteur(s) plus bas au classement.",
+                 hidden))
+
+    print(tr("\n{} buteur(s) pour {} but(s) confirme(s) sur {} signale(s).",
+             len(board.rows), board.confirmed, board.signalled))
+    if board.cancelled:
+        print(tr("{} but(s) retire(s) par la VAR, deduit(s) du classement.",
+                 board.cancelled))
+    if board.orphans:
+        print(tr("{} annulation(s) sans but a retirer dans cette fenetre "
+                 "(le but est tombe avant).", board.orphans))
+    if board.unknown:
+        print(tr("{} but(s) sans buteur connu, hors classement.",
+                 board.unknown))
     return 0
 
 
@@ -1353,6 +1667,21 @@ def build_parser() -> argparse.ArgumentParser:
                              "en cours, son, ecrans, connexion)"))
     parser.add_argument("--today", action="store_true",
                         help=tr("recapitule les buts signales aujourd'hui"))
+    parser.add_argument("--week", action="store_true",
+                        help=tr("recapitule les buts des {} derniers jours "
+                             "(aujourd'hui compris)", WEEK_DAYS))
+    parser.add_argument("--month", action="store_true",
+                        help=tr("recapitule les buts des {} derniers jours",
+                                MONTH_DAYS))
+    parser.add_argument("--since", default=None, metavar="DATE",
+                        help=tr("recapitule les buts depuis ce jour, au format "
+                             "AAAA-MM-JJ. Ex : --since 2026-09-01. "
+                             "L'emporte sur --week et --month."))
+    parser.add_argument("--top-scorers", action="store_true",
+                        dest="top_scorers",
+                        help=tr("classe les buteurs vus passer, buts annules "
+                             "par la VAR deduits. Sur tout le journal, ou sur "
+                             "la fenetre de --week, --month ou --since"))
     parser.add_argument("--stop", action="store_true", help=tr("arrete le daemon en cours"))
     parser.add_argument("--paths", action="store_true", help=tr("affiche les chemins utilises"))
     parser.add_argument("--screens", action="store_true", help=tr("liste les ecrans detectes"))
@@ -1600,8 +1929,10 @@ def main(argv=None) -> int:
         return do_stop(args)
     if args.status:
         return do_status(args)
-    if args.today:
-        return do_today(args)
+    if args.top_scorers:
+        return do_top_scorers(args)
+    if args.today or args.week or args.month or args.since is not None:
+        return do_recap(args)
     if args.scores:
         return do_scores(args)
     if args.test_hook:

@@ -104,6 +104,10 @@ butbutbut --list              # les competitions surveillables
 butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
 butbutbut --today             # les buts signales aujourd'hui
+butbutbut --week              # les 7 derniers jours
+butbutbut --month             # les 30 derniers jours
+butbutbut --since 2026-09-01  # depuis cette date
+butbutbut --top-scorers       # le classement des buteurs vus passer
 butbutbut --record m.jsonl    # surveille, et met les releves bruts en boite
 butbutbut --replay m.jsonl    # rejoue un enregistrement, cartes et sons compris
 butbutbut --stop              # arrete le daemon
@@ -1391,6 +1395,142 @@ le journal ne sait pas lire est ignore sans bruit.
 
 ---
 
+## Plus loin que le jour meme
+
+Le meme analyseur, avec une fenetre plus large :
+
+```bash
+butbutbut --week                 # les 7 derniers jours, aujourd'hui compris
+butbutbut --month                # les 30 derniers jours
+butbutbut --since 2026-09-01     # depuis cette date (AAAA-MM-JJ)
+```
+
+`--since` l'emporte sur `--week` et `--month`. Une date illisible est refusee
+tout de suite, avec le format attendu :
+
+```
+butbutbut : date illisible : 'hier'. Format attendu : AAAA-MM-JJ, par exemple --since 2026-09-01
+```
+
+### Quelques jours : le detail
+
+```
+butbutbut : buts signales du sam. 05/09/2026 au lun. 07/09/2026
+
+sam. 05/09/2026
+    Ligue 1          Nice 1 - 0 Lens                     G. Laborde 12'
+    Ligue 1          Nice 1 - 1 Lens                     F. Thauvin 44'
+    Ligue 1          Nice 2 - 1 Lens                     G. Laborde 62'
+    Premier League   Arsenal 1 - 0 Tottenham             M. Odegaard 21'
+    Premier League   Arsenal 2 - 0 Tottenham             B. Saka 47'
+  - Premier League   Arsenal 1 - 0 Tottenham             Score corrige 48'
+    Premier League   Arsenal 2 - 0 Tottenham             K. Havertz 77'
+    Bundesliga       Bayer 04 Leverkusen 1 - 0 Dortmund  P. Schick 29'
+    Bundesliga       Bayer 04 Leverkusen 2 - 0 Dortmund  F. Wirtz 73'
+
+dim. 06/09/2026
+    Ligue 1          Marseille 1 - 0 Nantes              M. Greenwood 17'
+    Ligue 1          Marseille 2 - 0 Nantes              A. Rabiot 59'
+    Ligue 1          Lille 1 - 0 Auxerre                 J. David 38'
+    LaLiga           Barcelone 1 - 0 Valence             R. Lewandowski 26'
+    LaLiga           Barcelone 2 - 0 Valence             Lamine Yamal 64'
+    Serie A          Inter 1 - 0 Roma                    L. Martinez 82'
+
+lun. 07/09/2026
+    Ligue 1          Angers 1 - 0 Stade Rennais          C. Arcus 61'
+    Ligue 1          Angers 1 - 1 Stade Rennais          A. Kalimuendo 79'
+
+16 but(s) signale(s), 3 jour(s), 5 competition(s).
+'-' = but retire par la VAR (1) : 15 but(s) confirme(s).
+```
+
+Au-dela d'un jour, le jour devient le seul titre et la competition passe en
+colonne : grouper par jour **et** par competition poserait un en-tete toutes
+les deux lignes. L'heure de detection cede la place a la minute du match, plus
+parlante une fois la soiree passee.
+
+### Un mois : une ligne par jour
+
+Trente jours de Ligue 1, ce sont trois cents buts : le detail ne tiendrait pas
+sur un ecran. La densite se decide donc sur ce qu'il y a a montrer, pas sur la
+fenetre demandee - tant que la liste tient sur un ecran elle est donnee, au-dela
+chaque journee se resume a sa ligne :
+
+```
+butbutbut : buts signales du dim. 09/08/2026 au lun. 07/09/2026
+
+  sam. 29/08   9 but(s)          Premier League 4, Ligue 1 3, LaLiga 2
+  dim. 30/08   9 but(s)          Ligue 1 4, Serie A 3, Bundesliga 2
+  mar. 01/09   2 but(s)          Premier League 2
+  mer. 02/09   2 but(s)  -1 VAR  Ligue 1 2
+  sam. 05/09   8 but(s)  -1 VAR  Ligue 1 3, Premier League 3, Bundesliga 2
+  dim. 06/09   6 but(s)          Ligue 1 3, LaLiga 2, Serie A 1
+  lun. 07/09   2 but(s)          Ligue 1 2
+
+38 but(s) signale(s), 7 jour(s), 5 competition(s).
+'-N VAR' = but retire par la VAR (2) : 36 but(s) confirme(s).
+```
+
+Une fenetre plus courte rend le detail, et `--top-scorers` rend les noms.
+
+---
+
+## Le classement des buteurs
+
+```bash
+butbutbut --top-scorers               # tout le journal
+butbutbut --top-scorers --week        # sur les 7 derniers jours
+butbutbut --top-scorers --teams om    # seulement les matchs de l'OM
+```
+
+```
+butbutbut : buteurs vus passer depuis le debut du journal
+
+    1  G. Laborde                  3  Nice
+    2  F. Thauvin                  2  Lens
+    2  H. Lepaul                   2  Angers
+    2  K. Havertz                  2  Arsenal
+    2  L. Martinez                 2  Inter
+    2  M. Greenwood                2  Marseille
+    2  M. Odegaard                 2  Arsenal
+    2  P. Schick                   2  Bayer 04 Leverkusen
+    9  A. Kalimuendo               1  Stade Rennais
+    9  A. Rabiot                   1  Marseille
+    9  B. Saka                     1  Arsenal
+    9  C. Arcus                    1  Angers
+    9  C. Gakpo                    1  Liverpool
+    9  C. Palmer                   1  Chelsea
+    9  D. Zapata                   1  Torino
+    9  E. Guessand                 1  Nice
+    9  F. Wirtz                    1  Bayer 04 Leverkusen
+    9  H. Kane                     1  Bayern
+    9  J. Bellingham               1  Real Madrid
+    9  J. David                    1  Lille
+  ... et 7 autre(s) buteur(s) plus bas au classement.
+
+27 buteur(s) pour 36 but(s) confirme(s) sur 38 signale(s).
+2 but(s) retire(s) par la VAR, deduit(s) du classement.
+```
+
+Sans fenetre, c'est **tout le journal** : un classement n'a d'interet
+qu'accumule. A egalite le rang est partage, et le classement se combine a une
+fenetre comme au filtre par equipe (`--teams`, `--exclude-teams`), qui vaut
+aussi pour `--today`, `--week`, `--month` et `--since`.
+
+**Un but refuse par la VAR ne reste a personne.** Le journal ne dit pas quel
+but une annulation efface - la ligne `BUT ANNULE` ne porte ni buteur ni minute
+du but d'origine, seulement le score revenu en arriere. Le rattachement est
+donc positionnel, comme le fait l'arbitre video : une annulation retire le
+dernier but encore debout de la meme equipe dans le meme match. Une annulation
+dont le but est tombe avant l'ouverture de la fenetre n'est deduite de
+personne, et le pied de sortie le dit plutot que de voler un but au hasard.
+
+Enfin, la source publie ses actions avec quelques secondes de retard : un but
+detecte avant elle est ecrit sans buteur, et le restera. Ces buts-la comptent
+dans le total, jamais dans le classement, et le pied de sortie les annonce.
+
+---
+
 ## Journal
 
 ```
@@ -1506,7 +1646,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**807 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**844 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

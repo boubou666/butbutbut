@@ -6,6 +6,7 @@ import threading
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -384,6 +385,271 @@ class TestActivity(unittest.TestCase):
 
     def test_today_is_reachable_from_main(self):
         self.assertIn("--today", cli.build_parser().format_help())
+
+
+def days_ago(count) -> str:
+    """Un jour du journal, compte a rebours depuis aujourd'hui."""
+    return "{:%Y-%m-%d}".format(datetime.now() - timedelta(days=count))
+
+
+def end_of_last_month() -> str:
+    """Le dernier jour du mois precedent, quel que soit le jour du test.
+
+    Une bascule de mois ne s'ecrit pas en dur : le test tournerait juste onze
+    mois sur douze.
+    """
+    midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    return "{:%Y-%m-%d}".format(midnight.replace(day=1) - timedelta(days=1))
+
+
+class TestRecaps(unittest.TestCase):
+    """--week, --month, --since et --top-scorers, sur des journaux fabriques."""
+
+    NICE = "BUT [Ligue 1] Nice 1 - 0 Lens pour Nice - But de G. Laborde (12')"
+    ARSENAL = ("BUT [Premier League] Arsenal 1 - 0 Chelsea pour Arsenal - "
+               "But de M. Odegaard (30')")
+    GIRONA = ("BUT [LaLiga] Girona 0 - 1 Real Madrid pour Real Madrid - "
+              "But de K. Mbappe (50')")
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+
+    def write_log(self, *rows):
+        """Ecrit un journal a partir de (jour, heure, texte)."""
+        lines = ["{} {}  {}".format(day, clock, text)
+                 for day, clock, text in rows]
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    # ------------------------------------------------------------ fenetres --
+
+    def test_week_covers_the_last_seven_days_and_no_more(self):
+        self.write_log(
+            (days_ago(10), "20:00:00", self.GIRONA),
+            (days_ago(3), "20:00:00", self.ARSENAL),
+            (days_ago(0), "20:00:00", self.NICE),
+        )
+        code, printed, _err = self.run_cli(["--week"])
+        self.assertEqual(code, 0)
+        self.assertIn("M. Odegaard", printed)
+        self.assertIn("G. Laborde", printed)
+        self.assertNotIn("K. Mbappe", printed)      # dix jours, c'est trop vieux
+        self.assertIn("2 but(s) signale(s), 2 jour(s), 2 competition(s).",
+                      printed)
+
+    def test_month_reaches_where_the_week_stops(self):
+        self.write_log(
+            (days_ago(20), "20:00:00", self.GIRONA),
+            (days_ago(40), "20:00:00", self.ARSENAL),
+        )
+        _code, week, _err = self.run_cli(["--week"])
+        self.assertNotIn("K. Mbappe", week)
+        _code, month, _err = self.run_cli(["--month"])
+        self.assertIn("K. Mbappe", month)
+        self.assertNotIn("M. Odegaard", month)      # quarante jours, non plus
+
+    def test_since_crosses_the_end_of_a_month(self):
+        # Le filtre compare des chaines : le 1er du mois doit tomber dans une
+        # fenetre ouverte le dernier jour du mois d'avant.
+        opening = end_of_last_month()
+        self.write_log(
+            (opening, "20:00:00", self.NICE),
+            (days_ago(0), "20:00:00", self.ARSENAL),
+        )
+        code, printed, _err = self.run_cli(["--since", opening])
+        self.assertEqual(code, 0)
+        self.assertIn("G. Laborde", printed)
+        self.assertIn("M. Odegaard", printed)
+        self.assertIn("2 but(s) signale(s), 2 jour(s), 2 competition(s).",
+                      printed)
+
+    def test_since_wins_over_week(self):
+        self.write_log((days_ago(20), "20:00:00", self.GIRONA))
+        _code, printed, _err = self.run_cli(
+            ["--since", days_ago(30), "--week"])
+        self.assertIn("K. Mbappe", printed)
+
+    def test_a_date_that_is_not_one_is_refused_with_the_expected_format(self):
+        for wrong in ("hier", "01/09/2026", "2026-02-30", ""):
+            code, printed, errors = self.run_cli(["--since", wrong])
+            self.assertEqual(code, 2, wrong)
+            self.assertIn("AAAA-MM-JJ", errors, wrong)
+            self.assertEqual(printed, "", wrong)
+
+    def test_today_still_reads_a_single_day(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.GIRONA),
+            (days_ago(0), "20:00:00", self.NICE),
+        )
+        _code, printed, _err = self.run_cli(["--today"])
+        self.assertIn("butbutbut : buts signales le {:%d/%m/%Y}".format(
+            datetime.now()), printed)
+        self.assertIn("1 but(s) dans 1 competition(s).", printed)
+        self.assertNotIn("K. Mbappe", printed)
+
+    # ---------------------------------------------------------- affichage ---
+
+    def test_a_short_period_keeps_the_detail_of_every_goal(self):
+        self.write_log(
+            (days_ago(2), "20:00:00", self.NICE),
+            (days_ago(0), "21:00:00", self.ARSENAL),
+        )
+        _code, printed, _err = self.run_cli(["--week"])
+        self.assertIn("Nice 1 - 0 Lens", printed)
+        self.assertIn("G. Laborde 12'", printed)     # buteur et minute du match
+        self.assertIn("Premier League", printed)
+
+    def test_a_long_period_falls_back_to_one_line_a_day(self):
+        # Douze journees de quatre buts : le detail ne tiendrait pas sur un
+        # ecran, chaque jour se resume alors a sa ligne.
+        rows = []
+        for back in range(12, 0, -1):
+            for goal in range(4):
+                rows.append((days_ago(back), "2{}:00:00".format(goal),
+                             self.NICE))
+        self.write_log(*rows)
+        _code, printed, _err = self.run_cli(["--month"])
+        self.assertIn("4 but(s)", printed)           # la ligne d'une journee
+        self.assertIn("Ligue 1 4", printed)
+        self.assertNotIn("G. Laborde", printed)      # le detail a saute
+        self.assertIn("48 but(s) signale(s), 12 jour(s), 1 competition(s).",
+                      printed)
+
+    def test_no_line_runs_off_the_screen(self):
+        rows = []
+        for back in range(12, 0, -1):
+            rows.append((days_ago(back), "20:00:00",
+                         "BUT [Bundesliga] Bayer 04 Leverkusen 1 - 1 Bayern "
+                         "pour Bayer 04 Leverkusen - But de P. Schick (77')"))
+            rows.append((days_ago(back), "21:00:00", self.ARSENAL))
+        self.write_log(*rows)
+        for argv in (["--week"], ["--month"], ["--top-scorers"]):
+            _code, printed, _err = self.run_cli(argv)
+            longest = max(len(line) for line in printed.splitlines())
+            self.assertLessEqual(longest, 80, argv)
+
+    # ------------------------------------------------------- journal vide ---
+
+    def test_a_missing_journal_says_so_plainly(self):
+        code, printed, _err = self.run_cli(["--week"])
+        self.assertEqual(code, 0)
+        self.assertIn("journal vide", printed)
+        self.assertIn(str(self.paths["log"]), printed)
+
+    def test_an_empty_journal_says_so_plainly(self):
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("", encoding="utf-8")
+        code, printed, _err = self.run_cli(["--top-scorers"])
+        self.assertEqual(code, 0)
+        self.assertIn("journal vide", printed)
+
+    def test_a_period_without_a_goal_is_not_an_empty_journal(self):
+        self.write_log((days_ago(40), "20:00:00", self.NICE))
+        _code, printed, _err = self.run_cli(["--week"])
+        self.assertIn("aucun but sur cette periode", printed)
+
+    def test_lines_the_parser_cannot_read_are_ignored_without_a_word(self):
+        self.write_log(
+            (days_ago(1), "18:00:00", "demarrage (pid 3752) - les 5 champ"),
+            (days_ago(1), "18:02:00", "COUP D'ENVOI [Ligue 1] Nice 0 - 0 Lens"),
+            (days_ago(1), "18:04:00", "Bundesliga injoignable (timeout)"),
+            (days_ago(1), "18:06:00", "BUT [Ligue 1] Nice - Lens pour Nice"),
+            (days_ago(1), "18:08:00", "BUT {Ligue 1} Nice 1 - 0 Lens"),
+            (days_ago(0), "20:00:00", self.NICE),
+        )
+        code, printed, errors = self.run_cli(["--week"])
+        self.assertEqual(code, 0)
+        self.assertEqual(errors, "")
+        self.assertIn("1 but(s) signale(s), 1 jour(s), 1 competition(s).",
+                      printed)
+
+    # ---------------------------------------------------------- classement --
+
+    def test_top_scorers_does_not_keep_a_goal_the_var_took_back(self):
+        self.write_log(
+            (days_ago(2), "20:00:00", self.ARSENAL),
+            (days_ago(2), "20:30:00", "BUT [Premier League] Arsenal 2 - 0 "
+                                      "Chelsea pour Arsenal - But de B. Saka (55')"),
+            (days_ago(2), "20:32:00", "BUT ANNULE [Premier League] Arsenal 1 - "
+                                      "0 Chelsea pour Arsenal - Score corrige (56')"),
+            (days_ago(1), "20:00:00", self.ARSENAL),
+        )
+        code, printed, _err = self.run_cli(["--top-scorers"])
+        self.assertEqual(code, 0)
+        self.assertIn("M. Odegaard", printed)
+        self.assertNotIn("B. Saka", printed)         # son but a ete refuse
+        self.assertIn("1 buteur(s) pour 2 but(s) confirme(s) sur 3 signale(s).",
+                      printed)
+        self.assertIn("1 but(s) retire(s) par la VAR", printed)
+
+    def test_top_scorers_ranks_and_shares_the_places(self):
+        self.write_log(
+            (days_ago(3), "20:00:00", self.NICE),
+            (days_ago(2), "20:00:00", self.NICE),
+            (days_ago(1), "20:00:00", self.ARSENAL),
+            (days_ago(0), "20:00:00", self.GIRONA),
+        )
+        _code, printed, _err = self.run_cli(["--top-scorers"])
+        rows = [line for line in printed.splitlines() if "  " in line
+                and any(name in line for name in ("Laborde", "Odegaard",
+                                                  "Mbappe"))]
+        self.assertEqual(len(rows), 3)
+        self.assertIn("G. Laborde", rows[0])
+        self.assertIn("Nice", rows[0])
+        # Deux buteurs a un but : deuxiemes tous les deux.
+        self.assertTrue(rows[1].strip().startswith("2"), rows[1])
+        self.assertTrue(rows[2].strip().startswith("2"), rows[2])
+
+    def test_top_scorers_takes_the_whole_journal_by_default(self):
+        self.write_log(
+            (days_ago(40), "20:00:00", self.GIRONA),
+            (days_ago(0), "20:00:00", self.NICE),
+        )
+        _code, whole, _err = self.run_cli(["--top-scorers"])
+        self.assertIn("depuis le debut du journal", whole)
+        self.assertIn("K. Mbappe", whole)
+        _code, week, _err = self.run_cli(["--top-scorers", "--week"])
+        self.assertNotIn("K. Mbappe", week)
+        self.assertIn("G. Laborde", week)
+
+    def test_top_scorers_obeys_the_team_filter(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.NICE),
+            (days_ago(0), "20:00:00", self.ARSENAL),
+        )
+        catalogue = [("Nice",), ("Lens",), ("Arsenal",), ("Chelsea",)]
+        with mock.patch.object(espn, "catalogue", return_value=catalogue):
+            with mock.patch.object(time, "sleep"):
+                _code, printed, _err = self.run_cli(
+                    ["--top-scorers", "--teams", "nice"])
+        self.assertIn("G. Laborde", printed)
+        self.assertNotIn("M. Odegaard", printed)
+
+    def test_a_goal_without_a_scorer_is_counted_but_not_attributed(self):
+        self.write_log(
+            (days_ago(0), "20:00:00", "BUT [Ligue 1] Nice 1 - 0 Lens pour Nice"),
+            (days_ago(0), "20:10:00", self.NICE),
+        )
+        _code, printed, _err = self.run_cli(["--top-scorers"])
+        self.assertIn("1 buteur(s) pour 2 but(s) confirme(s)", printed)
+        self.assertIn("1 but(s) sans buteur connu", printed)
+
+    def test_the_new_commands_are_reachable_from_main(self):
+        help_text = cli.build_parser().format_help()
+        for option in ("--week", "--month", "--since", "--top-scorers"):
+            self.assertIn(option, help_text)
 
 
 class OneShot:
