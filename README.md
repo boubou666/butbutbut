@@ -1512,17 +1512,67 @@ la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
 touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
 pareil partout.
 
-L'aide, `--status`, `--scores`, `--screens`, `--list` et `--today` suivent, y
-compris les valeurs qu'ils affichent - `il y a 12 s` devient `vor 12 s`, pas
-seulement l'etiquette devant.
+**Toutes** les commandes suivent, y compris les valeurs qu'elles affichent -
+`il y a 12 s` devient `vor 12 s`, pas seulement l'etiquette devant : l'aide,
+`--status`, `--scores`, `--next`, `--table`, `--screens`, `--list`,
+`--list-teams`, `--today`, `--week`, `--month`, `--since`, `--top-scorers`,
+`--stats`, `--export` et `--test-hook`.
 
-**Ce qui reste en francais** : le journal, et **par choix**. `--today` le
-relit, et un fichier ecrit avant un changement de langue resterait sinon a
-moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!` pendant
-que le journal note `BUT`.
+Les colonnes tiennent dans les cinq langues, et c'est cette contrainte-la qui
+decide de la traduction d'une etiquette de `--status` : le deux-points tombe au
+meme caractere partout, quitte a abreger (`rattrapage` devient `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+Les en-tetes du classement de `--table` suivent la meme regle, et pour la meme
+raison qu'elles etaient un probleme : `G`, `N`, `P` sont les initiales de
+gagne, nul et perdu, et ne veulent rien dire pour qui lit la page en anglais.
+Elles deviennent `W D L`, `G E P`, `V N P`, `S U N` - chacune tenant dans une
+colonne de six signes, ce qu'un test verifie langue par langue plutot que de
+s'en remettre a l'oeil.
+
+**Ce qui reste en francais** :
+
+- **le journal, et par choix.** `--today` le relit, et un fichier ecrit avant
+  un changement de langue resterait sinon a moitie illisible pour le
+  relecteur. Une carte peut donc afficher `TOR!` pendant que le journal note
+  `BUT` - et une ligne citee par `--today` reste dans la langue ou elle a ete
+  ecrite ;
+- **les dates.** Les jours de la semaine (`lundi`, `mar.`), `(aujourd'hui)` et
+  `(demain)`, le compte a rebours de `--next` (`dans 3 h`) sont ecrits en dur
+  dans `cli.py` et ne passent pas par le catalogue ;
+- **les valeurs de `--status` qui vont aussi au journal.** Trois familles, et
+  une seule raison pour les trois : la meme phrase sert a l'ecran ET a une
+  ligne de journal, qui reste francaise. Les lignes `silence` et `voix`
+  (`silence.describe()`, `speech.describe()`), la ligne `equipes`
+  (`teams.Filter.describe()`, que le daemon note aussi au demarrage), et le
+  detail d'un son nomme qu'on ne peut pas jouer (`sound.unusable()`, que le
+  journal reprend quand un fichier disparait en cours de soiree). Les
+  etiquettes, elles, sont traduites ;
+- **le fichier de configuration commente** qu'ecrit `--write-config`, et les
+  six messages qui refusent un argument impossible : les quatre du demarrage
+  (`--speed 0`, `--record` avec `--replay`, `--retry-fullscreen` et
+  `--quiet-while-presenting` hors de Windows) et les deux du rejeu (un
+  enregistrement illisible, un enregistrement qui ne nomme aucune competition
+  reconnaissable) ;
+- **le nom des sports dans une phrase a trou.** `tout le {} (N competitions)`
+  recoit le nom du sport, que `sports.py` garde en francais pour le journal :
+  la traduire ferait une phrase a moitie traduite. Les titres du catalogue,
+  eux, sont traduits (`Ice hockey (on request)`, `Eishockey (auf Wunsch)`).
 
 Une phrase qu'un catalogue ne porte pas retombe sur le francais plutot que de
-disparaitre : une traduction incomplete laisse le programme utilisable.
+disparaitre : une traduction incomplete laisse le programme utilisable. C'est
+ce qui a permis a sept commandes d'etre livrees en francais dans les cinq
+langues sans que rien ne casse - et sans que personne ne le voie. Un test
+compare maintenant, langue par langue, les phrases que le code donne a traduire
+a celles que les catalogues portent : ce qui reste en francais y est nomme une
+par une, avec sa raison.
+
+Ce garde-fou a une portee exacte, et elle vaut la peine d'etre dite : il ne
+voit que ce qui **passe par `tr()`**. Une phrase ecrite en dur, qui n'est
+jamais donnee a traduire, lui est invisible - c'est le cas des trois familles
+ci-dessus et des jours de la semaine. Il empeche la dette de revenir par la
+porte qu'elle avait empruntee sept fois ; il ne remplace pas de regarder
+l'ecran dans les cinq langues.
 
 L'ordre de decision, du plus fort au plus faible :
 
@@ -2653,7 +2703,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1229 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
