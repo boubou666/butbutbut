@@ -22,12 +22,14 @@ source publie le buteur, la minute, le csc et le penalty.
 
 **Le hockey sur glace** colle au modele : six a sept buts par match, soit un
 toutes les dix minutes, chacun renverse ou confirme quelque chose. Reserve :
-la source ne publie **aucun tableau d'actions** pour le hockey - verifie
-contre `hockey/nhl`, sur des matchs joues comme sur des matchs a venir, le
-`details` de la competition est toujours absent. On a donc le score, l'horloge
-et la periode, jamais le buteur. La carte le dit en ne disant rien : elle
-affiche le score et la minute, sans troisieme ligne. Mieux vaut une carte
-honnete qu'un nom invente.
+le **tableau de bord** ne publie aucun tableau d'actions pour le hockey -
+verifie contre `hockey/nhl`, sur des matchs joues comme sur des matchs a venir,
+le `details` de la competition est toujours absent. Ses buteurs vivent
+ailleurs, dans le resume du match (`/summary?event=<id>`, `plays[]`), qui pese
+450 ko : c'est le drapeau `summary_plays` ci-dessous, et il ne se paye qu'apres
+un but, pour le seul match qui vient d'en encaisser un. Quand ce resume ne
+repond pas, la carte redevient ce qu'elle a toujours ete - un score et une
+minute, sans troisieme ligne. Mieux vaut une carte honnete qu'un nom invente.
 
 **Le rugby a XV** colle aussi, mais autrement : cinq a huit actions de points
 par match, et surtout des actions qui ne se valent pas. Un essai n'est pas une
@@ -78,8 +80,13 @@ Le strict necessaire pour que le reste du programme n'ait jamais a demander
   - `unit_score` : vrai quand un score ne monte que de 1. Faux au rugby, ou la
     carte doit dire de combien de points le score a bouge ;
   - `red_cards` : vrai quand le sport expulse a la carte rouge. Le hockey ne
-    le fait pas - il a des penalites, pas des expulsions - et la source ne
-    publie de toute facon aucune action pour lui ;
+    le fait pas - il a des penalites, pas des expulsions - et le tableau de
+    bord ne publie de toute facon aucune action pour lui ;
+  - `summary_plays` : vrai quand les buteurs de ce sport ne sont pas dans le
+    tableau de bord mais dans le resume du match, qu'il faut donc aller
+    chercher a part. Le drapeau existe pour que personne ne paye cette requete
+    sans en avoir besoin : le football a deja ses buteurs sous la main, il ne
+    doit pas depenser 450 ko pour les relire ;
   - `table` : les colonnes du classement, parce qu'un classement de hockey et
     un classement de football ne comptent pas les memes choses.
 
@@ -94,7 +101,7 @@ from __future__ import annotations
 # lecture entre eux.
 PLAYS_FLAGS = "flags"    # football : des drapeaux (scoringPlay, redCard)
 PLAYS_TYPES = "types"    # rugby : un type numerote (1 = essai, 2 = transf.)
-PLAYS_NONE = "none"      # hockey : la source ne publie rien du tout
+PLAYS_NONE = "none"      # hockey : le tableau de bord ne publie rien du tout
 
 
 # Comment un match qui s'est decide aux tirs au but se reconnait dans la
@@ -166,11 +173,12 @@ class Sport:
     """Un sport d'ESPN : son segment d'URL et ses quelques particularites."""
 
     __slots__ = ("code", "name", "aliases", "plays", "breaks", "shootout",
-                 "unit_score", "red_cards", "logo_pattern", "table", "_titles")
+                 "unit_score", "red_cards", "summary_plays", "logo_pattern",
+                 "table", "_titles")
 
     def __init__(self, code, name, aliases=(), plays=PLAYS_FLAGS, breaks=(),
                  shootout=(), unit_score=True, logo_pattern="", titles=None,
-                 table=TABLE_SOCCER, red_cards=True):
+                 table=TABLE_SOCCER, red_cards=True, summary_plays=False):
         self.code = code                  # "soccer", "hockey", "rugby"
         self.name = name                  # "football", en francais, pour le journal
         self.aliases = tuple(aliases)     # ce qu'on peut taper a --leagues
@@ -187,6 +195,11 @@ class Sport:
         # aucun carton a compter, et un compteur a zero qui ne bougera jamais
         # vaut moins que rien du tout.
         self.red_cards = bool(red_cards)
+        # Vrai quand il faut aller lire le resume du match pour connaitre les
+        # buteurs. Faux par defaut, et ce defaut est le bon : le resume pese
+        # 450 ko, un sport qui publie deja ses actions dans le tableau de bord
+        # n'a aucune raison de les payer une seconde fois.
+        self.summary_plays = bool(summary_plays)
         # De quoi reconstruire l'URL d'un ecusson a partir du seul numero
         # d'equipe. Ne sert qu'aux cartes de demonstration : partout ailleurs
         # l'URL vient de la source. Le hockey range ses ecussons sous
@@ -229,7 +242,8 @@ SOCCER = Sport(
 )
 
 # --- Le hockey sur glace ----------------------------------------------------
-# Aucun tableau d'actions : le score et l'horloge, c'est tout. Et trois
+# Aucun tableau d'actions dans le tableau de bord : le score et l'horloge, c'est
+# tout ce qu'un releve ordinaire en tire. Et trois
 # tiers-temps la ou le football a deux mi-temps, d'ou un vocabulaire de pause
 # a lui. Les noms exacts qu'ESPN pose pendant une pause n'ont pas pu etre
 # observes (aucun match en cours au moment de l'ecriture) : la liste est donc
@@ -240,12 +254,16 @@ HOCKEY = Sport(
     "hockey", "hockey sur glace",
     aliases=("hockey", "glace", "icehockey"),
     plays=PLAYS_NONE,
+    # ... mais le resume du match, lui, porte les buteurs et leurs passeurs.
+    # Le seul sport des trois dans ce cas : c'est ce drapeau qui autorise la
+    # requete supplementaire, et lui seul.
+    summary_plays=True,
     breaks=("INTERMISSION", "END_PERIOD", "END_OF_PERIOD"),
     # La fusillade du hockey ne se lit pas comme celle du football : elle
     # donne un but au vainqueur, dans le score du match. Le marqueur ne sert
     # donc qu'a EXPLIQUER un 4-3 qui n'a pas eu lieu dans le temps reglemen-
-    # taire, jamais a mettre des tirs de cote - il n'y en a pas a mettre, la
-    # source ne publie aucune action pour le hockey.
+    # taire, jamais a mettre des tirs de cote - il n'y en a pas a mettre, le
+    # resume ne publie pas la fusillade tir par tir.
     shootout=SHOOTOUT_HOCKEY,
     # Pas de carton rouge au hockey : une faute y coute deux minutes sur le
     # banc des penalites, et l'exclusion de match ne se dit pas par un carton.

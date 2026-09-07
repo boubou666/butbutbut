@@ -418,12 +418,22 @@ def _pick_font(tkfont, families_wanted, size, weight="normal"):
     return tkfont.Font(size=size, weight=weight)
 
 
+def _team_points(scale) -> int:
+    """Taille en points de la ligne d'equipe, la mesure dont tout depend.
+
+    Elle vit dans sa propre fonction parce que `crest_size` doit la retrouver
+    sans tkinter : deux ecritures du meme calcul auraient fini par diverger, et
+    la divergence se serait vue en ecussons flous.
+    """
+    return max(10, int(16 * max(0.1, float(scale or 1.0))))
+
+
 def _fonts(tkfont, scale: float):
     wanted = FONT_CANDIDATES.get(sys.platform, LINUX_FONTS)
     return {
         "label": _pick_font(tkfont, wanted, max(7, int(9 * scale)), "bold"),
         "title": _pick_font(tkfont, wanted, max(8, int(11 * scale)), "bold"),
-        "team": _pick_font(tkfont, wanted, max(10, int(16 * scale)), "bold"),
+        "team": _pick_font(tkfont, wanted, _team_points(scale), "bold"),
         "score": _pick_font(tkfont, wanted, max(12, int(22 * scale)), "bold"),
         "detail": _pick_font(tkfont, wanted, max(8, int(11 * scale)), "normal"),
         "scorer": _pick_font(tkfont, wanted, max(8, int(12 * scale)), "bold"),
@@ -437,6 +447,27 @@ def _detail_font(fonts, strong):
 def _logo_size(fonts) -> int:
     """Cote de l'ecusson : cale sur la ligne d'equipe, il suit donc --scale."""
     return int(fonts["team"].metrics("linespace") * LOGO_RATIO)
+
+
+# Hauteur de ligne d'une police, en multiples de sa taille en points. Majoree
+# expres : voir `crest_size`.
+LINESPACE_RATIO = 1.8
+
+
+def crest_size(scale: float = 1.0) -> int:
+    """Le cote, en pixels, auquel une carte a `scale` affichera un ecusson.
+
+    `_logo_size` mesure la vraie police, mais il lui faut une racine tkinter
+    ouverte - or le cache d'ecussons doit connaitre la taille AVANT elle :
+    --test telecharge ses ecussons avant meme qu'une fenetre existe. On refait
+    donc le calcul a partir de --scale seul, en majorant la hauteur de ligne
+    parce qu'une taille sous-estimee floute l'ecusson alors qu'une taille
+    surestimee ne coute que des octets.
+
+    Approcher suffit : `crests.fit_size` arrondit ensuite sur trois barreaux,
+    et il faudrait se tromper du simple au double pour changer de barreau.
+    """
+    return int(_team_points(scale) * LINESPACE_RATIO * LOGO_RATIO)
 
 
 def _red_size(fonts) -> tuple:

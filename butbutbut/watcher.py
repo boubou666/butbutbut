@@ -393,6 +393,12 @@ class Event:
             # se repete pas ici.
             return [_change_parts(change, full=True, lang=lang)
                     for change in self.changes[1:]]
+        if self.play is not None and self.play.assists:
+            # Les passeurs prennent une ligne a eux plutot que la fin de celle
+            # du buteur : ils sont deux, et la ligne du but doit rester celle
+            # qu'on lit en premier. Seul le hockey en publie (voir espn.py).
+            return [[(i18n.text("assists", lang=lang), False),
+                     (", ".join(self.play.assists), True)]]
         if self.kind != FULLTIME:
             return []
 
@@ -437,11 +443,33 @@ class Event:
         return "<Event {} {}>".format(self.kind, self.score_line)
 
 
+def _seed_scorers(match, scorers) -> None:
+    """Repose sur le match les buteurs deja lus au resume - s'ils s'y retrouvent.
+
+    Ne sert qu'a la carte de fin de match, celle qui aligne les buteurs de
+    chaque camp : elle sort un releve ou personne n'a marque, donc un releve ou
+    l'on n'a rien demande au reseau. Sans ce report, une fin de match de hockey
+    resterait muette alors que les noms ont ete lus dix minutes plus tot.
+
+    La liste n'est reposee que si elle explique EXACTEMENT le score des deux
+    cotes. Une liste a trous - un resume rate en cours de match, une fusillade
+    dont le but vainqueur n'est publie nulle part - ferait une carte qui ment
+    par omission : "Boston : Sasson" sous un 3-1. Une carte muette, elle, ne
+    raconte rien de faux.
+    """
+    if not scorers:
+        return
+    home = sum(1 for play in scorers if play.team_id == match.home_id)
+    away = sum(1 for play in scorers if play.team_id == match.away_id)
+    if home == match.home_score and away == match.away_score:
+        match.plays = list(scorers)
+
+
 class _Snapshot:
     """Ce qu'on retient d'un match entre deux passages."""
 
     __slots__ = ("home_score", "away_score", "phase", "seen_plays",
-                 "seen_cards", "announced", "last_seen")
+                 "seen_cards", "announced", "last_seen", "scorers")
 
     def __init__(self, home_score, away_score, phase, seen_plays, last_seen,
                  seen_cards=None):
@@ -455,6 +483,12 @@ class _Snapshot:
         # toutes les minutes jusqu'au coup d'envoi.
         self.announced = False
         self.last_seen = last_seen
+        # Les buteurs lus au dernier resume, pour les sports qui n'en ont pas
+        # dans le tableau de bord. Ils ne servent pas a habiller le but suivant
+        # - ce serait le nom d'avant sur la carte d'apres - mais la carte de
+        # fin de match, qui sort un releve ou personne n'a marque et n'a donc
+        # rien demande au reseau.
+        self.scorers = []
 
 
 class Watcher:
@@ -762,6 +796,8 @@ class Watcher:
         """Compare un match a sa photo precedente."""
         stamp = time.time()
         previous = self._snapshots.get(match.id)
+        if previous is not None and match.sport.summary_plays:
+            _seed_scorers(match, previous.scorers)
         keys = {play.key for play in match.plays}
         card_keys = {play.key for play in match.red_cards}
 
@@ -780,11 +816,31 @@ class Watcher:
              previous.away_score, match.away_score),
         )
 
+        # Les buteurs lus au resume, au plus une fois par releve et par match :
+        # deux buts dans le meme releve - les deux camps a la fois, ou un camp
+        # qui en met deux - se partagent la meme reponse. C'est tout l'interet
+        # de ne demander qu'apres coup.
+        scorers = None
+
         for side, team_id, team, opponent, before, after in pairs:
             if after == before:
                 continue
             delta = after - before
-            play = self._pick_play(match, team_id, previous.seen_plays) if delta > 0 else None
+            play = None
+            if delta > 0 and match.sport.summary_plays:
+                # Le hockey ne devine jamais : ni la derniere action connue, ni
+                # celle qu'on aurait gardee du releve d'avant. Le nom vient du
+                # resume demande a l'instant, ou il ne vient pas.
+                if scorers is None:
+                    scorers = self._fetch_scorers(match)
+                play = espn.summary_scorer(scorers, team_id, after)
+                if play is None and scorers:
+                    self.on_log("resume sans buteur identifiable pour {} - {} "
+                                "({} but(s) publie(s))"
+                                .format(match.league.name, match.score_line(),
+                                        len(scorers)))
+            elif delta > 0:
+                play = self._pick_play(match, team_id, previous.seen_plays)
             events.append(Event(
                 kind=GOAL if delta > 0 else CANCELLED,
                 match=match,
@@ -796,6 +852,11 @@ class Watcher:
                 delta=delta,
                 play=play,
             ))
+
+        # La liste fraiche sert aussi la carte de fin de match du meme releve :
+        # un but a la derniere seconde et le coup de sirene tombent ensemble.
+        if scorers:
+            _seed_scorers(match, scorers)
 
         # Une expulsion se detecte comme un but : une action qu'on n'avait pas
         # encore vue. La cle est stable, donc elle ne ressort jamais deux fois.
@@ -857,6 +918,8 @@ class Watcher:
         previous.home_score = match.home_score
         previous.away_score = match.away_score
         previous.phase = match.phase
+        if scorers:
+            previous.scorers = scorers
         previous.seen_plays = keys
         previous.seen_cards = card_keys
         previous.last_seen = stamp
@@ -885,6 +948,49 @@ class Watcher:
         if remaining is None or remaining <= 0 or remaining > self.before_kickoff:
             return None
         return remaining
+
+    def _fetch_scorers(self, match) -> list:
+        """Les buteurs du match, lus au resume. Une liste vide si ca a rate.
+
+        **L'arbitrage de ce chantier tient ici.** Le programme s'interdit de
+        faire attendre une carte apres le reseau, et cet appel est le seul du
+        daemon qui se glisse entre un but detecte et la carte qui l'annonce. Il
+        est donc borne : SUMMARY_TIMEOUT (1,5 s) plutot que les huit secondes
+        d'un tableau de bord, et jamais plus que le delai reglable de
+        l'utilisateur. Passe ce plafond, on rend une liste vide et la carte sort
+        sans nom, exactement comme avant ce chantier.
+
+        Pourquoi pas le fil de fond de crests.py, le precedent evident ? Parce
+        qu'un ecusson et un buteur ne se ressemblent qu'en apparence. L'ecusson
+        qui arrive trop tard sert la carte suivante, et toutes celles d'apres :
+        le fil de fond ne perd rien. Le nom du buteur du 1-0 n'habillera jamais
+        que la carte du 1-0 ; arrive apres elle, il ne sert plus a rien - et
+        pose sur la carte du 2-0, il ment. Le fil de fond ne gagne donc rien
+        ici, alors que la seconde et demie, elle, achete le nom. On l'assume :
+        un but de hockey est deja annonce dix a vingt-cinq secondes apres avoir
+        ete marque, c'est la cadence de la boucle qui veut ca. Ajouter un
+        plafond de 1,5 s a ces vingt-cinq-la ne se voit pas ; une carte sans
+        nom, si.
+        """
+        try:
+            payload = espn.summary(
+                match.league, match.id,
+                timeout=min(self.timeout, espn.SUMMARY_TIMEOUT),
+                opener=self.opener)
+            goals = espn.summary_goals(payload)
+        except Exception as exc:
+            # Large expres : ce chemin ne rapporte qu'un nom, et rien de ce qui
+            # peut y arriver ne vaut d'arreter la surveillance. Un resume
+            # injoignable, illisible ou d'une forme inattendue coute la
+            # troisieme ligne de la carte, pas le daemon.
+            self.on_log("resume injoignable pour {} - {} ({}) : la carte sort "
+                        "sans buteur".format(match.league.name,
+                                             match.score_line(), exc))
+            return []
+        if not goals:
+            self.on_log("resume sans action pour {} - {} : la carte sort sans "
+                        "buteur".format(match.league.name, match.score_line()))
+        return goals
 
     @staticmethod
     def _pick_play(match, team_id, seen_keys):

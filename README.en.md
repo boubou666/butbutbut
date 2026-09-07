@@ -385,15 +385,31 @@ say the same things, and butbutbut never pretends otherwise.
 | --- | --- | --- | --- |
 | Score, clock, phase | yes | yes | yes |
 | Crest, club colours | yes | yes | yes (a single colour) |
-| Event list | yes | **no** | yes, but with no flags |
-| Scorer, minute of the action | yes | **no** | yes |
+| Event list | yes | **no** (see below) | yes, but with no flags |
+| Scorer, minute of the action | yes | yes, via the match summary | yes |
+| Assists | no | **yes** | no |
 | Red cards (`--red-cards`) | yes | not applicable | yes |
 | Table (`--table`) | yes | yes, per conference | yes, bonus points included |
 
-**Hockey publishes no event list at all** - not during the game, not after it.
-You get the score, the clock and the period; never the scorer. The card says so
-by saying nothing: it shows the score and the minute, with no third line.
-Better an honest card than an invented name.
+**Hockey publishes no event list in the scoreboard** - not during the game,
+not after it. Its scorers live elsewhere, in the match summary, a **450 kB**
+response that no client following 36 competitions can ask for every round of
+the loop. So it is asked for **after a goal, and only for the match
+concerned**: six or seven times per match, never every twenty-five seconds. The
+hockey card gains its scorer, and its two assists on a line of their own.
+
+This is the one request in the program that slips between a detected goal and
+the card announcing it, so it gets its own ceiling: **1.5 s**, where a
+scoreboard is allowed eight. Past that - or if the summary does not answer, or
+names nobody - the card goes out as before, with the score and the minute, and
+the log says why. Better an honest card than an invented name; and better the
+previous scorer nowhere than on the next goal's card, so the name shown is that
+of the nth goal of the team that has just reached n, and only if the summary
+counts exactly as many as the scoreboard.
+
+The end-of-match card lists both sides' scorers, as in football, on one
+condition: that the list explains the score exactly. A summary missed during
+the match therefore leaves a silent end card rather than a list with holes.
 
 **Rugby publishes everything, but without a single flag**: where football marks
 a goal with `scoringPlay` and a sending-off with `redCard`, rugby only gives a
@@ -976,6 +992,21 @@ next.
 A crest that does not exist, a corrupt PNG, a read-only folder: the card shows
 without an image, and that's that. The folder can be wiped at any time, it
 will fill up again.
+
+What gets downloaded is downloaded **at the size the card will show it**. The
+source publishes its crests at 500x500 and serves the very same file resized
+server-side: a crest goes from 37 kB to 5 kB, seven times less, and it looks
+sharper - tkinter only shrinks by integer ratios, and halving a 64x64 beats
+dividing a 500x500 by fifteen. The size asked for follows `--scale`, and past a
+projection-sized card the original comes back instead.
+
+That URL is the only one butbutbut **builds** instead of reading it from the
+answer, so it is treated as a preference and nothing more. It is not even built
+for an address of an unexpected shape, and if it does not return a usable PNG -
+404, empty body, anything that is not an image - the URL the source announces
+is used instead, right away. Nothing shows on the card. Crests downloaded by
+earlier versions were filed under their URL alone: they are no longer looked
+up, and their replacements arrive as the goals come in.
 
 **The club colour**, for the team that scores and for its number. Careful,
 though: these colours are chosen for a white background, and the card's
@@ -1822,8 +1853,10 @@ seconds after the score, and the goal must not wait for the scorer's name.
 
 That is exactly why the other sports cost the detection nothing: a score going
 up is a score going up, whether it gains 1 in football and hockey or 5 in
-rugby. Hockey, which publishes no events at all, is therefore followed just as
-well as the rest - it simply has cards with no scorer's name.
+rugby. Hockey, which publishes no events in the scoreboard, is therefore
+followed just as well as the rest - it is afterwards, and for it alone, that a
+match summary goes looking for the scorer's name (see "What each sport really
+publishes").
 
 Two safeguards:
 
@@ -2045,6 +2078,15 @@ It queries the source for real, then checks that every key read by
 reply back to `espn.parse()`, the very code the daemon runs: keys that are
 present but no longer yield a match, a goal or a scorer would be just as
 serious a drift.
+
+What it looks at depends on the sport, because the three do not publish the
+same things. Football and rugby have their event list in the scoreboard;
+hockey has none at all, and demanding `details` from it would mean watching
+every morning for a key we know does not exist. Since its scorers live in the
+match summary, `hockey:nhl` is one of the competitions queried by default and
+the `plays[]` keys - the type of the play, each participant's role, the
+player's name - are watched for it alone. One summary per competition per run:
+it is 450 kB, and the question answers itself on one match as well as thirty.
 
 A key can also stay in place and **change shape**, which shows up nowhere else.
 So the canary re-reads goal minutes with the log's own reader, the one behind
@@ -2315,6 +2357,15 @@ Two things bring that back to a sane size:
 - **gzip**, when the file name ends in `.gz`. Compressed on write, decompressed
   on read, without being asked. API JSON compresses about twenty times over: the
   40 MB of a match fit in 2 MB, and the file is still readable with `zcat`.
+
+A hockey evening adds **450 kB per goal** to that: the match summary the
+program reads to get the scorer goes through the same `opener`, so it is
+recorded like everything else. It has a key of its own -
+`hockey:nhl@401809123` rather than `hockey:nhl` - without which it would join
+the scoreboard's queue and the replay would hand a summary to something asking
+for scores. A recording made before this feature carries none: the replay then
+asks for a summary the file does not have, the card goes out with no scorer and
+the log says so. Nothing breaks, you just lose the names.
 
 ```bash
 butbutbut --record match.jsonl.gz --leagues l1
@@ -2970,7 +3021,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1359 tests**, with no network and no screen: the source is simulated by an
+**1426 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

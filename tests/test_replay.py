@@ -548,6 +548,61 @@ class TestUrls(unittest.TestCase):
                 sport=sports.HOCKEY.code, slug="nhl")),
             "hockey:nhl")
 
+    def test_a_match_summary_gets_a_key_of_its_own(self):
+        """450 ko de plays[] n'ont rien a faire dans la file du tableau de bord."""
+        board = espn.SCOREBOARD_URL.format(sport=sports.HOCKEY.code, slug="nhl")
+        summary = espn.SUMMARY_URL.format(
+            sport=sports.HOCKEY.code, slug="nhl") + "?event=401809123"
+
+        self.assertEqual(replay.slug_of(summary), "hockey:nhl@401809123")
+        self.assertNotEqual(replay.slug_of(summary), replay.slug_of(board))
+
+    def test_two_matches_of_the_same_evening_do_not_share_a_key(self):
+        base = espn.SUMMARY_URL.format(sport=sports.HOCKEY.code, slug="nhl")
+        self.assertNotEqual(replay.slug_of(base + "?event=1"),
+                            replay.slug_of(base + "?event=2"))
+
+    def test_a_summary_without_a_match_number_still_stands_apart(self):
+        base = espn.SUMMARY_URL.format(sport=sports.HOCKEY.code, slug="nhl")
+        self.assertEqual(replay.slug_of(base), "hockey:nhl@")
+
+
+class TestASummaryInARecording(Sandbox):
+    """Enregistre a part, rejoue a part - et absent, il ne coute qu'un nom."""
+
+    def test_the_recorder_keeps_the_two_answers_apart(self):
+        board = espn.SCOREBOARD_URL.format(sport=sports.HOCKEY.code, slug="nhl")
+        summary = espn.SUMMARY_URL.format(
+            sport=sports.HOCKEY.code, slug="nhl") + "?event=7"
+
+        def source(url, _timeout=None):
+            return (b'{"plays": []}' if "/summary" in url
+                    else b'{"events": []}')
+
+        recorder = replay.Recorder(self.path, opener=source).start()
+        recorder.opener(board)
+        recorder.opener(summary)
+        recorder.close()
+
+        slugs = [record.slug
+                 for record in replay.Recording.load(self.path).records]
+        self.assertEqual(slugs, ["hockey:nhl", "hockey:nhl@7"])
+
+    def test_an_old_recording_degrades_without_a_word(self):
+        """Un fichier d'avant ce chantier ne porte aucun resume : c'est prevu."""
+        board = espn.SCOREBOARD_URL.format(sport=sports.HOCKEY.code, slug="nhl")
+
+        recorder = replay.Recorder(
+            self.path, opener=lambda *_: b'{"events": []}').start()
+        recorder.opener(board)
+        recorder.close()
+
+        player = replay.Player(replay.Recording.load(self.path))
+        player.opener(board)
+        with self.assertRaises(espn.SourceError):
+            player.opener(espn.SUMMARY_URL.format(
+                sport=sports.HOCKEY.code, slug="nhl") + "?event=7")
+
 
 class TestReadableSizes(unittest.TestCase):
     def test_sizes(self):

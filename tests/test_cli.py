@@ -255,6 +255,18 @@ class TestCrestCache(unittest.TestCase):
         self.assertTrue(cache.enabled)
         self.assertEqual(cache.directory, cli.paths()["logos"])
 
+    def test_the_wanted_size_travels_from_scale_to_the_cache(self):
+        # overlay sait quel cote un ecusson occupera, crests sait quoi en
+        # demander a ESPN : c'est crest_cache qui les met en rapport. Un
+        # ecusson pris en 64 et montre a 160 pixels serait floue.
+        url = "https://a.espncdn.com/i/teamlogos/soccer/500/170.png"
+        small = cli.crest_cache(cli.build_parser().parse_args([]))
+        big = cli.crest_cache(cli.build_parser().parse_args(["--scale", "4"]))
+        self.assertEqual(small.size, 64)
+        self.assertGreater(big.size, small.size)
+        self.assertNotEqual(small.path_for(url), big.path_for(url))
+        self.assertIn("&h=64&w=64", small.candidates(url)[0])
+
     def test_no_logos_switches_the_cache_off(self):
         args = cli.build_parser().parse_args(["--no-logos"])
         self.assertTrue(args.no_logos)

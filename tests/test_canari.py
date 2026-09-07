@@ -14,7 +14,8 @@ import json
 import os
 import unittest
 
-from helpers import event, goal_detail, payload, red_card_detail
+from helpers import (event, goal_detail, hockey_event, hockey_noise,
+                     hockey_play, hockey_summary, payload, red_card_detail)
 
 # Le canari vit dans tools/, hors du paquet : on le charge par son chemin,
 # depuis celui de ce fichier, pour ne dependre d'aucun repertoire courant.
@@ -101,13 +102,48 @@ def catalogue(count=3):
         for index in range(count)]}]}]}
 
 
-def opener_for(live=None, past=None, teams=None, seen=None):
+def hockey_board(*events):
+    """Un tableau de bord de hockey : le meme, sans le moindre `details`.
+
+    C'est tout le sujet du sport ici - la cle n'est pas vide, elle est absente,
+    et le canari ne doit pas la reclamer. Les competiteurs, eux, portent la
+    meme parure que partout ailleurs.
+    """
+    raw = payload(*(events or (hockey_event(home_score=2, away_score=1,
+                                            state="post", detail="Final",
+                                            status_name="STATUS_FINAL"),)))
+    raw["leagues"] = [{"name": "National Hockey League", "abbreviation": "NHL"}]
+    for entry in raw["events"]:
+        competition = entry["competitions"][0]
+        entry.setdefault("date", competition["date"])
+        for competitor in competition["competitors"]:
+            team = competitor["team"]
+            team.setdefault("name", team["shortDisplayName"])
+            team.setdefault("location", team["displayName"])
+            team.setdefault("alternateColor", "ffffff")
+            team.setdefault(
+                "logo", "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png")
+    return raw
+
+
+def hockey_digest():
+    """Le resume d'un match de hockey : deux buts pour l'un, un pour l'autre."""
+    return hockey_summary(
+        hockey_noise(),
+        hockey_play(team_id="H1"),
+        hockey_play(team_id="A1", index=1, scorer="C. Makar", assists=()),
+        hockey_play(team_id="H1", index=2, period=3, scorer="J. Eichel"))
+
+
+def opener_for(live=None, past=None, teams=None, seen=None, digest=None):
     """Un opener(url, timeout) qui sert la bonne charge utile selon l'URL."""
     def opener(url, _timeout):
         if seen is not None:
             seen.append(url)
         if url.endswith("/teams"):
             body = teams if teams is not None else catalogue()
+        elif "/summary" in url:
+            body = digest
         elif "dates=" in url:
             body = past
         else:
@@ -118,13 +154,17 @@ def opener_for(live=None, past=None, teams=None, seen=None):
     return opener
 
 
-def canary(live=None, past=None, teams=None, seen=None, argv=("--leagues",
-                                                              "fra.1")):
+def canary(live=None, past=None, teams=None, seen=None, digest=None,
+           argv=("--leagues", "fra.1")):
     """Lance le canari et rend (code de sortie, rapport)."""
     out = io.StringIO()
-    code = canari.main(list(argv), opener=opener_for(live, past, teams, seen),
+    code = canari.main(list(argv),
+                       opener=opener_for(live, past, teams, seen, digest),
                        out=out)
     return code, out.getvalue()
+
+
+HOCKEY = ("--leagues", "hockey:nhl")
 
 
 def without(source, *path):
@@ -135,6 +175,114 @@ def without(source, *path):
         node = node[step]
     node.pop(path[-1], None)
     return copied
+
+
+class TestTheHockeySummary(unittest.TestCase):
+    """Le hockey a un endpoint de plus, et donc des cles de plus a surveiller."""
+
+    def run_it(self, digest=None, live=None, seen=None):
+        return canary(live=live if live is not None else hockey_board(),
+                      digest=hockey_digest() if digest is None else digest,
+                      seen=seen, argv=HOCKEY)
+
+    def test_a_complete_summary_is_green(self):
+        code, report = self.run_it()
+        self.assertEqual(code, 0, report)
+        self.assertIn("3 but(s), 3 buteur(s)", report)
+        self.assertIn("0 en defaut, 0 non verifiee(s)", report)
+
+    def test_the_keys_of_plays_are_watched_by_name(self):
+        _, report = self.run_it()
+        for path in ("resume.plays[].type.id",
+                     "resume.but.team.id",
+                     "resume.but.period.number",
+                     "resume.but.participants",
+                     "resume.but.participants[].type",
+                     "resume.but.participants[].athlete.shortName"):
+            self.assertIn(path, report)
+
+    def test_a_renamed_role_is_caught(self):
+        digest = hockey_digest()
+        for play in digest["plays"]:
+            for participant in play.get("participants") or []:
+                participant.pop("type", None)
+
+        code, report = self.run_it(digest=digest)
+        self.assertEqual(code, 1, report)
+        self.assertIn("resume.but.participants[].type", report)
+        # Et la lecture reelle le confirme : plus un seul nom sur les cartes.
+        self.assertIn("aucun buteur nomme sur 3 but(s)", report)
+
+    def test_a_participants_list_that_empties_is_caught(self):
+        digest = hockey_digest()
+        for play in digest["plays"]:
+            play["participants"] = []
+
+        code, report = self.run_it(digest=digest)
+        self.assertEqual(code, 1, report)
+        self.assertIn("resume.but.participants", report)
+
+    def test_a_goal_type_that_changes_number_and_label_is_still_caught(self):
+        """Le seul cas que le comptage a la main ne verrait pas tout seul.
+
+        Le canari lit `505` et "Goal" dans espn.py : si les deux bougent
+        ensemble, il compte zero but et le programme aussi, et les deux
+        tombent d'accord sur du vide. L'invariante qui sauve la mise est
+        ailleurs : ce resume-la est celui d'un match qui a marque.
+        """
+        digest = hockey_summary(hockey_noise(), hockey_noise(index=1))
+        code, report = self.run_it(digest=digest)
+        self.assertEqual(code, 1, report)
+        self.assertIn("pas un seul but reconnu", report)
+
+    def test_an_unreachable_summary_is_not_a_red_light(self):
+        """Injoignable n'est pas casse : c'est le meme verdict que partout."""
+        code, report = canary(live=hockey_board(), argv=HOCKEY)
+        self.assertEqual(code, 2, report)
+        self.assertIn("INJOIGNABLE", report)
+
+    def test_no_summary_is_asked_when_nothing_has_been_scored(self):
+        seen = []
+        board = hockey_board(hockey_event(state="pre", detail="Fri 7:00 PM",
+                                          status_name="STATUS_SCHEDULED"))
+        code, report = canary(live=board, past=board, seen=seen, argv=HOCKEY)
+        self.assertEqual(code, 0, report)
+        self.assertIn("aucun match avec but", report)
+        self.assertEqual([url for url in seen if "/summary" in url], [])
+
+    def test_one_summary_and_one_only(self):
+        """450 ko : la question se repond sur un match aussi bien que sur trente."""
+        seen = []
+        self.run_it(live=hockey_board(
+            hockey_event(match_id="1", home_score=2, away_score=1),
+            hockey_event(match_id="2", home_score=1, away_score=0)), seen=seen)
+        self.assertEqual(len([url for url in seen if "/summary" in url]), 1)
+
+
+class TestFootballPaysForNothingExtra(unittest.TestCase):
+    def test_no_summary_key_is_declared_for_football(self):
+        _, report = canary(live=played())
+        self.assertNotIn("resume.", report)
+
+    def test_and_no_summary_is_ever_fetched(self):
+        seen = []
+        canary(live=played(), seen=seen)
+        self.assertEqual([url for url in seen if "/summary" in url], [])
+
+
+class TestTheMissingDetailsOfHockey(unittest.TestCase):
+    def test_a_sport_without_actions_is_not_asked_for_any(self):
+        """`details` est absent de tous les matchs de hockey : ce n'est pas une panne."""
+        code, report = canary(live=hockey_board(), digest=hockey_digest(),
+                              argv=HOCKEY)
+        self.assertEqual(code, 0, report)
+        self.assertNotIn("competition.details", report)
+        self.assertNotIn("detail.athletesInvolved", report)
+
+    def test_football_still_watches_them(self):
+        _, report = canary(live=played())
+        self.assertIn("competition.details", report)
+        self.assertIn("detail.athletesInvolved[0].shortName", report)
 
 
 class TestHealthyPayload(unittest.TestCase):

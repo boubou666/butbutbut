@@ -150,8 +150,16 @@ class RecordingError(RuntimeError):
 
 # ------------------------------------------------------------- outillage -----
 
+# La ressource qui n'est pas un tableau de bord : le resume d'un match, que le
+# hockey va lire apres un but pour y prendre le buteur. Elle vit sous la meme
+# competition que le tableau de bord, au meme hote, aux deux premiers segments
+# pres - d'ou la marque ci-dessous.
+SUMMARY_RESOURCE = "summary"
+SUMMARY_MARK = "@"
+
+
 def slug_of(url) -> str:
-    """La cle de la competition, extraite de l'URL du tableau de bord.
+    """La cle du releve, extraite de l'URL qui l'a demande.
 
     Le `Recorder` ne voit passer que des URL : c'est ce que l'`opener` recoit.
     Depuis que le catalogue s'ouvre aux autres sports, deux competitions
@@ -159,6 +167,12 @@ def slug_of(url) -> str:
     "fra.1" au football, ou le sport est sous-entendu, "hockey:nhl" ailleurs.
     Sans quoi un enregistrement pris en `--leagues all-sports` servirait la
     NHL a qui demande la Ligue 1.
+
+    Le resume d'un match prend la meme cle **suivie du numero du match** :
+    "hockey:nhl@401809123". Les deux URL ne different que par leur troisieme
+    segment ; sans cette marque, les 450 ko de `plays[]` d'un match iraient
+    s'ajouter a la file du tableau de bord de la NHL, et le rejeu servirait un
+    resume a un watcher qui demandait des scores. Deux ressources, deux files.
     """
     parts = str(url).split("/sports/")
     if len(parts) < 2:
@@ -170,7 +184,29 @@ def slug_of(url) -> str:
     slug = segments[1].split("?")[0].strip()
     if not sport or not slug:
         return ""
-    return slug if sport == sports.DEFAULT.code else sport + ":" + slug
+    key = slug if sport == sports.DEFAULT.code else sport + ":" + slug
+    mark = _summary_mark(segments)
+    return key + mark if mark else key
+
+
+def _summary_mark(segments) -> str:
+    """"@401809123" quand l'URL vise un resume de match, "" sinon.
+
+    Un resume sans numero de match n'existe pas dans la vraie source, mais il
+    garde quand meme sa marque : une cle qui retomberait sur celle du tableau
+    de bord melangerait les deux files, ce qui est exactement ce qu'on evite
+    ici.
+    """
+    if len(segments) < 3:
+        return ""
+    resource, _, query = segments[2].partition("?")
+    if resource.strip() != SUMMARY_RESOURCE:
+        return ""
+    for field in query.split("&"):
+        name, _, value = field.partition("=")
+        if name.strip() == "event" and value.strip():
+            return SUMMARY_MARK + value.strip()
+    return SUMMARY_MARK
 
 
 def _is_gzip(path) -> bool:

@@ -9,6 +9,32 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **La carte de hockey a enfin un buteur.** Le tableau de bord d'ESPN ne
+  publie aucun tableau d'actions pour ce sport - `details` est absent sur les
+  798 matchs termines releves - mais le resume d'un match, lui, porte les
+  buteurs et jusqu'a deux passeurs sous `plays[].participants[]`. Ce qui
+  manquait n'etait donc pas la donnee, c'etait un budget reseau : la reponse
+  pese **450 ko**, impossible a demander a chaque tour pour un client qui suit
+  36 competitions. Elle n'est donc demandee **qu'apres un but detecte** et
+  **que pour le match concerne** - six a sept fois par match, jamais toutes les
+  vingt-cinq secondes - et une seule fois par releve, meme quand les deux camps
+  marquent dans le meme.
+- **Le buteur se choisit par le rang, jamais par la fraicheur.** On prend le
+  n-ieme but de l'equipe qui vient de passer a n, et seulement si le resume en
+  compte exactement autant que le tableau de bord. Un resume en retard d'un
+  releve, une fusillade dont le but vainqueur n'est publie nulle part, une
+  equipe que le resume ne nomme pas : les trois donnent une carte sans nom,
+  c'est-a-dire la carte d'avant. Un nom faux, lui, ne se rattrape pas.
+- **Les passeurs prennent une ligne a eux** sur la carte de but, dans les cinq
+  langues, plutot que la fin de celle du buteur : ils sont deux, et la ligne du
+  but doit rester celle qu'on lit en premier. Et la carte de fin de match
+  aligne les buteurs des deux camps, comme au football - mais seulement si la
+  liste explique exactement le score, une liste a trous mentant par omission.
+- **Un sport sait maintenant ou sont ses buteurs** (`Sport.summary_plays`).
+  Le football et le rugby ont les leurs dans le tableau de bord et ne paient
+  pas cette requete ; le hockey est le seul des trois a la declarer, et c'est
+  ce drapeau qui l'autorise, jamais un tableau d'actions trouve vide.
+
 - **La mise en page des cartes est figee en plans ASCII de reference.** Huit
   cartes - but, epinglee, fin de match, rugby, cartons rouges des deux cotes,
   noms tronques, et deux autres `--scale` - sont rangees dans `tests/plans/`
@@ -44,9 +70,82 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   `tests/`, sans quoi la suite du sdist n'aurait plus rien a quoi comparer, et
   `.gitattributes` les fige en fins de ligne LF, sans quoi un checkout Windows
   les mettrait tous au rouge d'un coup.
-- 1335 -> **1359 tests**, dont quatre qui deplacent une constante d'`overlay`
+- 1402 -> **1426 tests**, dont quatre qui deplacent une constante d'`overlay`
   de deux pixels et exigent que le plan bouge : une reference qu'aucun decalage
   ne fait broncher est un fichier mort.
+
+### Modifie
+
+- **Le canari suit la NHL, et ses cles de resume.** `hockey:nhl` rejoint les
+  competitions interrogees par defaut : sans ca, le jour ou `participants`
+  serait renomme, la carte de hockey redeviendrait muette sans que rien ne
+  casse. Le programme de la visite depend desormais du sport - `details` n'est
+  plus reclame a un sport qui n'en publie jamais, ce qui aurait allume le rouge
+  tous les matins - et le rattrapage sur quatre mois se declenche, pour lui,
+  sur l'absence de match avec but plutot que sur l'absence de but publie. Un
+  seul resume par competition et par passage.
+- **Un resume enregistre a sa propre cle** : `hockey:nhl@401809123` et non
+  `hockey:nhl`, sans quoi les 450 ko de `plays[]` iraient s'ajouter a la file
+  du tableau de bord et `--replay` servirait un resume a qui demandait des
+  scores. Un enregistrement fait avant cette version n'en porte aucun : le
+  rejeu degrade alors comme une panne reseau - carte sans buteur, une ligne au
+  journal - et rien ne s'arrete.
+- 1353 -> **1402 tests** : un match de hockey avec buts et passeurs, un resume
+  injoignable, illisible, vide ou sans role de participant, un but dont
+  l'equipe ne correspond a aucun camp, le buteur precedent qui ne doit jamais
+  atterrir sur la carte suivante, le football qui n'appelle aucun resume, une
+  seule requete pour deux buts du meme releve, la carte de fin de match qui se
+  tait quand la liste ne colle pas au score, les deux cles de rejeu qui ne se
+  confondent pas, et le canari sur `plays[]`.
+
+- **Les ecussons sont telecharges a la taille ou ils s'affichent : sept fois
+  moins d'octets.** ESPN publie ses ecussons en 500x500 et sert le meme
+  fichier redimensionne cote serveur (`combiner/i?img=...&h=64&w=64`), quand
+  une carte n'en montre jamais plus de quelques dizaines de pixels. Mesure
+  contre la vraie source sur cinq ecussons - trois de football, un de hockey,
+  un de rugby : **185 031 -> 25 071 octets**, soit 37,0 ko -> 5,0 ko par club.
+  L'image y gagne aussi : tkinter ne reduit qu'en rapports entiers, et diviser
+  un 64x64 par deux rend mieux que diviser un 500x500 par quinze.
+- **La reserve qui retenait cette piste est levee, pas contournee.** C'est une
+  URL qu'on *fabrique*, la ou le projet prefere partout celle que la source
+  annonce : elle n'est donc traitee que comme une preference.
+  `crests.combiner_url()` ne fabrique que ce qu'il sait manipuler - un chemin
+  d'image d'`espncdn.com`, et rien d'autre : un autre hote, une extension
+  inconnue, un parametre de requete deja present ne produisent aucune URL. Et
+  `crests.Cache.fetch_now()` essaie l'URL fabriquee d'abord, celle qu'ESPN
+  annonce ensuite : un 404, un corps vide, une reponse qui n'est pas un PNG
+  exploitable ne coutent qu'une requete perdue. Un ecusson casse ne peut donc
+  pas apparaitre - il n'entre pas dans le cache.
+- **La taille demandee suit `--scale`.** Demander 64 pixels pour un ecusson
+  affiche a 160 serait une regression visible. `overlay.crest_size()` deduit
+  de `--scale` le cote qu'un ecusson occupera - sans racine tkinter, parce que
+  `--test` telecharge avant d'ouvrir une fenetre - et `cli.crest_cache()` le
+  porte jusqu'au cache. `crests.py` ne connait toujours que des pixels, et ne
+  sait rien de la facon dont une carte est dessinee.
+- **Le cache d'ecussons est indexe par (URL, taille)** et non plus par la
+  seule URL : le meme ecusson en 64 et en 256 sont deux fichiers, sinon un
+  `--scale` change d'un jour a l'autre servirait l'image de l'autre taille
+  sans jamais la remplacer. C'est l'URL *annoncee* qui est condensee, jamais
+  celle qu'on fabrique, pour que le repli range son image au meme endroit.
+  Consequence assumee : les ecussons deja sur le disque ne sont plus
+  consultes. Ils sont remplaces au fil des buts par des fichiers sept fois
+  plus legers, il n'y a rien a faire, et le dossier reste effacable a tout
+  moment - c'etait deja sa promesse.
+- **Pas d'option pour desactiver le redimensionnement.** Elle n'aurait servi
+  qu'a eteindre a la main quelque chose qui s'eteint tout seul des que la
+  source ne suit plus, et `--no-logos` couvre deja le refus de telecharger.
+  Une option durable coute une ligne dans le fichier de configuration, deux
+  dans les README et un test : celle-la n'aurait rien achete.
+- **Un PNG doit maintenant avoir son entete IHDR** et des dimensions non
+  nulles pour entrer dans le cache, la signature seule ne suffit plus. C'est
+  ce qui distingue une image d'un debut d'image, et c'est ce qui declenche le
+  repli sur l'URL annoncee.
+- 1335 -> **1353 tests** : la fabrication de l'URL depuis un href reel de
+  football, de hockey et de rugby, les formes qu'on refuse de manipuler, le
+  repli sur cinq facons de mal repondre, l'echelle des tailles, la taille qui
+  ne descend jamais sous ce que la carte affichera, deux tailles qui ne
+  s'ecrasent pas, l'ancien nom de fichier conserve quand aucune taille n'est
+  demandee, et l'ecusson qui n'existe nulle part - toujours sans consequence.
 
 ## [1.11.0] - 2026-09-07
 

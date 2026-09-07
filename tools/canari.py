@@ -20,6 +20,14 @@ chaque cle lue par `butbutbut/espn.py` est encore la, et du bon type. Puis il
 repasse la charge utile a `espn.parse()` lui-meme : des cles presentes qui ne
 produisent plus de matchs seraient une derive tout aussi grave.
 
+Le programme de la visite depend du sport, parce que les trois ne publient pas
+la meme chose. Le football et le rugby ont leur tableau d'actions dans le
+tableau de bord ; le hockey n'en a pas du tout - lui reclamer `details` serait
+guetter une cle dont on sait qu'elle n'existe pas - et va chercher ses buteurs
+dans le resume d'un match, dont les cles sont donc surveillees pour lui seul.
+Un resume par competition et par passage : c'est 450 ko, et la question posee
+ici se repond sur un match aussi bien que sur trente.
+
 Deux niveaux d'exigence, parce que la source ne remplit pas tout a tout moment :
 
   - **requis** : la cle doit etre sur *chaque* objet de son espece. Un match
@@ -57,10 +65,14 @@ from butbutbut import (__version__, crests, espn, journal, leagues,  # noqa: E40
 
 SCOREBOARD_URL = espn.SCOREBOARD_URL
 TEAMS_URL = espn.TEAMS_URL
+SUMMARY_URL = espn.SUMMARY_URL
 
 # fra.1 et eng.1 sont les deux plus suivies ; esp.1 fait un troisieme avis, et
 # les trois ne jouent pas toujours les memes jours - de quoi trouver des buts.
-DEFAULT_SLUGS = ("fra.1", "eng.1", "esp.1")
+# hockey:nhl s'y ajoute pour une raison a lui : c'est le seul sport dont les
+# buteurs viennent du resume d'un match, et une cle de `plays[]` qui bougerait
+# rendrait la carte de hockey muette sans que rien ne casse.
+DEFAULT_SLUGS = ("fra.1", "eng.1", "esp.1", "hockey:nhl")
 
 # Le filet de rattrapage quand le tableau du jour est vide. Quatre mois : entre
 # la fin d'une saison (fin mai) et le debut de la suivante (mi-aout), c'est
@@ -150,6 +162,13 @@ COMPETITION_KEYS = (
     ("status.type.state", REQUIRED, "pre/in/post"),
     ("status.type.name", REQUIRED, "texte non vide"),
     ("status.type.shortDetail", REQUIRED, "texte non vide"),
+)
+
+# `details` a sa table a lui, et pas par gout du rangement : au hockey la cle
+# est absente de tous les matchs, tout le temps. Declaree avec les autres, elle
+# ferait rougir le canari tous les matins sur `hockey:nhl` pour un fait connu
+# et documente. Elle n'est donc surveillee que chez les sports qui la lisent.
+COMPETITION_DETAILS_KEYS = (
     ("details", SAMPLED, "liste"),          # absent tant que rien n'est arrive
 )
 
@@ -214,6 +233,39 @@ TEAMS_PAYLOAD_KEYS = (
     ("sports.0.leagues.0.teams", REQUIRED, "liste non vide"),
 )
 
+# Le resume d'un match : la seule autre porte que butbutbut pousse, et il ne la
+# pousse qu'apres un but, pour les sports qui n'ont pas de buteur dans leur
+# tableau de bord (voir sports.Sport.summary_plays).
+SUMMARY_PAYLOAD_KEYS = (
+    ("plays", REQUIRED, "liste non vide"),
+)
+
+# Sur *toutes* les actions du resume : c'est le type qui trie les 14 buts des
+# 302 actions d'un match. Le perdre, c'est ne plus jamais nommer un buteur.
+PLAY_TYPE_KEYS = (
+    ("type.id", REQUIRED, "identifiant"),
+    ("type.text", REQUIRED, "texte non vide"),
+)
+
+# Sur les seules actions qui nous interessent : les buts.
+GOAL_PLAY_KEYS = (
+    ("team.id", REQUIRED, "identifiant"),
+    ("clock.displayValue", REQUIRED, "texte non vide"),
+    ("period.number", REQUIRED, "entier"),
+    ("scoringPlay", SAMPLED, "booleen"),
+    ("participants", REQUIRED, "liste non vide"),
+)
+
+# Le buteur et ses passeurs. `type` porte le role ("scorer", "assister") et
+# c'est lui qui distingue les deux : sans role, espn.py refuse expres de
+# deviner, et la carte ressort sans nom.
+PARTICIPANT_KEYS = (
+    ("type", REQUIRED, "texte non vide"),
+    ("athlete", REQUIRED, "objet"),
+    ("athlete.id", SAMPLED, "identifiant"),
+    ("athlete.shortName", REQUIRED, "texte non vide"),
+)
+
 CATALOGUE_ENTRY_KEYS = (
     ("team", REQUIRED, "objet"),
     ("team.displayName", REQUIRED, "texte non vide"),
@@ -224,18 +276,41 @@ CATALOGUE_ENTRY_KEYS = (
 # Le programme de la visite, dans l'ordre du rapport. Il sert aussi a annoncer
 # d'avance toutes les cles surveillees : une cle qu'aucun objet n'a permis de
 # regarder doit sortir "non verifiee", et pas disparaitre du rapport.
-PLAN = (
+BOARD_PLAN = (
     ("payload", PAYLOAD_KEYS),
     ("leagues[0]", HEADER_KEYS),
     ("event", EVENT_KEYS),
     ("competition", COMPETITION_KEYS),
     ("competitor", COMPETITOR_KEYS),
     ("competitor.team", TEAM_KEYS),
+)
+
+# Le tableau d'actions, pour les sports qui en ont un.
+DETAILS_PLAN = (
+    ("competition", COMPETITION_DETAILS_KEYS),
     ("detail", DETAIL_FLAGS),
     ("detail", DETAIL_KEYS),
     ("detail.athletesInvolved[0]", ATHLETE_KEYS),
+)
+
+CATALOGUE_PLAN = (
     ("equipes", TEAMS_PAYLOAD_KEYS),
     ("equipes.teams[]", CATALOGUE_ENTRY_KEYS),
+)
+
+# Le programme du football, qui reste le defaut : tout, dans l'ordre du rapport.
+PLAN = BOARD_PLAN + DETAILS_PLAN + CATALOGUE_PLAN
+
+# Le programme du resume, ajoute au precedent pour les seuls sports qui vont
+# y chercher leurs buteurs. Le declarer partout ferait sortir dix cles "non
+# verifiees" sur chaque ligne de football, tous les matins, pour un endpoint
+# que le football n'appelle jamais - et une colonne de gris qu'on finit par ne
+# plus lire est pire qu'une colonne absente.
+SUMMARY_PLAN = (
+    ("resume", SUMMARY_PAYLOAD_KEYS),
+    ("resume.plays[]", PLAY_TYPE_KEYS),
+    ("resume.but", GOAL_PLAY_KEYS),
+    ("resume.but.participants[]", PARTICIPANT_KEYS),
 )
 
 
@@ -357,12 +432,19 @@ class Ledger:
 
 # --------------------------------------------------------------- lecture -----
 
-def inspect_scoreboard(payload, ledger):
+def inspect_scoreboard(payload, ledger, sport=None):
     """Passe un tableau de bord au peigne fin. Rend le decompte de ce qu'on a vu.
 
     Les compteurs servent a deux choses : dire au lecteur sur quoi le verdict
     s'appuie, et savoir s'il faut aller chercher un jour ou l'on a joue.
+
+    `sport` decide de ce qu'on regarde. Un sport sans tableau d'actions n'en a
+    pas un vide, il n'en a pas du tout : lui reclamer `details` reviendrait a
+    surveiller une cle dont on sait qu'elle n'existe pas, et a passer au rouge
+    tous les matins pour rien.
     """
+    sport = sport or sports.DEFAULT
+    reads_details = sport.plays != sports.PLAYS_NONE
     tally = {"events": 0, "usable": 0, "goals": 0, "red_cards": 0,
              "shootout": 0}
 
@@ -385,6 +467,8 @@ def inspect_scoreboard(payload, ledger):
             continue
         competition = competitions[0]
         ledger.check("competition", competition, COMPETITION_KEYS)
+        if reads_details:
+            ledger.check("competition", competition, COMPETITION_DETAILS_KEYS)
 
         sides = {}
         for competitor in competition.get("competitors") or []:
@@ -401,7 +485,7 @@ def inspect_scoreboard(payload, ledger):
         else:
             ledger.anomaly("un match sans cote home et cote away")
 
-        for detail in competition.get("details") or []:
+        for detail in (competition.get("details") or []) if reads_details else ():
             if not isinstance(detail, dict):
                 ledger.anomaly("un element de details n'est pas un objet")
                 continue
@@ -441,6 +525,96 @@ def inspect_teams(payload, ledger):
             continue
         ledger.check("equipes.teams[]", entry, CATALOGUE_ENTRY_KEYS)
     return len(entries)
+
+
+def scored_event(payload):
+    """L'identifiant d'un match du tableau de bord qui a des buts, ou "".
+
+    Un resume ne se demande que si l'on sait qu'il y a quelque chose dedans :
+    inspecter le 0-0 d'un match a venir declarerait `plays` vide et
+    `participants` absent, c'est-a-dire du rouge pour une reponse parfaitement
+    normale.
+    """
+    for event in payload.get("events") or []:
+        if not isinstance(event, dict):
+            continue
+        competitions = event.get("competitions") or []
+        if not competitions or not isinstance(competitions[0], dict):
+            continue
+        total = 0
+        for competitor in competitions[0].get("competitors") or []:
+            if isinstance(competitor, dict):
+                total += espn._int(competitor.get("score"))
+        if total:
+            identifier = str(event.get("id") or "").strip()
+            if identifier:
+                return identifier
+    return ""
+
+
+def inspect_summary(payload, ledger):
+    """Le resume d'un match au peigne fin : d'ou viennent les buteurs du hockey."""
+    tally = {"plays": 0, "goals": 0, "scorers": 0, "assists": 0}
+
+    ledger.check("resume", payload, SUMMARY_PAYLOAD_KEYS)
+
+    for play in payload.get("plays") or []:
+        if not isinstance(play, dict):
+            ledger.anomaly("un element de plays n'est pas un objet")
+            continue
+        tally["plays"] += 1
+        ledger.check("resume.plays[]", play, PLAY_TYPE_KEYS)
+
+        kind = play.get("type") or {}
+        type_id = str((kind.get("id") if isinstance(kind, dict) else "") or "")
+        text = str((kind.get("text") if isinstance(kind, dict) else "") or "")
+        if (type_id.strip() not in espn.GOAL_PLAY_TYPES
+                and text.strip().lower() != espn.GOAL_PLAY_TEXT):
+            continue
+        tally["goals"] += 1
+        ledger.check("resume.but", play, GOAL_PLAY_KEYS)
+
+        for participant in play.get("participants") or []:
+            if not isinstance(participant, dict):
+                ledger.anomaly("un element de participants n'est pas un objet")
+                continue
+            ledger.check("resume.but.participants[]", participant,
+                         PARTICIPANT_KEYS)
+            role = str(participant.get("type") or "").strip().lower()
+            if role == espn.ROLE_SCORER:
+                tally["scorers"] += 1
+            elif role == espn.ROLE_ASSISTER:
+                tally["assists"] += 1
+    return tally
+
+
+def summary_cross_check(payload, tally, ledger):
+    """Le lecteur du programme retrouve-t-il encore les buts comptes a la main ?
+
+    Meme raison que cross_check() : des cles presentes qui ne produisent plus
+    un seul buteur seraient une derive aussi grave qu'une cle disparue, et elle
+    ne se verrait nulle part ailleurs - la carte de hockey sortirait sans nom,
+    comme avant, sans que rien ne casse.
+    """
+    problems = []
+    goals = espn.summary_goals(payload)
+    if len(goals) != tally["goals"]:
+        problems.append("espn.summary_goals() rend {} but(s) la ou le resume "
+                        "en compte {}".format(len(goals), tally["goals"]))
+    # Le resume a ete demande pour un match dont le score avait bouge : n'y
+    # trouver aucun but, c'est que le type d'action a change de nom ET de
+    # numero. Le comptage a la main ne le verrait pas - il lit les memes deux
+    # constantes que le programme - mais cette invariante-la, si.
+    if tally["plays"] and not tally["goals"]:
+        problems.append("{} action(s) dans le resume d'un match qui a marque, "
+                        "et pas un seul but reconnu".format(tally["plays"]))
+    if tally["goals"] and not any(goal.scorer for goal in goals):
+        problems.append("aucun buteur nomme sur {} but(s) : la carte de hockey "
+                        "redeviendrait muette".format(tally["goals"]))
+    if tally["assists"] and not any(goal.assists for goal in goals):
+        problems.append("aucun passeur lu alors que le resume en publie {}"
+                        .format(tally["assists"]))
+    return problems
 
 
 def kicks_note(tally) -> str:
@@ -581,10 +755,10 @@ def lookback_range(today=None, days=LOOKBACK_DAYS):
 def split_sport(slug):
     """(sport, code) a partir de ce qu'on tape : "fra.1" ou "hockey:nhl".
 
-    Meme ecriture que --leagues, ou le football est sous-entendu. Le canari ne
-    surveille par defaut que le football : les autres sports lisent le meme
-    tableau de bord, mais pas le meme tableau d'actions, et leurs cles
-    meriteront leur propre inventaire.
+    Meme ecriture que --leagues, ou le football est sous-entendu. Le sport
+    decide de ce qu'on va regarder : les trois lisent le meme tableau de bord,
+    mais seul le hockey va chercher ses buteurs dans le resume d'un match, et
+    lui seul se voit donc ajouter les cles de `plays[]` a son programme.
     """
     if ":" in str(slug):
         code, _, rest = str(slug).partition(":")
@@ -605,6 +779,12 @@ def teams_url(slug):
     return TEAMS_URL.format(sport=sport.code, slug=code)
 
 
+def summary_url(slug, event_id):
+    sport, code = split_sport(slug)
+    return "{}?event={}".format(
+        SUMMARY_URL.format(sport=sport.code, slug=code), event_id)
+
+
 # --------------------------------------------------------------- passage -----
 
 VERT, ROUGE, INJOIGNABLE = "vert", "rouge", "injoignable"
@@ -620,7 +800,13 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
     """
     out = out or sys.stdout
     opener = opener or http_opener
-    ledger = Ledger()
+    sport, _ = split_sport(slug)
+    plan = BOARD_PLAN
+    if sport.plays != sports.PLAYS_NONE:
+        plan += DETAILS_PLAN
+    if sport.summary_plays:
+        plan += SUMMARY_PLAN
+    ledger = Ledger(plan=plan + CATALOGUE_PLAN)
     problems = []
 
     print("--- {} {}".format(slug, "-" * (66 - len(slug))), file=out)
@@ -631,21 +817,30 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
         print("  INJOIGNABLE  {}\n".format(exc), file=out)
         return INJOIGNABLE, ledger
 
-    tally = inspect_scoreboard(first, ledger)
+    boards = [first]
+    tally = inspect_scoreboard(first, ledger, sport)
     problems.extend(cross_check(first, slug, tally, ledger))
     print("  releve {:<14} {} match(s), {} but(s), {} expulsion(s){}".format(
         dates or "le jour meme", tally["events"], tally["goals"],
         tally["red_cards"], kicks_note(tally)), file=out)
 
     # Rien a se mettre sous la dent : on va chercher un jour ou l'on a joue.
-    if not dates and not tally["goals"]:
+    # "Rien" ne veut pas dire la meme chose selon le sport. Au football, c'est
+    # l'absence de but dans `details`. Au hockey, qui n'en publie jamais, ce
+    # critere serait vrai tous les soirs et le canari repartirait chercher
+    # quatre mois de NHL a chaque passage : ce qu'on cherche la, c'est un match
+    # dont le score a bouge, le seul dont le resume aura des buts dedans.
+    empty = (not scored_event(first) if sport.summary_plays
+             else not tally["goals"])
+    if not dates and empty:
         window = lookback_range()
         try:
             second = fetch_json(scoreboard_url(slug, window), opener, timeout)
         except espn.SourceError as exc:
             print("  INJOIGNABLE  {}\n".format(exc), file=out)
             return INJOIGNABLE, ledger
-        extra = inspect_scoreboard(second, ledger)
+        boards.append(second)
+        extra = inspect_scoreboard(second, ledger, sport)
         problems.extend(cross_check(second, slug, extra, ledger))
         print("  rattrapage {:<10} {} match(s), {} but(s), {} expulsion(s){}"
               .format(window, extra["events"], extra["goals"],
@@ -656,6 +851,31 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
     if not tally["events"]:
         print("  aucun match a inspecter : rien n'est verifie ici, et ce n'est"
               " pas un echec.", file=out)
+
+    # Le resume d'un match, et un seul : c'est 450 ko, et la question posee ici
+    # - "les cles de plays[] sont-elles encore la ?" - se repond aussi bien sur
+    # un match que sur trente.
+    if sport.summary_plays:
+        event_id = ""
+        for board in boards:
+            event_id = scored_event(board)
+            if event_id:
+                break
+        if not event_id:
+            print("  resume         aucun match avec but : rien a inspecter",
+                  file=out)
+        else:
+            try:
+                digest = fetch_json(summary_url(slug, event_id), opener, timeout)
+            except espn.SourceError as exc:
+                print("  INJOIGNABLE  {}\n".format(exc), file=out)
+                return INJOIGNABLE, ledger
+            found = inspect_summary(digest, ledger)
+            problems.extend(summary_cross_check(digest, found, ledger))
+            print("  resume         match {}, {} action(s), {} but(s), "
+                  "{} buteur(s), {} passe(s)"
+                  .format(event_id, found["plays"], found["goals"],
+                          found["scorers"], found["assists"]), file=out)
 
     try:
         teams = fetch_json(teams_url(slug), opener, timeout)
