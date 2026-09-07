@@ -3,9 +3,23 @@
     butbutbut --teams om,psg
     butbutbut --teams "real madrid,barcelona" --leagues liga,ucl
     butbutbut --exclude-teams psg
+    butbutbut --teams om --spoiler-free om
 
 Un match est retenu des que **l'une des deux equipes** correspond : si tu suis
 l'OM, tu veux aussi savoir quand l'OM encaisse.
+
+Trois listes cohabitent, et l'ordre de decision est toujours le meme :
+
+  1. `--exclude-teams` : le match n'existe pas. Ni carte, ni son, ni journal.
+  2. `--teams` : si la liste est remplie et que le match n'y est pas, meme
+     chose, il n'existe pas.
+  3. `--spoiler-free` : le match existe et continue de remplir le journal,
+     mais rien ne va a l'ecran ni au haut-parleur.
+
+Les deux premieres taisent un match ; la troisieme ne tait que l'alerte. Suivre
+l'OM *et* le mettre en sans-spoiler est donc parfaitement coherent : c'est
+exactement ce qu'on veut quand on regarde le match en differe et qu'on lira
+`--today` une fois le direct rattrape.
 
 La reconnaissance des noms doit encaisser ce que les gens tapent vraiment :
 
@@ -125,8 +139,7 @@ class Filter:
         if not self.active:
             return True
 
-        home = getattr(match, "home_names", (match.home,))
-        away = getattr(match, "away_names", (match.away,))
+        home, away = sides_of(match)
 
         if self.excluded and (self.team_excluded(home) or self.team_excluded(away)):
             return False
@@ -161,6 +174,56 @@ class Filter:
 
     def __repr__(self):
         return "<Filter {}>".format(self.describe())
+
+
+class SpoilerFilter(Filter):
+    """Les matchs regardes en differe : le journal oui, l'ecran et le son non.
+
+    C'est le seul reglage de butbutbut qui ne coupe pas la surveillance mais
+    l'alerte. Un `Filter` ordinaire repond "ce match m'interesse-t-il ?" et
+    fait disparaitre le reste ; celui-ci repond "dois-je me taire ?" et laisse
+    tout le reste passer. D'ou une classe a part plutot qu'un troisieme jeu de
+    mots dans `Filter` : les deux questions n'ont pas la meme reponse par
+    defaut (rien de suivi = tout passe ; rien en sans-spoiler = rien a taire),
+    et les melanger rendait `matches()` illisible.
+
+    Il n'y a qu'une liste de mots, jamais d'exclusion : "ne me spoile pas, sauf
+    ce club-la" n'a pas de sens - on ne demande pas le silence a moitie.
+    """
+
+    def __init__(self, teams=None):
+        Filter.__init__(self, wanted=teams)
+
+    def covers(self, match) -> bool:
+        """Ce match est-il regarde en differe ?"""
+        if not self.active:
+            return False
+        return self.covers_names(*sides_of(match))
+
+    def covers_names(self, home, away) -> bool:
+        """La meme question, posee sur deux jeux de noms deja extraits.
+
+        Le fichier d'etat relu par `--status` ne garde que le nom affiche de
+        chaque equipe, pas l'objet match : il lui faut cette porte d'entree.
+        """
+        if not self.active:
+            return False
+        return self.team_matches(home) or self.team_matches(away)
+
+    def describe(self) -> str:
+        if not self.wanted_tokens:
+            return "aucune"
+        return ", ".join(self.wanted_tokens)
+
+
+def sides_of(match) -> tuple:
+    """(ecritures du domicile, ecritures de l'exterieur) d'un match.
+
+    Toutes les ecritures connues, pas seulement celle qui est affichee : le
+    filtre doit reconnaitre "PSG" comme "Paris Saint-Germain".
+    """
+    return (getattr(match, "home_names", (match.home,)),
+            getattr(match, "away_names", (match.away,)))
 
 
 def _tokens(value) -> list:

@@ -178,6 +178,70 @@ class TestFilter(unittest.TestCase):
                          teams.Filter(wanted="om,psg").wanted)
 
 
+class TestSpoilerFilter(unittest.TestCase):
+    """Le mode sans spoiler : la meme souplesse de nommage, l'autre reponse."""
+
+    PSG = ("Paris Saint-Germain", "PSG", "PSG")
+
+    def match(self, home="Marseille", away="Lyon"):
+        return espn.parse(payload(event(home=home, away=away)), LIGUE1)[0]
+
+    def test_no_token_covers_nothing(self):
+        # Le defaut inverse de celui de Filter : rien de demande, rien a taire.
+        empty = teams.SpoilerFilter()
+        self.assertFalse(empty.active)
+        self.assertFalse(empty.covers(self.match()))
+
+    def test_a_match_of_the_team_at_home_or_away(self):
+        quiet = teams.SpoilerFilter("om")
+        self.assertTrue(quiet.covers(self.match(home="Marseille")))
+        self.assertTrue(quiet.covers(self.match(home="Lyon", away="Marseille")))
+
+    def test_another_match_is_not_covered(self):
+        quiet = teams.SpoilerFilter("om")
+        self.assertFalse(quiet.covers(self.match(home="Lens", away="Lille")))
+
+    def test_the_naming_flexibility_of_teams_is_reused(self):
+        for token, home in (("om", "Marseille"), ("barca", "Barcelona"),
+                            ("manu", "Manchester United"),
+                            ("atletico", "Atletico Madrid"),
+                            ("rennai", "Stade Rennais")):
+            self.assertTrue(teams.SpoilerFilter(token).covers(
+                self.match(home=home)), token)
+
+    def test_the_abbreviation_is_enough(self):
+        self.assertTrue(teams.SpoilerFilter("psg").covers(
+            self.match(home=self.PSG, away="Lyon")))
+
+    def test_several_teams(self):
+        quiet = teams.SpoilerFilter("om,psg")
+        self.assertTrue(quiet.covers(self.match(home=self.PSG, away="Lens")))
+        self.assertTrue(quiet.covers(self.match(home="Marseille")))
+        self.assertFalse(quiet.covers(self.match(home="Lens", away="Lille")))
+
+    def test_plain_names_are_enough(self):
+        # Le fichier d'etat relu par --status ne garde que le nom affiche.
+        quiet = teams.SpoilerFilter("om")
+        self.assertTrue(quiet.covers_names(("Marseille",), ("Lyon",)))
+        self.assertTrue(quiet.covers_names(("Lyon",), ("Marseille",)))
+        self.assertFalse(quiet.covers_names(("Lens",), ("Lille",)))
+        self.assertFalse(teams.SpoilerFilter().covers_names(("Marseille",),
+                                                            ("Lyon",)))
+
+    def test_a_list_works_as_well_as_a_string(self):
+        self.assertEqual(teams.SpoilerFilter(["om", "psg"]).wanted,
+                         teams.SpoilerFilter("om,psg").wanted)
+
+    def test_resolve_reports_orphans_like_the_other_filter(self):
+        found, orphans = teams.SpoilerFilter("om,marseile").resolve(CATALOGUE)
+        self.assertEqual(sorted(found), ["om"])
+        self.assertEqual(orphans, ["marseile"])
+
+    def test_describe(self):
+        self.assertEqual(teams.SpoilerFilter().describe(), "aucune")
+        self.assertEqual(teams.SpoilerFilter("om,psg").describe(), "om, psg")
+
+
 class TestWatcherFiltering(unittest.TestCase):
     """Le filtre doit couper les evenements, pas la surveillance."""
 

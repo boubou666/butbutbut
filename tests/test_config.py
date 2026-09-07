@@ -53,6 +53,16 @@ class TestReading(ConfigCase):
         self.assertEqual(outcome.warnings, [])
         self.assertEqual(outcome.values, {"idle_interval": 90, "exclude": "liga"})
 
+    def test_the_three_team_lists_are_read_side_by_side(self):
+        outcome = self.read("[butbutbut]\n"
+                            "teams = om,psg\n"
+                            "exclude_teams = psg\n"
+                            "spoiler-free = om\n")
+        self.assertEqual(outcome.warnings, [])
+        self.assertEqual(outcome.values, {"teams": "om,psg",
+                                          "exclude_teams": "psg",
+                                          "spoiler_free": "om"})
+
     def test_an_empty_key_is_an_absent_key(self):
         outcome = self.read("[butbutbut]\nteams =\nleagues = l1\n")
         self.assertEqual(outcome.warnings, [])

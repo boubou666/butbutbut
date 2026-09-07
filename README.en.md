@@ -301,7 +301,9 @@ butbutbut --exclude-teams psg               # everything except PSG
 
 A match counts **as soon as either of the two teams** is in it: following OM
 also means wanting to know when OM concedes. The filter applies to goals just
-as it does to the key-moment cards, and to `--scores` as well.
+as it does to the key-moment cards, and to `--scores` as well. Both of these
+options **make a match disappear**; to follow one without having it told to you,
+see [spoiler-free mode](#spoiler-free-mode) just below.
 
 The accepted names cope with what people actually type:
 
@@ -322,6 +324,89 @@ A word that matches no team is rejected at startup, together with the list of
 competitions it was looked for in: a typo should not turn into a daemon that
 stays silent for three weeks. `butbutbut --list-teams --teams om` also shows
 what each word catches (`*` followed, `-` excluded).
+
+### Spoiler-free mode
+
+There is one moment where butbutbut turns against you: you are watching the
+match on a delay - a stream, a replay, ninety seconds behind the live feed - and
+the card announces the goal before you get to see it. For that match, you need
+to be able to tell it to keep quiet.
+
+```bash
+butbutbut --spoiler-free om                  # I am watching OM on a delay
+butbutbut --teams om,psg --spoiler-free om   # alert me for PSG, not for OM
+```
+
+For a match covered by the list, **nothing reaches the screen or the speakers**:
+no goal, no disallowed goal, no key moment, no red card, no kick-off warning. A
+"KICK-OFF" would say the live feed has started, a "FULL TIME" that it is all
+over: that spoils just as much as a goal, so **every** event goes quiet, without
+exception.
+
+**The journal, on the other hand, keeps everything.** That is the whole point of
+the setting: only the screen and the sound are cut. Once you have watched the
+match, `butbutbut --today` tells it like any other evening:
+
+```
+butbutbut : buts signales le 06/09/2026
+
+Ligue 1
+    18:51:10  Marseille 1 - 0 Paris FC        But de A. Kalimuendo (61')
+    19:14:02  Marseille 1 - 1 Paris FC        But de M. Kebbal (77')
+```
+
+Names are typed with the same flexibility as `--teams` (`om`, `barca`, `manu`,
+unaccented names, the start of a word), and a word that matches no team is
+rejected at startup. A typo is even more treacherous here than elsewhere: it
+does not make the daemon silent, it lets it spoil the very match you wanted to
+protect. `butbutbut --list-teams --spoiler-free om` marks what the word catches
+with a `?`.
+
+**`--scores` masks the score** instead of hiding the match:
+
+```
+Ligue 1
+  ?              Marseille ? - ? Paris FC               sans spoiler
+  >                   Lens 2 - 0 Lille                  35'
+
+2 match(s), '>' = en cours.
+'?' = sans spoiler : 1 match(s) masque(s). Le journal, lui, a tout : butbutbut --today.
+```
+
+Dropping the line would have been worse than showing everything: you would no
+longer know whether the match is on, nor at what time - and the day you watch it
+is exactly the day you open `--scores`. So nothing that would let you rebuild
+the score is shown - neither the scorers nor the state of the match: a finished
+match looks like one in progress, otherwise a plain "termine" at the 80th minute
+would be enough to tell you it is done. `butbutbut --status` masks the score of
+live matches the same way, and recalls the setting:
+
+```
+  equipes     : equipes suivies : om, psg
+  sans spoiler: om  (journal seulement : ni carte, ni son)
+```
+
+**Alongside `--teams` and `--exclude-teams`**, the three lists live together,
+and the order of decision is always the same:
+
+| Order | Setting | What it does to a match it covers |
+| --- | --- | --- |
+| 1 | `--exclude-teams` | the match does not exist: no card, no sound, no journal |
+| 2 | `--teams` | outside the list, the match does not exist either |
+| 3 | `--spoiler-free` | the match stays and fills the journal; screen and sound go quiet |
+
+The first two silence a match, the third only silences the alert. Following OM
+**and** putting it in spoiler-free mode is therefore not a contradiction, it is
+the normal use: I want the journal, not the alert.
+
+The setting has its own configuration key, so you do not have to retype it next
+Saturday:
+
+```ini
+[butbutbut]
+teams = om
+spoiler_free = om
+```
 
 ### Placing the cards
 
@@ -471,6 +556,7 @@ leagues = l1,ucl,cdf
 exclude = seriea
 teams = om,psg
 exclude_teams = psg
+spoiler_free = om
 
 # The card that stays on screen for the duration of the match (one team)
 pin = om

@@ -22,6 +22,11 @@ Autour du but viennent des evenements plus discrets, tous muets : les temps
 forts du match (coup d'envoi, mi-temps, reprise, fin), les expulsions et
 l'annonce d'un coup d'envoi imminent. Les deux derniers sont a la demande.
 
+Le filtre par equipe fait disparaitre des evenements ; le mode sans spoiler,
+lui, se contente de les marquer (`Event.spoiler_free`). C'est la difference qui
+compte : un match regarde en differe remplit le journal comme les autres, seul
+l'appelant se tait a l'ecran et au haut-parleur.
+
 La cadence s'adapte : rapide quand un match est en cours, lente quand il n'y a
 rien a regarder. Chaque championnat a son propre rythme, donc on n'interroge
 pas la Bundesliga toutes les 25 s un mardi soir de Ligue 1.
@@ -182,12 +187,12 @@ class Event:
     """Ce qui vient de se passer : un but, une expulsion, un temps fort."""
 
     __slots__ = ("kind", "match", "side", "team", "opponent", "home_score",
-                 "away_score", "delta", "play", "at", "countdown", "changes",
-                 "gap")
+                 "away_score", "delta", "play", "at", "countdown",
+                 "changes", "gap", "spoiler_free")
 
     def __init__(self, kind, match, side, team, opponent, home_score,
                  away_score, delta, play, at=None, countdown=None,
-                 changes=(), gap=0.0):
+                 changes=(), gap=0.0, spoiler_free=False):
         self.kind = kind
         self.match = match
         self.side = side              # "home" ou "away"
@@ -208,6 +213,11 @@ class Event:
         # ailleurs. Meme raison qu'au-dessus pour garder la duree en secondes.
         self.changes = list(changes)
         self.gap = float(gap or 0.0)
+        # Match regarde en differe (--spoiler-free) : l'evenement sort quand
+        # meme, il ira au journal, mais l'appelant ne doit ni l'afficher ni le
+        # sonner. Marquer plutot que filtrer, c'est tout le reglage : couper
+        # ici priverait aussi `--today` de son recapitulatif.
+        self.spoiler_free = bool(spoiler_free)
 
     @property
     def league(self):
@@ -415,11 +425,14 @@ class Watcher:
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
                  opener=None, on_log=None, teams=None, clock=None,
                  red_cards=False, before_kickoff=0.0, catch_up=False,
-                 monotonic=None):
+                 spoiler_free=None, monotonic=None):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
         self.teams = teams
+        # teams.SpoilerFilter ou None : ces matchs-la remontent complets, mais
+        # marques, pour que l'appelant se taise a l'ecran et au haut-parleur.
+        self.spoiler_free = spoiler_free
         # Les deux options a la demande : une expulsion et une annonce d'avant
         # match n'interessent pas tout le monde, elles ne s'invitent pas.
         self.red_cards = bool(red_cards)
@@ -810,8 +823,14 @@ class Watcher:
 
         if not alert:
             return []
+        # L'ordre de decision : d'abord ce qui fait disparaitre le match, puis
+        # ce qui le laisse vivre en silence. Un club a la fois suivi et mis en
+        # sans-spoiler passe donc bien ici, marque.
         if self.teams is not None and not self.teams.matches(match):
             return []
+        if self.spoiler_free is not None and self.spoiler_free.covers(match):
+            for event in events:
+                event.spoiler_free = True
         return events
 
     def _prematch_countdown(self, match, previous):
