@@ -107,6 +107,67 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   bout sans le materiel : les tests couvrent le dialogue (ce qui part, ce qui
   revient, le verrou entre deux buts), pas une vraie ampoule au bout du fil.
 
+### Ajoute
+
+- **`butbutbut --speak` : le but dit a voix haute.** Tout le reste du programme
+  suppose qu'on regarde l'ecran ; le son dit qu'il s'est passe quelque chose,
+  la carte dit quoi - mais elle ne dit rien a qui travaille dans une autre
+  fenetre, sur un autre bureau, ou ne voit pas l'ecran du tout. La phrase part
+  apres la corne, ou a sa place avec `--no-sound`. C'est du confort, et
+  accessoirement de l'accessibilite.
+- La phrase n'est pas une nouvelle : c'est **celle du crochet**, la variable
+  `BUT_TEXT` de `--on-goal`, mot pour mot (`hook.phrase`). Deux formulations
+  auraient fini par ne plus dire la meme chose. Elle suit la **langue des
+  cartes** et non celle du journal : on parle a qui regarde l'ecran, pas a qui
+  relira `--today` demain matin.
+- Trois systemes, zero dependance, rien a installer sous Windows ni macOS :
+  PowerShell et `System.Speech` d'un cote, `say` de l'autre. Sous Linux,
+  `spd-say` (speech-dispatcher), puis `espeak-ng`, puis `espeak` - le premier
+  qui existe. `butbutbut --status` gagne une ligne `voix` qui dit lequel
+  parlerait ici, avant meme qu'on ait pose l'option.
+- Sous Windows, le texte passe par une **variable d'environnement** et n'est
+  jamais recolle dans le script : meme regle qu'au crochet, le jour ou la
+  source annoncera un club nomme `'; rm -rf ~`, ce sera un nom d'equipe et rien
+  d'autre. Ailleurs il part en argument, jamais dans une ligne de shell.
+- La voix choisit une **voix installee de la langue des cartes** quand la
+  machine en a une, et garde la sienne sinon : une machine anglaise lit du
+  francais avec un accent anglais plutot que de se taire.
+- `butbutbut --test --speak` fait dire la carte de demonstration. Sans lui,
+  regler l'option voudrait dire attendre un vrai but pour savoir si la machine
+  parle - la meme demi-journee de mise au point que `--test-hook` avait
+  supprimee pour le crochet.
+- Nouvelle cle `speak` dans le fichier de configuration, comme toute option
+  durable.
+
+### Details qui ont demande un arbitrage
+
+- **Deux buts coup sur coup font la queue**, ils ne se parlent pas dessus et
+  aucun n'est jete tant que la file tient. Deux buts du meme releve, c'est le
+  plus souvent deux matchs differents : en jeter un laisserait croire a un
+  score qui n'existe plus. La file est bornee a quatre phrases, et au-dela
+  c'est la plus **ancienne en attente** qui saute - un soir de folie, on veut
+  savoir ou on en est, pas ecouter le quart d'heure precedent.
+- **La voix attend la fin de la corne** (2,5 s) avant de parler : dire le but
+  pendant le jingle rendrait les deux inaudibles. En mode muet elle part tout
+  de suite, puisqu'elle est alors la seule alerte.
+- **Le silence de la 1.8.0 vaut pour la voix.** `--quiet-hours` et
+  `--quiet-while-presenting` la taisent comme ils taisent le haut-parleur :
+  c'en est un. `--spoiler-free` aussi - ce qui n'est pas montre ne se dit pas
+  non plus, sinon l'option ne protegerait plus rien. Le journal, lui, garde
+  tout dans les deux cas. Le crochet `--on-goal` reste la seule alerte que la
+  nuit laisse partir, pour la raison deja ecrite en 1.8.0.
+- **`--speak` ne parle pas en rejeu.** Une soiree rejouee a `--speed 60` reduit
+  une mi-temps a trente secondes : la voix parlerait encore du premier but que
+  le match serait fini. Le crochet se tait deja en rejeu pour une raison
+  voisine.
+- **Aucune panne de voix ne remonte.** Programme absent, voix non installee,
+  commande qui rend un code non nul, commande qui ne rend jamais la main (tuee
+  au bout de 30 s) : une ligne au journal, **une seule** - un samedi entier
+  ecrirait sinon autant de lignes que de buts pour une panne qui ne changera
+  plus - et le match continue. La parole vit dans un fil a elle et part du fil
+  de surveillance, jamais de celui qui dessine les cartes : ni la carte, ni le
+  releve suivant ne l'attendent.
+
 ## [1.8.0] - 2026-09-07
 
 ### Ajoute
