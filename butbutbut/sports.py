@@ -74,7 +74,9 @@ Le strict necessaire pour que le reste du programme n'ait jamais a demander
     Un sport qui n'a rien a redire ne met rien ici, et retombe sur le
     vocabulaire du football ;
   - `unit_score` : vrai quand un score ne monte que de 1. Faux au rugby, ou la
-    carte doit dire de combien de points le score a bouge.
+    carte doit dire de combien de points le score a bouge ;
+  - `table` : les colonnes du classement, parce qu'un classement de hockey et
+    un classement de football ne comptent pas les memes choses.
 
 Ce module ne connait ni les competitions ni les cartes : il ne fait que dire
 comment un sport se comporte. Le catalogue vit dans leagues.py.
@@ -90,14 +92,66 @@ PLAYS_TYPES = "types"    # rugby : un type numerote (1 = essai, 2 = transf.)
 PLAYS_NONE = "none"      # hockey : la source ne publie rien du tout
 
 
+# Les colonnes du classement, sport par sport : ce que la source publie
+# vraiment, et rien de plus. Les trois sports ne comptent pas les memes
+# choses - le hockey ignore le match nul mais compte les defaites en
+# prolongation, le rugby ajoute ses points de bonus, le football n'a ni l'un
+# ni l'autre. Fabriquer une colonne "N" pour le hockey reviendrait a inventer
+# un zero qui ne veut rien dire, et une colonne de bonus au football afficherait
+# du vide sur dix-huit lignes.
+#
+# Chaque colonne est un (en-tete, cles acceptees). Plusieurs cles, parce que la
+# source appelle la difference de points "pointdifferential" au football et au
+# hockey mais "pointsdifference" au rugby : les accepter toutes des maintenant
+# coute une ligne et evite une colonne vide le jour ou l'un des deux noms
+# gagne. Une cle qu'on ne trouve pas donne un tiret, jamais une erreur.
+
+TABLE_SOCCER = (
+    ("J", ("gamesplayed",)),
+    ("G", ("wins", "gameswon")),
+    ("N", ("ties", "gamesdrawn")),
+    ("P", ("losses", "gameslost")),
+    ("Diff", ("pointdifferential", "pointsdifference")),
+    ("Pts", ("points",)),
+)
+
+# Le hockey n'a pas de match nul : un match se decide toujours, en prolongation
+# ou aux tirs au but. La colonne qui compte est donc "DP", les defaites en
+# prolongation, qui rapportent un point la ou une defaite seche n'en rapporte
+# aucun - sans elle, le total de points de la ligne ne se retrouve pas.
+TABLE_HOCKEY = (
+    ("J", ("gamesplayed",)),
+    ("G", ("wins", "gameswon")),
+    ("P", ("losses", "gameslost")),
+    ("DP", ("otlosses", "overtimelosses")),
+    ("Diff", ("pointdifferential", "pointsdifference")),
+    ("Pts", ("points",)),
+)
+
+# Le rugby ajoute les points de bonus : quatre essais ou une defaite de moins
+# de huit points en rapportent un, et c'est ce qui fait qu'une equipe passe
+# devant une autre a nombre de victoires egal. Un classement de rugby sans la
+# colonne "Bon" ne s'explique pas.
+TABLE_RUGBY = (
+    ("J", ("gamesplayed",)),
+    ("G", ("wins", "gameswon")),
+    ("N", ("ties", "gamesdrawn")),
+    ("P", ("losses", "gameslost")),
+    ("Bon", ("bonuspoints",)),
+    ("Diff", ("pointdifferential", "pointsdifference")),
+    ("Pts", ("points",)),
+)
+
+
 class Sport:
     """Un sport d'ESPN : son segment d'URL et ses quelques particularites."""
 
     __slots__ = ("code", "name", "aliases", "plays", "breaks", "unit_score",
-                 "logo_pattern", "_titles")
+                 "logo_pattern", "table", "_titles")
 
     def __init__(self, code, name, aliases=(), plays=PLAYS_FLAGS, breaks=(),
-                 unit_score=True, logo_pattern="", titles=None):
+                 unit_score=True, logo_pattern="", titles=None,
+                 table=TABLE_SOCCER):
         self.code = code                  # "soccer", "hockey", "rugby"
         self.name = name                  # "football", en francais, pour le journal
         self.aliases = tuple(aliases)     # ce qu'on peut taper a --leagues
@@ -111,6 +165,9 @@ class Sport:
         # l'URL vient de la source. Le hockey range ses ecussons sous
         # l'abreviation du club et non sous son numero - "bos", pas "18".
         self.logo_pattern = logo_pattern
+        # Les colonnes du classement. Le football sert de socle ici aussi : un
+        # sport qui n'a rien de particulier a compter herite des siennes.
+        self.table = tuple(table)
         self._titles = dict(titles or {})
 
     def title_key(self, key: str) -> str:
@@ -157,6 +214,7 @@ HOCKEY = Sport(
     plays=PLAYS_NONE,
     breaks=("INTERMISSION", "END_PERIOD", "END_OF_PERIOD"),
     logo_pattern="https://a.espncdn.com/i/teamlogos/nhl/500/{id}.png",
+    table=TABLE_HOCKEY,
     titles={
         "title_kickoff": "title_faceoff",
         "title_halftime": "title_period_break",
@@ -177,6 +235,7 @@ RUGBY = Sport(
     plays=PLAYS_TYPES,
     unit_score=False,
     logo_pattern="https://a.espncdn.com/i/teamlogos/rugby/teams/500/{id}.png",
+    table=TABLE_RUGBY,
     titles={
         "title_goal": "title_points",
         "title_cancelled": "title_points_cancelled",

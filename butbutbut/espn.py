@@ -21,12 +21,18 @@ sujet de `_parse_details` :
   - le **hockey** ne publie **rien** : `details` est absent, sur un match a
     venir comme sur un match termine. On a le score, l'horloge et la periode.
 
+Le meme hote publie un second endpoint, le classement, sous une adresse qui
+n'a pas tout a fait la meme forme (voir STANDINGS_URL, plus bas). Il est lu
+avec le meme client et les memes en-tetes : c'est tout l'interet d'avoir un
+seul endroit ou le reseau est touche.
+
 Rien d'autre que la stdlib : urllib + json.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -36,6 +42,11 @@ from . import __version__, i18n, crests, sports
 
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/scoreboard"
 TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/teams"
+# Le classement, et c'est bien `apis/v2` et non `apis/site/v2` comme les deux
+# au-dessus : verifie contre la source, la forme `site/v2/.../standings` repond
+# 200 avec un objet vide `{}`, ce qui ressemblerait a une intersaison alors que
+# c'est juste la mauvaise adresse. Une faute qu'on n'a pas envie de refaire.
+STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/{sport}/{slug}/standings"
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
@@ -357,6 +368,36 @@ def date_span(first, last=None) -> str:
     return start if end == start else "{}-{}".format(start, end)
 
 
+def _read_json(url: str, timeout: float, opener, label: str) -> dict:
+    """Une requete + un decodage, la seule facon d'aller chercher du JSON ici.
+
+    Sortie du corps de fetch() le jour ou le classement a eu besoin exactement
+    du meme chemin : memes en-tetes, meme delai, meme facon de traduire une
+    panne en SourceError. Deux facons d'appeler ESPN auraient fini par diverger
+    - l'une avec l'en-tete de politesse, l'autre sans.
+    """
+    if opener is not None:
+        try:
+            raw = opener(url, timeout)
+        except SourceError:
+            raise
+        except Exception as exc:
+            raise SourceError(str(exc)) from exc
+    else:
+        raw = download(url, timeout, label=label)
+
+    try:
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        payload = json.loads(raw)
+    except Exception as exc:
+        raise SourceError("reponse illisible pour {} : {}".format(label, exc)) from exc
+
+    if not isinstance(payload, dict):
+        raise SourceError("reponse inattendue pour " + label)
+    return payload
+
+
 def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
           sport=None, dates=None) -> dict:
     """Recupere le tableau de bord brut d'une competition.
@@ -374,27 +415,7 @@ def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
                                 slug=slug)
     if dates:
         url += "?" + urllib.parse.urlencode({"dates": dates})
-
-    if opener is not None:
-        try:
-            raw = opener(url, timeout)
-        except SourceError:
-            raise
-        except Exception as exc:
-            raise SourceError(str(exc)) from exc
-    else:
-        raw = download(url, timeout, label=slug)
-
-    try:
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8", "replace")
-        payload = json.loads(raw)
-    except Exception as exc:
-        raise SourceError("reponse illisible pour {} : {}".format(slug, exc)) from exc
-
-    if not isinstance(payload, dict):
-        raise SourceError("reponse inattendue pour " + slug)
-    return payload
+    return _read_json(url, timeout, opener, slug)
 
 
 # ---------------------------------------------------------------- parsing ----
@@ -752,3 +773,236 @@ def catalogue(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:
             if names:
                 found.append(names)
     return found
+
+
+# ------------------------------------------------------------- classement ----
+# Le classement ne vient pas du tableau de bord mais d'un endpoint a lui, et sa
+# forme est celle-ci, relevee sur les trois sports :
+#
+#   { "name": "French Ligue 1",
+#     "children": [ { "name": "...", "standings": { "entries": [...] } } ] }
+#
+# `children` est la vraie particularite : c'est toujours une LISTE de blocs,
+# meme quand il n'y en a qu'un. Un championnat en a un, la NHL en a deux (ses
+# conferences), une Coupe du monde en a douze (ses groupes). Les traiter tous
+# de la meme facon evite d'ecrire un cas "championnat" et un cas "poules".
+#
+# Une equipe y est decrite par `team` - le meme objet que sur le tableau de
+# bord, d'ou la reutilisation de _team_name et team_names - et par `stats`, une
+# liste plate de statistiques nommees. Plate et non ordonnee : on l'indexe, et
+# c'est le sport qui dit ensuite quelles colonnes il compte (voir sports.py).
+
+# La saison, telle qu'ESPN l'ecrit : "2026-27 French Ligue 1", "2025-26",
+# "2026". Seule la partie annees nous interesse - le reste repete le nom de la
+# competition, qu'on vient d'afficher, et en anglais par-dessus le marche.
+SEASON_YEARS = re.compile(r"^\s*(\d{4}(?:\s*[-/]\s*\d{2,4})?)")
+
+# Le rang, tel que la source le nomme : `rank` au football et au rugby,
+# `playoffSeed` au hockey, qui n'a pas de `rank` du tout. C'est la seule
+# position qu'on affiche - voir _parse_group pour pourquoi on ne la calcule
+# jamais soi-meme.
+RANK_KEYS = ("rank", "playoffseed")
+
+
+class Row:
+    """La ligne d'une equipe dans un classement.
+
+    `stats` est un dictionnaire de chaines deja pretes a afficher : la source
+    donne pour chaque statistique une valeur numerique **et** son ecriture
+    ("+4" et non "4.0" pour une difference de buts). On garde l'ecriture, parce
+    que c'est elle qui porte le signe.
+
+    La ligne ne retient que ce qui s'affiche ou se cherche. La source dit aussi
+    la zone de qualification ("Champions League", "Relegation") et sa couleur :
+    de quoi habiller un tableau, pas un terminal de 80 colonnes ou chaque signe
+    est deja pris. On ne le lit donc pas - le jour ou une carte en aura besoin,
+    il sera temps.
+    """
+
+    __slots__ = ("rank", "team", "names", "stats")
+
+    def __init__(self, rank, team, names=(), stats=None):
+        self.rank = rank              # le rang affiche, 1 pour le premier
+        self.team = team              # nom lisible
+        self.names = tuple(names) or (team,)   # toutes les ecritures connues
+        self.stats = dict(stats or {})
+
+    def cell(self, keys) -> str:
+        """La valeur de la premiere de ces cles, ou un tiret.
+
+        Un tiret et non un zero : une statistique absente n'est pas une
+        statistique nulle, et une colonne de zeros ferait croire a un
+        championnat qui n'aurait jamais commence.
+        """
+        for key in keys:
+            value = self.stats.get(key)
+            if value not in (None, ""):
+                return value
+        return "-"
+
+    def __repr__(self):
+        return "<Row {} {}>".format(self.rank, self.team)
+
+
+class Group:
+    """Un bloc de classement : un championnat, une poule, une conference."""
+
+    __slots__ = ("name", "rows")
+
+    def __init__(self, name, rows=()):
+        self.name = name
+        self.rows = list(rows)
+
+    def __repr__(self):
+        return "<Group {} ({})>".format(self.name, len(self.rows))
+
+
+class Table:
+    """Le classement d'une competition, tel que la source le publie."""
+
+    __slots__ = ("league", "season", "groups")
+
+    def __init__(self, league, season="", groups=()):
+        self.league = league
+        self.season = season          # "2026-27", ou vide
+        self.groups = list(groups)
+
+    @property
+    def sport(self):
+        return getattr(self.league, "sport", None) or sports.DEFAULT
+
+    @property
+    def empty(self) -> bool:
+        """Vrai quand il n'y a pas une seule ligne a montrer.
+
+        Une coupe rend un objet complet mais sans `children` du tout, et un
+        tournoi entre deux editions rend un `children` sans `entries` : les
+        deux se ressemblent assez pour ne meriter qu'une seule reponse.
+        """
+        return not any(group.rows for group in self.groups)
+
+    def __repr__(self):
+        return "<Table {} ({})>".format(self.league.slug, len(self.groups))
+
+
+def season_label(value) -> str:
+    """La saison en quelques signes : "2026-27" plutot que sa phrase entiere."""
+    found = SEASON_YEARS.match(str(value or ""))
+    return found.group(1).replace(" ", "") if found else ""
+
+
+def _stats_of(entry) -> dict:
+    """Les statistiques d'une ligne, indexees par tous leurs noms.
+
+    ESPN nomme chaque statistique deux fois - `type` ("gamesplayed") et `name`
+    ("gamesPlayed") - et les deux ne concordent pas toujours d'un sport a
+    l'autre : le rugby compte ses victoires sous `gamesWon`, le football sous
+    `wins`. On range sous les deux, en minuscules : la colonne retrouve alors
+    sa valeur quel que soit le nom qui a survecu.
+    """
+    found = {}
+    for stat in entry.get("stats") or []:
+        if not isinstance(stat, dict):
+            continue
+        value = stat.get("displayValue")
+        if value in (None, ""):
+            continue
+        for key in (stat.get("type"), stat.get("name")):
+            key = str(key or "").strip().lower()
+            if key and key not in found:
+                found[key] = str(value).strip()
+    return found
+
+
+def _rank_of(stats) -> int | None:
+    """Le rang publie par la source, ou None quand elle n'en publie pas."""
+    for key in RANK_KEYS:
+        found = _int(stats.get(key), 0)
+        if found > 0:
+            return found
+    return None
+
+
+def _parse_group(child) -> Group:
+    """Un bloc de `children` : son nom et ses lignes, rangees par leur rang.
+
+    On affiche le rang que la source publie, et on ne le calcule jamais : le
+    depart entre deux equipes a egalite se joue sur des regles propres a chaque
+    competition (difference de buts, confrontations directes, essais marques),
+    et les refaire ici finirait par mentir un jour, sur une competition qu'on
+    n'aura pas regardee.
+
+    Le tri, lui, est necessaire, et c'est une surprise de la source : un
+    championnat arrive bien trie, mais un groupe de Coupe du monde arrive dans
+    le desordre et la conference Ouest de la NHL commence a sa 4e tete de
+    serie. L'ordre de la liste ne veut donc rien dire ; le rang, si. Quand la
+    source n'en donne aucun, on garde son ordre et on numerote les lignes -
+    c'est tout ce qu'on peut faire d'honnete.
+    """
+    standings_of = child.get("standings") or {}
+    name = str(child.get("name") or child.get("shortName") or "").strip()
+
+    rows = []
+    ranked = True
+    for position, entry in enumerate(standings_of.get("entries") or [], start=1):
+        if not isinstance(entry, dict):
+            continue
+        team = entry.get("team")
+        if not isinstance(team, dict):
+            continue
+        wrapper = {"team": team}
+        stats = _stats_of(entry)
+        rank = _rank_of(stats)
+        if rank is None:
+            ranked = False
+            rank = position
+        rows.append(Row(
+            rank=rank,
+            team=_team_name(wrapper),
+            names=team_names(wrapper),
+            stats=stats,
+        ))
+
+    if ranked:
+        rows.sort(key=lambda row: row.rank)
+    return Group(name, rows)
+
+
+def parse_standings(payload: dict, league) -> Table:
+    """Transforme la reponse du classement en Table. Ne leve jamais.
+
+    Une competition ouverte a la volee prend ici le nom que la source annonce,
+    exactement comme sur le tableau de bord : `--table gre.1` doit pouvoir
+    s'afficher sous son vrai nom des la premiere requete.
+    """
+    if getattr(league, "provisional", False):
+        league.adopt_name(payload.get("name"), payload.get("abbreviation"))
+
+    children = payload.get("children")
+    children = children if isinstance(children, list) else []
+
+    season = ""
+    groups = []
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        groups.append(_parse_group(child))
+        if not season:
+            season = season_label(
+                (child.get("standings") or {}).get("seasonDisplayName"))
+
+    if not season:
+        # Le repli : la saison en cours d'apres l'en-tete. Elle peut differer
+        # de celle du classement servi - en intersaison, la source rend encore
+        # celui de la saison passee - d'ou l'ordre : le classement d'abord,
+        # l'en-tete seulement s'il n'a rien dit.
+        season = season_label((payload.get("season") or {}).get("displayName"))
+    return Table(league, season=season, groups=groups)
+
+
+def standings(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> Table:
+    """Le classement d'une competition, quel que soit son sport."""
+    sport = getattr(league, "sport", None) or sports.DEFAULT
+    url = STANDINGS_URL.format(sport=sport.code, slug=league.slug)
+    return parse_standings(_read_json(url, timeout, opener, league.slug),
+                           league)

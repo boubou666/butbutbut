@@ -101,6 +101,8 @@ butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
 butbutbut --next              # the fixtures to come, grouped by day
+butbutbut --table             # the table of the competitions you follow
+butbutbut --table om          # ... Marseille's, with their row highlighted
 butbutbut --list              # the competitions you can watch
 butbutbut --list-teams        # the teams in the competitions you follow
 butbutbut --status            # daemon, last poll, matches in play, sound, screens
@@ -265,6 +267,7 @@ say the same things, and butbutbut never pretends otherwise.
 | Event list | yes | **no** | yes, but with no flags |
 | Scorer, minute of the action | yes | **no** | yes |
 | Red cards (`--red-cards`) | yes | not applicable | yes |
+| Table (`--table`) | yes | yes, per conference | yes, bonus points included |
 
 **Hockey publishes no event list at all** - not during the game, not after it.
 You get the score, the clock and the period; never the scorer. The card says so
@@ -657,6 +660,161 @@ than letting you believe in a weekend without football.
 
 > The terminal output itself is in French, like `--scores` and `--status`: only
 > the cards follow the machine's language.
+
+### The table
+
+`--scores` says what is being played, `--next` what is coming, `--top-scorers`
+what we have seen go by. What was left is the one question a supporter asks
+without watching a match at all: **where are they in the table?**
+
+```bash
+butbutbut --table             # the table of the competitions you follow
+butbutbut --table l1          # ... of one competition
+butbutbut --table om          # ... of that team's competition, their row highlighted
+butbutbut --table l1,om       # both at once, in any order
+```
+
+```
+butbutbut : classement - Ligue 1
+
+Ligue 1 (2026-27)
+   #  Equipe                     J     G     N     P  Diff   Pts
+   1  AS Monaco                  3     3     0     0    +4     9
+   2  Paris FC                   3     2     1     0    +4     7
+   3  Lyon                       3     2     1     0    +4     7
+   ...
+> 10  Marseille                  3     1     0     2    +1     3
+   ...
+  18  AJ Auxerre                 3     0     0     3    -7     0
+```
+
+(The highlighted row is the one `--table om` was after.)
+
+The word after `--table` is read as a **competition** if the catalogue
+recognises it, and as a **team** otherwise. These are exactly the names
+`--leagues` and `--teams` already accept: `l1`, `nhl`, `top14` on one side,
+`om`, `barca`, `manu` on the other. No club is called `big5`.
+
+A country is another matter. `france` is shorthand for Ligue 1 as much as it is
+the name of a national side: the competition wins, so `--table france` prints
+Ligue 1 - and so does `--table france --leagues 6nations`, the word given to
+`--table` quietly taking precedence over `--leagues`. The same goes for
+`angleterre`, `espagne`, `italie`, `allemagne`, `portugal`, `ecosse`, `bresil`,
+`argentine`, `mexique`, `japon` and `usa`. For a table of national sides,
+naming the competition answers better anyway: `--table 6nations` shows France's
+row among the ones that give it meaning.
+
+Naming a team does not show that team's row alone: a rank on its own means
+nothing, it is the table of their competition that answers the question. Their
+row is marked with a chevron, the same sign `--scores` uses for "live" - not a
+colour, because a terminal may be black on white, or redirected into a file.
+
+`--exclude-teams` has **no effect** here, and that is deliberate: you do not
+take a team out of a table. Ranks are counted relative to one another, and a
+missing row would make a table that lies. Silencing a match, yes; punching a
+hole in a table, no.
+
+#### The columns follow the sport
+
+Rugby and hockey do not have football's notion of a table, and the columns say
+so:
+
+| Sport | Columns | What changes |
+|-------|---------|--------------|
+| Football | `J G N P Diff Pts` | the baseline |
+| Hockey | `J G P DP Diff Pts` | no draws, but **overtime losses** |
+| Rugby | `J G N P Bon Diff Pts` | **bonus points** |
+
+A hockey game is always decided, in overtime or in a shootout: showing an "N"
+column full of zeroes would be inventing a statistic. An overtime loss, on the
+other hand, is worth a point, and without the `DP` column the row's total does
+not add up. In rugby it is the bonus points that put one team ahead of another
+on equal wins. **Nothing is fabricated**: every column comes from a statistic
+the source publishes, and a missing statistic shows a dash, never a zero.
+
+The table fits in **80 columns**, even in rugby which has the most of them. A
+table that wraps onto two lines cannot be read at all.
+
+(The column headers are French abbreviations - J for games played, G for wins,
+N for draws, P for losses - like the rest of the terminal output.)
+
+#### What comes from the source, and what we do not invent
+
+The table has its own ESPN endpoint, read with the same client, the same headers
+and the same politeness as the scores:
+
+```
+https://site.api.espn.com/apis/v2/sports/<sport>/<slug>/standings
+```
+
+That is `apis/v2` and not `apis/site/v2` like the scoreboard: the second address
+answers 200 with an empty object, which looks like an off-season when it is
+merely the wrong door.
+
+**The rank is never computed.** Separating two teams on equal points follows
+rules specific to each competition - goal difference here, head-to-head there,
+tries scored elsewhere - and redoing that would end up lying one day, about a
+competition nobody was watching. We show the rank ESPN publishes (`rank` in
+football and rugby, `playoffSeed` in hockey, which has no `rank` at all).
+
+The **ordering**, on the other hand, is necessary, and it is a surprise from the
+source: a league table arrives already sorted, but a World Cup group arrives
+shuffled and the NHL's Western Conference starts at its 4th seed. So the rows
+are ordered by the published rank; when the source publishes none, we keep its
+order and number the rows.
+
+**One block, or several.** The source always puts a *list* of blocks, even when
+there is only one: a league has one, the NHL two (its conferences), a World Cup
+twelve (its groups). The block's name is only printed when there is more than
+one - for a league, the source calls its single block "French Ligue 1 2026-27",
+which would only repeat the line above.
+
+```
+butbutbut : classement - NHL
+
+NHL (2025-26)
+  Eastern Conference
+   #  Equipe                     J     G     P    DP  Diff   Pts
+   1  Carolina Hurricanes       82    53    22     7   +56   113
+   ...
+  Western Conference
+   #  Equipe                     J     G     P    DP  Diff   Pts
+   1  Colorado Avalanche        82    55    16    11   +99   121
+   ...
+```
+
+#### When there is nothing to rank
+
+A cup is played as a bracket, not as a table, and between two seasons the source
+has nothing to serve. In both cases the answer is a sentence, not an empty table
+- which would look too much like a breakdown - and it names the exact place we
+went looking:
+
+```
+butbutbut : classement - Coupe de France
+
+Aucun classement a afficher pour Coupe de France.
+  (Coupe de France : aucun classement publie sous soccer/fra.coupe_de_france)
+  (une coupe se joue en tableau ; hors saison, la source n'a rien a servir)
+```
+
+A team found nowhere gets the same treatment, and that is where a typo shows up:
+like `--next`, `--table` does not check the word against the club catalogue, a
+check that would cost one more request per competition on a command you fire off
+in passing.
+
+```
+Aucune ligne pour zzzclub dans les classements de Ligue 1.
+```
+
+**One request per competition**, one after another and spaced out, like `--next`
+and like the daemon's start-up. **If one fails, the others carry on**; when none
+of them answers, the command says so and exits with an error.
+
+```
+  (Bundesliga injoignable : HTTP 500 sur ger.1)
+  (le classement ci-dessus est donc incomplet ; les autres competitions ont repondu)
+```
 
 ### Placing the cards
 
@@ -1205,6 +1363,19 @@ goals, not enough to say when the next match falls. For that it accepts a
 (`?dates=20260908-20260915`), both ends included. That range is what lets
 `--next` cover a whole week in a single request per competition, where one day
 at a time would cost seven.
+
+The same host publishes two more endpoints, read with the same client and the
+same headers: `.../teams`, which validates what you type into `--teams`, and the
+table behind `--table`, whose address does not quite have the same shape.
+
+```
+https://site.api.espn.com/apis/v2/sports/<sport>/<code>/standings
+```
+
+`apis/v2`, not `apis/site/v2` like the scoreboard: the second address does
+exist, and answers 200 with an empty object - an off-season by appearance, the
+wrong door in reality. The difference is noted in the code so it does not have
+to be rediscovered.
 
 ### How a goal is detected
 
@@ -2067,7 +2238,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**983 tests**, with no network and no screen: the source is simulated by an
+**1024 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

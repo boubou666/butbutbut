@@ -396,6 +396,41 @@ def designates(token):
     return BY_SLUG.get(lowered)
 
 
+def names_a_league(token) -> bool:
+    """Ce mot parle-t-il d'une competition plutot que d'une equipe ?
+
+    Ecrit pour `--table`, qui accepte les deux dans le meme argument : il faut
+    savoir si "l1" designe la Ligue 1 ou un club dont personne n'a entendu
+    parler. La question se pose ici et non dans cli.py parce que la reponse est
+    faite de tout ce que ce module sait accepter - les mots-cles (`all`,
+    `big5`), les sports entiers, les alias du catalogue, et les codes ESPN
+    hors catalogue.
+
+    Sans effet de bord, contrairement a find() : repondre "oui" ne doit pas
+    inscrire une competition au passage, sans quoi une equipe mal orthographiee
+    ouvrirait un slug fantome.
+    """
+    lowered = str(token or "").strip().lower()
+    if not lowered:
+        return False
+    if lowered in _ALL or lowered in _EVERYTHING or lowered in _BIG_FIVE:
+        return True
+    if sports.find(lowered) is not None or sports.declined(lowered):
+        return True
+    for league in FULL_CATALOGUE:
+        if league.matches_token(lowered):
+            return True
+
+    # Un code ESPN hors catalogue, prefixe ou non. Le prefixe est teste sans
+    # lever : "curling:1" n'est pas une competition, et ce n'est pas ici qu'on
+    # le reproche - resolve() le dira bien mieux.
+    for separator in SPORT_SEPARATORS:
+        head, found, tail = lowered.partition(separator)
+        if found:
+            return bool(head.strip()) and bool(ANY_SLUG_SHAPE.match(tail.strip()))
+    return bool(SLUG_SHAPE.match(lowered))
+
+
 def _expand(value, default=()) -> list:
     tokens = _tokens(value)
     if not tokens:
