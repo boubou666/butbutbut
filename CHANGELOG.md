@@ -7,6 +7,34 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.6.0] - 2026-09-07
+
+### Ajoute
+
+- **La ligne de commande parle elle aussi les cinq langues.** `--help`,
+  `--status`, `--scores`, `--screens`, `--list` et `--today` suivent la langue
+  retenue, cartes comprises. Les *valeurs* aussi, pas seulement les etiquettes
+  devant : `last poll : il y a 12 s` ne se lit plus a moitie en francais.
+- La description du parseur, les metavariables (`CHEMIN`, `LISTE`, `COIN`...)
+  et les noms de langue affiches par `--status` sont traduits.
+
+### Change
+
+- **La langue est desormais reglee avant la construction du parseur.** Les
+  textes d'aide d'argparse sont traduits au moment ou on les lui donne : les
+  fixer apres l'analyse laissait `--help` en francais quoi qu'on demande, et
+  seule la variable `BUTBUTBUT_LANG` fonctionnait. `--lang de --help` sort
+  maintenant en allemand.
+- L'aide de `--lang` ne promet plus que "cette aide reste en francais" :
+  c'est precisement ce qui a change. Le journal, lui, reste francais.
+
+### Corrige
+
+- Les tests de `--status` epinglent la langue par l'environnement. Ils
+  lancaient la ligne de commande sans `--lang` tout en affirmant des libelles
+  francais : ils passaient sur une machine francaise et auraient echoue sur
+  l'integration continue, dont les machines sont anglaises.
+
 ## [1.5.0] - 2026-09-07
 
 ### Ajoute
@@ -320,7 +348,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.5.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/boubou666/butbutbut/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/boubou666/butbutbut/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/boubou666/butbutbut/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/butbutbut/compare/v1.2.0...v1.3.0

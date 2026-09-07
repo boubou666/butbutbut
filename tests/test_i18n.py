@@ -2,6 +2,8 @@ import os
 import unittest
 from unittest import mock
 
+import io
+import contextlib
 import pathlib
 
 from butbutbut import (cli, espn, i18n, journal, lang, leagues, overlay,
@@ -362,6 +364,30 @@ class TestLaProseDeLaLigneDeCommande(unittest.TestCase):
     def test_il_y_a_de_la_prose_a_traduire(self):
         # Garde-fou : si quelqu'un defait l'extraction, ce test le dit.
         self.assertGreater(len(set(self.phrases())), 80)
+
+    def test_l_aide_suit_la_langue_demandee(self):
+        """--lang doit porter jusqu'a --help.
+
+        Ecrit apres avoir constate le contraire : les textes d'aide sont
+        traduits au moment ou argparse les recoit, donc a la construction du
+        parseur. Tant que la langue etait reglee apres l'analyse, --help
+        sortait en francais quoi qu'on demande et seule BUTBUTBUT_LANG
+        marchait. Le test ne compare pas a une traduction precise -- il
+        verifie seulement que les deux aides different, ce qui suffit a dire
+        que la langue a ete prise en compte, et ne casse pas si un traducteur
+        reformule.
+        """
+        aides = {}
+        for code in ("fr", "en"):
+            sortie = io.StringIO()
+            with contextlib.redirect_stdout(sortie):
+                with self.assertRaises(SystemExit):
+                    cli.main(["--lang", code, "--help"])
+            aides[code] = sortie.getvalue()
+
+        self.assertIn("--lang", aides["fr"])
+        self.assertNotEqual(aides["fr"], aides["en"],
+                            "--help ne suit pas --lang")
 
     def test_aucune_traduction_orpheline(self):
         """Une cle qui ne correspond a aucune phrase du code est morte.
