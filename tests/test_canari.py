@@ -280,6 +280,39 @@ class TestCrossCheck(unittest.TestCase):
         self.assertTrue(any("buteur" in problem for problem in problems),
                         problems)
 
+    def test_the_form_the_source_really_writes_is_accepted(self):
+        # 90'+9' est ce qu'ESPN ecrit vraiment. Le canari doit se taire dessus.
+        raw = played()
+        for detail in raw["events"][0]["competitions"][0]["details"]:
+            detail["clock"]["displayValue"] = "90'+9'"
+        ledger = canari.Ledger()
+        tally = canari.inspect_scoreboard(raw, ledger)
+        self.assertEqual(canari.cross_check(raw, "fra.1", tally, ledger), [])
+
+    def test_a_clock_that_changes_shape_is_reported(self):
+        # La cle est la, la valeur aussi, et plus personne ne sait la lire :
+        # c'est exactement ce qui a fait taire le compteur des arrets de jeu.
+        raw = played()
+        for detail in raw["events"][0]["competitions"][0]["details"]:
+            detail["clock"]["displayValue"] = "90:00"
+        ledger = canari.Ledger()
+        tally = canari.inspect_scoreboard(raw, ledger)
+        problems = canari.cross_check(raw, "fra.1", tally, ledger)
+        self.assertTrue(any("horloge" in problem for problem in problems),
+                        problems)
+
+    def test_a_hockey_clock_is_not_held_to_a_football_minute(self):
+        # 12:34 est l'horloge normale d'un match de hockey : illisible comme
+        # minute de jeu, et ce n'est pas une anomalie.
+        raw = played()
+        for detail in raw["events"][0]["competitions"][0]["details"]:
+            detail["clock"]["displayValue"] = "12:34"
+        ledger = canari.Ledger()
+        tally = canari.inspect_scoreboard(raw, ledger)
+        problems = canari.cross_check(raw, "nhl", tally, ledger)
+        self.assertFalse(any("horloge" in problem for problem in problems),
+                         problems)
+
 
 class TestDig(unittest.TestCase):
     def test_it_walks_dotted_paths_and_indexes(self):
