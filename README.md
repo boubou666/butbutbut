@@ -1771,6 +1771,13 @@ existe pourtant, et repond 200 avec un objet vide - une intersaison en apparence
 une mauvaise porte en realite. La difference est notee dans le code pour ne pas
 avoir a la redecouvrir.
 
+Tout ce qu'on sait de cette source - les parametres qu'elle accepte, la forme
+exacte de ses reponses, ses en-tetes, ses codes d'erreur, ses pieges, et les
+218 competitions de football qu'elle expose - est reuni dans
+[docs/api-espn.md](docs/api-espn.md) : le contrat qu'on s'ecrit a soi-meme,
+puisque le fournisseur n'en ecrit pas. Chaque ligne y a ete verifiee contre la
+vraie source, et le document donne les commandes pour tout refaire.
+
 ### Comment un but est detecte
 
 A chaque releve, le score de chaque match est compare a celui du releve

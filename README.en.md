@@ -1764,6 +1764,14 @@ exist, and answers 200 with an empty object - an off-season by appearance, the
 wrong door in reality. The difference is noted in the code so it does not have
 to be rediscovered.
 
+Everything we know about this source - the parameters it accepts, the exact
+shape of its responses, its headers, its error codes, its traps, and the 218
+football competitions it exposes - is gathered in
+[docs/api-espn.en.md](docs/api-espn.en.md): the contract we write for
+ourselves, since the provider writes none. Every line of it was checked
+against the real source, and the document gives the commands to redo all of
+it.
+
 ### How a goal is detected
 
 On every poll, each match's score is compared with the one from the previous

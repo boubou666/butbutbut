@@ -291,6 +291,50 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   tout le football et non le seul catalogue masculin. Ce que `all` emporte est
   une question de surveillance, pas de nom de fichier.
 
+### Ajoute
+
+- **L'API d'ESPN est enfin documentee** : `docs/api-espn.md`, et sa traduction
+  `docs/api-espn.en.md`. Le projet entier repose sur une source publique mais
+  **non documentee** - personne n'en publie la forme, personne ne previendra le
+  jour ou un champ changera de nom. Le code la lit defensivement, le canari la
+  surveille tous les jours ; il manquait le troisieme etage, celui qui explique
+  ce qu'on a compris de la source et pourquoi le code est ecrit comme il l'est.
+  Chaque chiffre du document a ete releve contre la vraie source, en
+  production, le 7 septembre 2026 : les cinq endpoints, leurs parametres, la
+  forme exacte des reponses, les en-tetes, les codes d'erreur, les motifs
+  d'URL des ecussons, les 243 competitions des trois sports, et douze pieges
+  qui ont deja coute quelque chose. Ce qui n'a pas pu etre observe - les etats
+  en cours de jeu, aucun match ne se jouant au moment du releve - est marque
+  comme tel plutot que devine, et l'annexe D donne les commandes pour tout
+  refaire.
+- **Quatre questions ouvertes y trouvent leur reponse**, releve a l'appui :
+  - **les requetes conditionnelles sont impossibles.** La source n'envoie ni
+    `ETag` ni `Last-Modified` : il n'y a rien a poser dans un `If-None-Match`.
+    En revanche elle honore `Accept-Encoding: gzip`, et le tableau de bord de
+    la Ligue 1 tombe de 33 832 a 4 145 octets - huit fois moins pour trois
+    lignes de stdlib. C'est la seule economie de trafic reellement disponible,
+    et elle est partie dans la foulee (voir l'entree ci-dessus) ;
+  - **les buteurs du hockey existent**, mais pas dans le tableau de bord :
+    dans `/summary?event=<id>`, sous `plays[].participants[].type ==
+    "scorer"`, passeurs compris. Le probleme n'est pas la donnee, c'est son
+    poids - 450 ko par match - donc son moment : apres un but detecte, pour ce
+    match-la seulement ;
+  - **les noms traduits, c'est non.** `lang=es` et `lang=pt` traduisent
+    vraiment les noms de competition et les libelles d'etat, mais `lang=fr` ne
+    fait rien, et **les noms d'equipes ne bougent dans aucune langue** - ce qui
+    otait l'interet principal, puisque c'est sur eux que travaille `teams.py` ;
+  - **le `User-Agent` peut faire refuser la requete.** Un Akamai filtre devant
+    l'API, et le refus est un 403 **en HTML**, pas un JSON d'erreur. Se faire
+    passer pour un navigateur (`Mozilla/5.0`, une chaine Chrome complete) est
+    justement ce qui fait refuser ; l'en-tete du projet, qui se nomme et donne
+    l'URL du depot, passe. C'est une ligne a ne pas raccourcir en croyant
+    faire propre.
+- Deux precisions au passage, verifiees contre la source : le tableau de bord
+  **tronque a 100 matchs** sans le dire (`?dates=2026` sur une saison de
+  Premier League en rend 100 sur 380, et rien ne signale la coupure), et les
+  ecussons de hockey **repondent bien sous le numero d'equipe** -
+  `nhl/500/1.png` est Boston - la ou un commentaire du depot en doutait.
+
 ## [1.9.0] - 2026-09-07
 
 ### Corrige
