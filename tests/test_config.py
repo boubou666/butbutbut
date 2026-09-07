@@ -7,6 +7,8 @@ from unittest import mock
 
 from butbutbut import cli, config
 
+from helpers import isolate_data_dir
+
 
 def write(path, text):
     Path(path).write_text(text, encoding="utf-8")
@@ -220,6 +222,39 @@ class TestChosenPath(ConfigCase):
     def test_the_data_dir_holds_the_config_file(self):
         self.assertEqual(cli.paths()["config"].name, config.FILENAME)
         self.assertEqual(cli.paths()["config"].parent, cli.paths()["data"])
+
+
+class TestTheMachineIsNotADecor(unittest.TestCase):
+    """Le garde-fou de helpers.isolate_data_dir, et la preuve qu'il sert.
+
+    Vingt-cinq tests tombaient sur une machine ou butbutbut est installe et
+    configure, et nulle part ailleurs : ils lisaient le VRAI fichier de
+    configuration de qui developpe. La CI restait verte, ses machines n'ayant
+    aucun fichier - le pire des cas, un test qui ne casse que chez celui qui
+    se sert du programme.
+    """
+
+    def test_the_isolation_moves_every_path_off_the_machine(self):
+        vrais = cli.paths()
+        isoles = isolate_data_dir(self)
+        self.assertEqual(sorted(isoles), sorted(vrais))
+        for cle, chemin in isoles.items():
+            self.assertNotEqual(chemin, vrais[cle], cle)
+
+    def test_the_isolated_config_is_the_one_that_is_read(self):
+        """La preuve que le chemin detourne est bien celui qui compte.
+
+        Sans quoi l'isolation pourrait deplacer un chemin que personne ne lit,
+        et le fichier de la machine continuerait de parler par-dessous.
+        """
+        chemins = isolate_data_dir(self)
+        chemins["data"].mkdir(parents=True, exist_ok=True)
+        write(chemins["config"],
+              "[butbutbut]\ninterval = 42\n")
+
+        parser = cli.build_parser()
+        config.apply(parser, config.path_from([], cli.paths()["config"]))
+        self.assertEqual(parser.parse_args([]).interval, 42)
 
 
 class TestExampleFile(ConfigCase):

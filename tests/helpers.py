@@ -5,6 +5,45 @@ import json
 import struct
 import zlib
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import mock
+
+from butbutbut import cli
+
+
+# --- La machine de qui lance les tests n'est pas un decor --------------------
+
+def isolate_data_dir(test):
+    """Detourne le dossier de donnees vers un temporaire. Rend `cli.paths()`.
+
+    A appeler dans le setUp de TOUT test qui traverse `cli.main()` ou
+    `cli.paths()`. Sans lui, le test lit le dossier de donnees de la machine
+    qui le lance, donc le VRAI fichier de configuration de qui developpe - et
+    `config.apply()` en verse le contenu dans les defauts du parseur avant que
+    la ligne de commande ne soit analysee.
+
+    Ce n'est pas une precaution de principe : sur une machine ou butbutbut est
+    installe et configure, vingt-cinq tests tombaient pour cette seule raison.
+    `--table` suivait la Ligue 2 et ne surveillait qu'un club, parce que le
+    fichier le demande, la ou le test n'avait demande ni l'une ni l'autre. Et
+    la CI restait verte, ses machines n'ayant aucun fichier : le pire des cas,
+    un test qui ne casse que chez celui qui se sert du programme.
+
+    Le detournement passe par `cli.data_dir`, une fonction et non une
+    constante, et c'est la seule porte - la configuration, le journal, l'etat,
+    le pid, le son et les ecussons en descendent tous. Isoler la racine les
+    isole donc tous, y compris ce qui s'ajoutera demain.
+
+    Le nettoyage est pose sur le test (`addCleanup`) : il a lieu meme quand le
+    test echoue, et il n'y a pas de tearDown a oublier.
+    """
+    tmp = TemporaryDirectory()
+    patcher = mock.patch.object(cli, "data_dir", return_value=Path(tmp.name))
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    test.addCleanup(tmp.cleanup)
+    return cli.paths()
 
 
 def goal_detail(team_id, minute="35'", scorer="C. Arcus", own_goal=False,

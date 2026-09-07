@@ -17,7 +17,8 @@ from butbutbut import (cli, espn, hook, i18n, journal, leagues, pinned,
                        presenting, silence, sound, speech, state, teams,
                        watcher)
 
-from helpers import at_local_hour, event, goal_detail, in_minutes, payload
+from helpers import (at_local_hour, event, goal_detail, in_minutes,
+                     isolate_data_dir, payload)
 
 
 _LANGUE = {}
@@ -42,6 +43,10 @@ def tearDownModule():
 
 class TestParser(unittest.TestCase):
     def setUp(self):
+        # build_parser() seul ne lit rien, mais les tests de cette classe
+        # passent par main(), qui verse le fichier de configuration dans les
+        # defauts avant d'analyser argv.
+        isolate_data_dir(self)
         self.parser = cli.build_parser()
 
     def test_defaults(self):
@@ -179,6 +184,9 @@ class TestEveryCommandIsReachable(unittest.TestCase):
     supprimant une fonction voisine : la suite passait quand meme, parce que
     plus aucun test n'entrait dans ces commandes.
     """
+
+    def setUp(self):
+        self.paths = isolate_data_dir(self)
 
     def test_all_dispatch_targets_exist(self):
         source = Path(cli.__file__).read_text(encoding="utf-8")
@@ -322,13 +330,7 @@ class TestActivity(unittest.TestCase):
     ))
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        root = Path(self.tmp.name)
-        patcher = mock.patch.object(cli, "data_dir", return_value=root)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
 
     def run_cli(self, argv):
         matches = espn.parse(payload(event(state="in", home_score=1)),
@@ -453,13 +455,7 @@ class TestRecaps(unittest.TestCase):
               "But de K. Mbappe (50')")
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
 
     def write_log(self, *rows):
         """Ecrit un journal a partir de (jour, heure, texte)."""
@@ -698,13 +694,7 @@ class TestStats(unittest.TestCase):
     """--stats : les formes du journal, sur des journaux fabriques."""
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
 
     def write_log(self, *rows):
         lines = ["{} {}  {}".format(day, clock, text)
@@ -1011,13 +1001,7 @@ class TestExport(unittest.TestCase):
     ALAVES = "Alav\u00e9s"                 # un accent, dans un troisieme
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
 
     def write_log(self, *rows):
         lines = ["{} {}  {}".format(day, clock, text)
@@ -1527,13 +1511,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
         self.paths["data"].mkdir(parents=True, exist_ok=True)
         self.args = cli.build_parser().parse_args(["--quiet", "--no-sound"])
 
@@ -1670,13 +1648,7 @@ class TestPinOption(unittest.TestCase):
     """--pin : une equipe, une carte, et un mot verifie comme --teams."""
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
         self.paths["data"].mkdir(parents=True, exist_ok=True)
 
     def test_it_is_opt_in(self):
@@ -1764,13 +1736,7 @@ class TestSpoilerFreeLoops(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
         self.paths["data"].mkdir(parents=True, exist_ok=True)
         self.args = cli.build_parser().parse_args(["--quiet"])
 
@@ -1880,13 +1846,7 @@ class TestQuietHoursLoops(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
         self.paths["data"].mkdir(parents=True, exist_ok=True)
         self.args = cli.build_parser().parse_args(["--quiet"])
 
@@ -2054,13 +2014,7 @@ class TestTheVoiceInTheLoops(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
         self.paths["data"].mkdir(parents=True, exist_ok=True)
         self.args = cli.build_parser().parse_args(["--quiet", "--no-sound",
                                                    "--speak"])
@@ -2208,13 +2162,7 @@ class TestSpoilerFreeCommands(unittest.TestCase):
                  ("Stade Rennais", "Rennes", "REN")]
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.paths = cli.paths()
+        self.paths = isolate_data_dir(self)
 
     def run_cli(self, argv):
         matches = espn.parse(
@@ -2345,13 +2293,7 @@ class TestContextualSound(unittest.TestCase):
     """Le pont entre un but et le nom des fichiers du dossier `sound`."""
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.folder = cli.paths()["sound"]
+        self.folder = isolate_data_dir(self)["sound"]
         self.folder.mkdir(parents=True)
 
     def drop(self, *names):
@@ -2448,15 +2390,9 @@ class TestNamedSound(unittest.TestCase):
     """`--sound-for om=cri.wav` : le mot est donne, et le chemin verifie tot."""
 
     def setUp(self):
-        self.tmp = TemporaryDirectory()
-        patcher = mock.patch.object(cli, "data_dir",
-                                    return_value=Path(self.tmp.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(self.tmp.cleanup)
-        self.folder = cli.paths()["sound"]
+        self.folder = isolate_data_dir(self)["sound"]
         self.folder.mkdir(parents=True)
-        self.mine = Path(self.tmp.name) / "cris"
+        self.mine = cli.paths()["data"] / "cris"
         self.mine.mkdir()
 
     def cri(self, name="cri.wav") -> Path:
@@ -2759,6 +2695,9 @@ class TestNextFormatting(unittest.TestCase):
 
 class TestNextCommand(unittest.TestCase):
     """--next de bout en bout, sans reseau."""
+
+    def setUp(self):
+        isolate_data_dir(self)
 
     def test_it_groups_by_day_then_by_competition(self):
         code, printed = run_next(

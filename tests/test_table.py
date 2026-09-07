@@ -13,7 +13,7 @@ from unittest import mock
 
 from butbutbut import cli, espn, i18n, leagues, sports
 
-from helpers import standing_entry, standings_payload
+from helpers import isolate_data_dir, standing_entry, standings_payload
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 NHL = leagues.BY_SLUG["nhl"]
@@ -389,6 +389,9 @@ class TestTableRequest(unittest.TestCase):
 
 class TestTableCommand(unittest.TestCase):
     """--table de bout en bout, sans reseau."""
+
+    def setUp(self):
+        isolate_data_dir(self)
 
     def test_it_prints_the_table_of_the_named_competition(self):
         code, printed = run_table(["--table", "l1"],

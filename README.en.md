@@ -3096,7 +3096,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1463 tests**, with no network and no screen: the source is simulated by an
+**1465 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
@@ -3105,6 +3105,14 @@ a set of real colours - what comes out is always readable, or it is the
 competition's colour. Recording, for its part, is checked by a full round trip:
 a match played live against a simulated source, boxed up, then replayed - and
 the two must produce exactly the same sequence of events.
+
+No machine either: a test never reads the data directory of whoever runs it.
+`helpers.isolate_data_dir()` redirects it to a temporary one, and it is the
+configuration that makes this necessary - `config.apply()` pours the file into
+the parser's defaults before the command line is parsed, so a developer
+following Ligue 2 saw it turn up in tests that had never asked for it. CI never
+saw a thing, its machines having no file: the worst kind of failure, one that
+breaks only for the person actually using the program.
 
 One single program in the repository really talks to ESPN, and it is not in
 this suite: [the canary](#the-canary), `python tools/canari.py`.
