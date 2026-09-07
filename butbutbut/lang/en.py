@@ -51,8 +51,6 @@ MESSAGES = {
         "  polling     : {}s live / {}s idle",
     "  donnees     : {}": "  data        : {}",
     "  (absent, voir --write-config)": "  (missing, see --write-config)",
-    "  son         : {}{}": "  sound       : {}{}",
-    " (+{} autre(s), tirage au hasard)": " (+{} other(s), picked at random)",
     "  son         : {} ({})": "  sound       : {} ({})",
     "fourni": "bundled",
     "corne synthetisee": "synthesised horn",

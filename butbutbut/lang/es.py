@@ -64,8 +64,6 @@ MESSAGES = {
         "  cadencia    : {}s en directo / {}s en reposo",
     "  donnees     : {}": "  datos       : {}",
     "  (absent, voir --write-config)": "  (ausente, ver --write-config)",
-    "  son         : {}{}": "  sonido      : {}{}",
-    " (+{} autre(s), tirage au hasard)": " (+{} otro(s), elegido al azar)",
     "  son         : {} ({})": "  sonido      : {} ({})",
     "fourni": "incluido",
     "corne synthetisee": "bocina sintetizada",

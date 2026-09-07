@@ -61,7 +61,6 @@ MESSAGES = {
     "'-' = but retire par la VAR ({}).": "'-' = Tor vom VAR aberkannt ({}).",
     '  equipes     : {}': '  Teams       : {}',
     '  competitions: {}': '  Wettbewerbe : {}',
-    '  son         : {}{}': '  Ton         : {}{}',
     '  son         : {} ({})': '  Ton         : {} ({})',
     '  lecteur     : winsound + MCI (integres)':
         '  Player      : winsound + MCI (eingebaut)',
@@ -206,7 +205,6 @@ MESSAGES = {
     'fourni': 'mitgeliefert',
     'corne synthetisee': 'erzeugte Fanfare',
     # 'ausgelost' evite le 'zufaellig' qui demanderait un trema.
-    ' (+{} autre(s), tirage au hasard)': ' (+{} weitere, eine wird ausgelost)',
     'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)':
         'KEINER (mpv/ffmpeg/pipewire/alsa-utils installieren)',
     'detecte (la carte masquee est notee au journal)':

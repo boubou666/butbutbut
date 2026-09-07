@@ -83,8 +83,6 @@ MESSAGES = {
         '  squadre     : {}',
     '  competitions: {}':
         '  competizioni: {}',
-    '  son         : {}{}':
-        '  suono       : {}{}',
     '  son         : {} ({})':
         '  suono       : {} ({})',
     '  lecteur     : winsound + MCI (integres)':
@@ -264,8 +262,6 @@ MESSAGES = {
         ' su {} in programma',
     '  (absent, voir --write-config)':
         '  (assente, vedi --write-config)',
-    ' (+{} autre(s), tirage au hasard)':
-        ' (+{} altri, scelto a sorte)',
     'fourni':
         'incluso',
     'corne synthetisee':
