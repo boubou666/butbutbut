@@ -1160,6 +1160,63 @@ Un mardi soir sans Bundesliga, la Bundesliga est interrogee toutes les cinq
 minutes. En cas de coupure reseau, l'attente double a chaque echec (plafond
 5 min) et la reprise est notee dans le journal.
 
+### Le canari
+
+Cette source n'est documentee nulle part, et personne ne nous previendra le
+jour ou `penaltyKick` sera renomme ou `athletesInvolved` deplace. Rien ne
+casserait : la lecture est defensive, donc le daemon continuerait de tourner -
+il cesserait simplement d'annoncer les penaltys. Une panne muette, la pire
+espece. Et les 523 tests n'y verraient rien : c'est eux qui fabriquent la
+reponse d'ESPN.
+
+D'ou un canari, qu'on peut lancer a la main :
+
+```bash
+python tools/canari.py
+python tools/canari.py --leagues fra.1,ger.1 --dates 20250517
+```
+
+Il interroge la source pour de vrai, puis verifie que chaque cle lue par
+`butbutbut/espn.py` est encore la, et du bon type. Il va meme repasser la
+reponse a `espn.parse()`, le code que le daemon execute : des cles presentes
+qui ne produisent plus ni match, ni but, ni buteur seraient une derive tout
+aussi grave. Le rapport donne une ligne par cle :
+
+```
+  ok           competitor.team.color                        couleur hex     6/6
+  ok           detail.penaltyKick                           booleen         16/16
+  MANQUE       detail.athletesInvolved[0].shortName         texte non vide  0/16
+```
+
+Trois verdicts, et c'est la nuance qui compte :
+
+| Verdict | Ce que ca dit |
+| --- | --- |
+| `ok` | la cle est la, avec la bonne tete |
+| `MANQUE` / `TYPE` | elle a disparu ou change de forme - sortie non nulle |
+| `non verifie` | rien de cette espece ne s'est presente (aucun but ce jour-la) : ce n'est pas un echec |
+
+Un mardi de juillet, le tableau du jour peut etre vide : le canari ne crie pas
+au loup pour ca. Il redemande alors les quatre derniers mois d'un coup
+(`?dates=AAAAMMJJ-AAAAMMJJ`), de quoi retomber sur des matchs joues - et donc
+sur des buts a inspecter - en toute saison.
+
+Il tourne aussi tout seul une fois par jour
+([`canari.yml`](.github/workflows/canari.yml)), et **jamais sur un push ni une
+pull request** : la CI ordinaire doit rester hors reseau et deterministe, sans
+quoi une panne d'ESPN repeindrait en rouge des changements qui n'y sont pour
+rien - et on apprendrait vite a ignorer le rouge. Un canari rouge, lui, ouvre
+une issue avec son rapport.
+
+**Et quand il vire au rouge ?** Le rapport nomme la cle, ce qui etait attendu,
+et combien de fois elle manquait. Tout ce qui la lit vit dans
+`butbutbut/espn.py` (`parse()`, `_parse_details()`, les `team_*()`). Reste a
+decider : la source l'a renommee (on suit), deplacee (on va la chercher
+ailleurs), ou supprimee (on retire la fonctionnalite plutot que d'afficher du
+vide). Le changement se repercute ensuite dans les charges utiles fabriquees
+par `tests/helpers.py`, sans quoi la suite hors reseau continuerait de valider
+un monde qui n'existe plus.
+
 ---
 
 ## Ce qui se passe a l'ecran
@@ -1744,6 +1801,9 @@ de couleurs reelles - ce qui sort est toujours lisible, ou c'est la couleur de
 la competition. L'enregistrement, lui, est verifie par un aller-retour complet :
 un match joue en direct contre une source simulee, mis en boite, puis rejoue -
 et les deux doivent rendre exactement la meme suite d'evenements.
+
+Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
+suite : c'est [le canari](#le-canari), `python tools/canari.py`.
 
 ---
 

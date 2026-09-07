@@ -1156,6 +1156,63 @@ On a Tuesday evening with no Bundesliga, the Bundesliga is polled every five
 minutes. If the network drops, the wait doubles on every failure (capped at
 5 min) and the recovery is noted in the log.
 
+### The canary
+
+That source is documented nowhere, and nobody will warn us the day
+`penaltyKick` gets renamed or `athletesInvolved` moved. Nothing would break:
+the reading is defensive, so the daemon would keep running - it would simply
+stop announcing penalties ever again. A silent failure, the worst kind. And
+the 523 tests would see nothing of it: they are the ones fabricating ESPN's
+reply.
+
+Hence a canary, which you can run by hand:
+
+```bash
+python tools/canari.py
+python tools/canari.py --leagues fra.1,ger.1 --dates 20250517
+```
+
+It queries the source for real, then checks that every key read by
+`butbutbut/espn.py` is still there, and of the right type. It even hands the
+reply back to `espn.parse()`, the very code the daemon runs: keys that are
+present but no longer yield a match, a goal or a scorer would be just as
+serious a drift. The report gives one line per key:
+
+```
+  ok           competitor.team.color                        couleur hex     6/6
+  ok           detail.penaltyKick                           booleen         16/16
+  MANQUE       detail.athletesInvolved[0].shortName         texte non vide  0/16
+```
+
+Three verdicts, and the nuance is the whole point:
+
+| Verdict | What it means |
+| --- | --- |
+| `ok` | the key is there, with the right shape |
+| `MANQUE` / `TYPE` | it is gone, or changed shape - non-zero exit code |
+| `non verifie` | nothing of that kind showed up (no goal that day): this is not a failure |
+
+On a Tuesday in July the day's board can be empty: the canary does not cry
+wolf over that. It then asks again for the last four months in one go
+(`?dates=YYYYMMDD-YYYYMMDD`), enough to land on matches that were actually
+played - and therefore on goals to inspect - in any season.
+
+It also runs on its own once a day
+([`canari.yml`](.github/workflows/canari.yml)), and **never on a push or a
+pull request**: the ordinary CI must stay offline and deterministic, otherwise
+an ESPN outage would paint changes red that have nothing to do with it - and
+we would soon learn to ignore red. A red canary, for its part, opens an issue
+carrying its report.
+
+**And when it does turn red?** The report names the key, what was expected,
+and how many times it was missing. Everything that reads it lives in
+`butbutbut/espn.py` (`parse()`, `_parse_details()`, the `team_*()`). Then it
+is a decision: the source renamed it (follow), moved it (go and fetch it
+elsewhere), or dropped it (remove the feature rather than display a blank).
+The change then has to reach the payloads fabricated by `tests/helpers.py`,
+otherwise the offline suite would keep validating a world that no longer
+exists.
+
 ---
 
 ## What happens on screen
@@ -1743,6 +1800,9 @@ a set of real colours - what comes out is always readable, or it is the
 competition's colour. Recording, for its part, is checked by a full round trip:
 a match played live against a simulated source, boxed up, then replayed - and
 the two must produce exactly the same sequence of events.
+
+One single program in the repository really talks to ESPN, and it is not in
+this suite: [the canary](#the-canary), `python tools/canari.py`.
 
 ---
 

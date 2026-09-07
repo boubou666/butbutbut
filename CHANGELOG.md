@@ -9,6 +9,32 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Un canari qui previent quand la source change** (`python tools/canari.py`).
+  Tout butbutbut repose sur une API publique mais non documentee : le jour ou
+  ESPN renommera `penaltyKick` ou deplacera `athletesInvolved`, rien ne
+  casserait - le daemon cesserait simplement d'annoncer les penaltys, en
+  silence. Le canari interroge la source pour de vrai et verifie que chaque
+  cle lue par `butbutbut/espn.py` est encore la et du bon type, puis repasse
+  la reponse a `espn.parse()` pour s'assurer qu'elle produit toujours des
+  matchs, des buts et un buteur. Une cle disparue vaut une sortie non nulle.
+- Le canari distingue **une cle qui manque** d'**une cle qu'on n'a pas pu
+  regarder** : un mardi de juillet sans un match au programme, il le dit et
+  sort vert plutot que de crier au loup. Il redemande alors les quatre
+  derniers mois d'un coup (`?dates=AAAAMMJJ-AAAAMMJJ`), de quoi retomber sur
+  des buts a inspecter en toute saison.
+- Un rendez-vous quotidien dans `.github/workflows/canari.yml`
+  (`schedule` + `workflow_dispatch`), qui ouvre une issue avec le rapport
+  quand le canari vire au rouge. **Jamais sur push ni pull request** : la CI
+  ordinaire reste hors reseau et deterministe, sans quoi une panne d'ESPN
+  repeindrait en rouge des changements qui n'y sont pour rien.
+- 21 tests hors reseau pour le canari lui-meme (`tests/test_canari.py`) : une
+  charge utile complete, les memes amputees d'une cle ou porteuses d'une
+  valeur du mauvais type, et une sans le moindre match.
+
+
+
+### Ajoute
+
 - **`--next` : les prochains matchs.** `--scores` disait ce qui se joue
   aujourd'hui, `--next` repond a la question d'apres - c'est quand, le prochain
   match ? Groupe par jour puis par competition, a l'heure locale de la machine,
