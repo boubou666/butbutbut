@@ -1510,16 +1510,65 @@ World Cup WELTMEISTERSCHAFT. The ones whose name is a proper noun are left
 alone - the Bundesliga, Serie A or the Coupe de France are spelled the same
 everywhere.
 
-The help, `--status`, `--scores`, `--screens`, `--list` and `--today` follow,
-down to the values they print - `il y a 12 s` becomes `vor 12 s`, not just the
-label in front of it.
+**Every** command follows, down to the values they print - `il y a 12 s`
+becomes `vor 12 s`, not just the label in front of it: the help, `--status`,
+`--scores`, `--next`, `--table`, `--screens`, `--list`, `--list-teams`,
+`--today`, `--week`, `--month`, `--since`, `--top-scorers`, `--stats`,
+`--export` and `--test-hook`.
 
-**What stays in French**: the log, and **by choice**. `--today` reads it back,
-and a file written before a language change would otherwise be half unreadable
-to the parser. So a card can read `TOR!` while the log records `BUT`.
+The columns hold in all five languages. That constraint is what decides how a
+`--status` label is translated: the colon lands on the same character
+everywhere, abbreviating where it must (`rattrapage` becomes `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+
+The `--table` column headings follow the same rule, and for the very reason
+they were a problem: `G`, `N`, `P` are the initials of gagne, nul and perdu,
+and mean nothing to an English reader. They become `W D L`, `G E P`, `V N P`,
+`S U N` - each fitting a six-character column, which a test checks language by
+language rather than trusting the eye.
+
+**What stays in French**:
+
+- **the log, and by choice.** `--today` reads it back, and a file written
+  before a language change would otherwise be half unreadable to the parser.
+  So a card can read `TOR!` while the log records `BUT` - and a line quoted
+  back by `--today` stays in the language it was written in;
+- **dates.** Weekday names (`lundi`, `mar.`), `(aujourd'hui)` and `(demain)`,
+  and the `--next` countdown (`dans 3 h`) are hard-coded in `cli.py` and never
+  reach the catalogue;
+- **the `--status` values that also go to the log.** Three families, one
+  reason for all three: the same sentence serves the screen AND a log line,
+  which stays French. The `silence` and `voice` lines
+  (`silence.describe()`, `speech.describe()`), the `equipes` line
+  (`teams.Filter.describe()`, which the daemon also writes at startup), and
+  the detail of a named sound it cannot play (`sound.unusable()`, which the
+  log repeats when a file vanishes mid-evening). The labels themselves are
+  translated;
+- **the commented configuration file** written by `--write-config`, and the
+  six messages that reject an impossible argument: the four at startup
+  (`--speed 0`, `--record` together with `--replay`, `--retry-fullscreen` and
+  `--quiet-while-presenting` off Windows) and the two in replay (an unreadable
+  recording, a recording that names no recognisable competition);
+- **the sport name inside one templated phrase.** `tout le {} (N competitions)`
+  gets the name of the sport, which `sports.py` keeps in French for the log:
+  translating the frame would produce a half-translated sentence. The catalogue
+  headings themselves are translated (`Ice hockey (on request)`, `Eishockey
+  (auf Wunsch)`).
 
 A phrase a catalogue does not carry falls back to French rather than
-disappearing: an unfinished translation leaves the program usable.
+disappearing: an unfinished translation leaves the program usable. That is what
+let seven commands ship in French across all five languages without anything
+breaking - and without anyone noticing. A test now compares, language by
+language, the phrases the code hands over for translation against what the
+catalogues carry: whatever stays in French is named there one by one, with its
+reason.
+
+That guard has an exact reach, and it is worth stating: it only sees what goes
+**through `tr()`**. A hard-coded sentence, never handed over for translation,
+is invisible to it - which is the case for the three families above and for
+weekday names. It stops the debt from coming back through the door it used
+seven times; it does not replace looking at the screen in all five languages.
 
 Precedence, strongest first:
 
@@ -2643,7 +2692,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1227 tests**, with no network and no screen: the source is simulated by an
+**1234 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
