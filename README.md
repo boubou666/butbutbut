@@ -995,6 +995,14 @@ pas celle du journal - on parle a qui regarde l'ecran, pas a qui relira
 l'option :
 
 ```
+  voix        : inactive (voir --speak) - PowerShell (System.Speech) parlerait
+```
+
+C'est la reponse qui compte, parce qu'elle arrive avant d'avoir rien installe :
+une machine ou rien ne parle le dit la, et pas au premier but. L'option posee,
+la meme ligne change de temps :
+
+```
   voix        : PowerShell (System.Speech), dans la langue des cartes
 ```
 

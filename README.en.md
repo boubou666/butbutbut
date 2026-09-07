@@ -996,6 +996,14 @@ screen, not to whoever will read `--today` tomorrow morning.
 the option:
 
 ```
+  voix        : inactive (voir --speak) - PowerShell (System.Speech) parlerait
+```
+
+That is the answer that matters, because it comes before you have installed
+anything: a machine where nothing can speak says so there, not at the first
+goal. With the option set, the same line changes tense:
+
+```
   voix        : PowerShell (System.Speech), dans la langue des cartes
 ```
 
