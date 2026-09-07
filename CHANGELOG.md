@@ -312,7 +312,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
     `ETag` ni `Last-Modified` : il n'y a rien a poser dans un `If-None-Match`.
     En revanche elle honore `Accept-Encoding: gzip`, et le tableau de bord de
     la Ligue 1 tombe de 33 832 a 4 145 octets - huit fois moins pour trois
-    lignes de stdlib. C'est la seule economie de trafic reellement disponible ;
+    lignes de stdlib. C'est la seule economie de trafic reellement disponible,
+    et elle est partie dans la foulee (voir l'entree ci-dessus) ;
   - **les buteurs du hockey existent**, mais pas dans le tableau de bord :
     dans `/summary?event=<id>`, sous `plays[].participants[].type ==
     "scorer"`, passeurs compris. Le probleme n'est pas la donnee, c'est son

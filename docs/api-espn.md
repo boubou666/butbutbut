@@ -124,8 +124,10 @@ raccourcir en croyant faire propre.
 
 L'API repond `Vary: Accept-Encoding` et honore `Accept-Encoding: gzip`. Sur le
 tableau de bord de la Ligue 1 : **33 832 octets sans, 4 145 avec**, soit huit
-fois moins. Rien a decoder a la main, `gzip.decompress` suffit. butbutbut ne
-le demande pas aujourd'hui (voir la section 12).
+fois moins ; sur un tour complet de `--leagues all`, 1 355 ko contre 148 ko.
+Rien a decoder a la main, `gzip.decompress` suffit. **butbutbut le demande
+depuis la 1.10.0** : c'est ce releve qui a decide de la question, faute de
+pouvoir faire mieux (voir juste en dessous).
 
 ### Le cache, et ce qu'il n'y a pas
 
@@ -707,13 +709,18 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
 
 ## 12. Ce qu'on pourrait en tirer
 
-Quatre pistes que ce releve ouvre, avec leur arbitrage.
+Quatre pistes que ce releve ouvre, avec leur arbitrage. La premiere est deja
+partie ; les trois autres attendent.
 
-**Demander gzip.** Huit fois moins d'octets sur le fil, pour trois lignes dans
-`download()` et zero dependance (`gzip` est dans la stdlib). C'est la seule
-economie de trafic vraiment disponible, puisque les requetes conditionnelles ne
-le sont pas. A verifier tout de meme : ce que ca change sur une machine lente,
-et le comportement d'un proxy d'entreprise qui recompresse.
+**Demander gzip - fait.** Huit fois moins d'octets sur le fil, pour une ligne
+dans `headers()`, une decompression dans `download()` et zero dependance
+(`gzip` est dans la stdlib). C'etait la seule economie de trafic disponible,
+puisque les requetes conditionnelles ne le sont pas ; elle est en place depuis
+la 1.10.0. Le piege d'implementation valait le detour : on reconnait un flux
+compresse a ses **deux premiers octets** et non a l'en-tete
+`Content-Encoding`, parce qu'un proxy qui decompresse en chemin ne pense pas
+toujours a retirer l'en-tete - et parce qu'une reponse en clair traverse alors
+le meme chemin sans cas particulier.
 
 **Les buteurs du hockey.** Ils existent, dans `/summary?event=<id>`, sous
 `plays[].participants[].type == "scorer"`. Le cout est le probleme : 450 ko par

@@ -122,8 +122,10 @@ in the name of tidiness.
 
 The API answers `Vary: Accept-Encoding` and honours `Accept-Encoding: gzip`.
 On the Ligue 1 scoreboard: **33,832 bytes without, 4,145 with**, eight times
-less. Nothing to decode by hand, `gzip.decompress` is enough. butbutbut does
-not ask for it today (see section 12).
+less; over a full round of `--leagues all`, 1,355 kB against 148 kB. Nothing to
+decode by hand, `gzip.decompress` is enough. **butbutbut has asked for it since
+1.10.0**: this survey is what settled the question, for want of anything better
+(see just below).
 
 ### The cache, and what is missing from it
 
@@ -696,13 +698,17 @@ The ones that have already cost something, or that would.
 
 ## 12. What could be done with this
 
-Four leads this survey opens, with their trade-off.
+Four leads this survey opens, with their trade-off. The first one has already
+shipped; the other three are waiting.
 
-**Ask for gzip.** Eight times fewer bytes on the wire, for three lines in
-`download()` and zero dependencies (`gzip` is in the stdlib). It is the only
-traffic saving actually available, since conditional requests are not. Still
-to be checked: what it costs on a slow machine, and how a corporate proxy that
-recompresses behaves.
+**Ask for gzip - done.** Eight times fewer bytes on the wire, for one line in
+`headers()`, a decompression in `download()` and zero dependencies (`gzip` is
+in the stdlib). It was the only traffic saving available, since conditional
+requests are not; it has been in place since 1.10.0. The implementation trap
+was worth the detour: a compressed stream is recognised by its **first two
+bytes** and not by the `Content-Encoding` header, because a proxy that
+decompresses on the way does not always think to remove the header - and
+because a clear answer then goes down the same path with no special case.
 
 **Hockey scorers.** They exist, in `/summary?event=<id>`, under
 `plays[].participants[].type == "scorer"`. The cost is the problem: 450 kB per
