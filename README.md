@@ -112,6 +112,7 @@ butbutbut --month             # les 30 derniers jours
 butbutbut --since 2026-09-01  # depuis cette date
 butbutbut --top-scorers       # le classement des buteurs vus passer
 butbutbut --stats             # les formes cachees dans le journal
+butbutbut --export csv        # le journal en donnees, pour un tableur
 butbutbut --record m.jsonl    # surveille, et met les releves bruts en boite
 butbutbut --replay m.jsonl    # rejoue un enregistrement, cartes et sons compris
 butbutbut --stop              # arrete le daemon
@@ -2130,6 +2131,191 @@ en toutes lettres, comme `--today`.
 
 ---
 
+## Le journal en donnees
+
+`--on-goal` couvre l'amont : au moment ou le but tombe, on declenche ce qu'on
+veut. Rien ne couvrait l'aval. Des mois de buts dorment dans le journal, et
+tout ce qui les en sortait jusqu'ici etait **mis en page pour un oeil humain** :
+colonnes alignees, barres de pourcentage, rangs partages, totaux en toutes
+lettres. Un tableur, un carnet de notes, un graphe : tout cela demande des
+donnees.
+
+```bash
+butbutbut --export csv > buts.csv         # tout le journal, dans un tableur
+butbutbut --export json --month           # les 30 derniers jours, en JSON
+butbutbut --export csv --since 2026-08-09 # depuis cette date
+butbutbut --export json --teams om        # seulement les matchs de l'OM
+```
+
+Memes fenetres et memes filtres que `--stats` et `--top-scorers` : `--week`,
+`--month`, `--since`, `--teams`, `--exclude-teams`. Sans fenetre, c'est **tout
+le journal**. Et c'est la meme et unique lecture (`journal.goals_between`) que
+tous les autres recapitulatifs : un second analyseur finirait par ne plus
+compter comme le premier, et un export qui contredit `--stats` sur le meme
+journal ne vaudrait rien.
+
+```
+timestamp,evening,kind,nature,standing,league,home,away,home_score,away_score,team,scorer,minute,stoppage,clock,detail
+2026-09-06T18:43:27,2026-09-06,goal,goal,true,Premier League,Arsenal,Chelsea,2,1,Arsenal,M. Odegaard,50,0,50',But de M. Odegaard
+2026-09-06T20:12:44,2026-09-06,goal,penalty,true,Ligue 1,"Nice, OGC",Lens,1,0,"Nice, OGC",G. Laborde,90,3,90+3',Penalty de G. Laborde
+2026-09-06T21:04:10,2026-09-06,goal,goal,false,Bundesliga,Bayer 04 Leverkusen,Bayern,1,0,Bayer 04 Leverkusen,P. Schick,12,0,12',But de P. Schick
+2026-09-06T21:05:58,2026-09-06,cancellation,cancelled,false,Bundesliga,Bayer 04 Leverkusen,Bayern,0,0,Bayer 04 Leverkusen,,13,0,13',Score corrige
+```
+
+```json
+[
+  {
+    "timestamp": "2026-09-06T18:43:27",
+    "evening": "2026-09-06",
+    "kind": "goal",
+    "nature": "goal",
+    "standing": true,
+    "league": "Premier League",
+    "home": "Arsenal",
+    "away": "Chelsea",
+    "home_score": 2,
+    "away_score": 1,
+    "team": "Arsenal",
+    "scorer": "M. Odegaard",
+    "minute": 50,
+    "stoppage": 0,
+    "clock": "50'",
+    "detail": "But de M. Odegaard"
+  }
+]
+```
+
+### Les champs
+
+| Champ | Ce qu'il porte |
+| --- | --- |
+| `timestamp` | Le moment ou butbutbut a vu le but, en ISO 8601 : `2026-09-06T18:43:27` |
+| `evening` | La soiree du but, qui n'est pas toujours son jour (voir plus bas) |
+| `kind` | `goal` ou `cancellation` : la forme de la ligne du journal |
+| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `cancelled` |
+| `standing` | Le but tient-il encore, une fois la VAR passee ? |
+| `league` | La competition, telle que le journal l'a ecrite |
+| `home`, `away` | Le recevant et le visiteur |
+| `home_score`, `away_score` | Le score **apres** cette ligne |
+| `team` | L'equipe qui marque, ou celle dont le score est revenu en arriere |
+| `scorer` | Le buteur. Vide quand la source n'avait pas encore publie l'action |
+| `minute` | La minute de jeu, en nombre. Vide quand elle n'est pas lisible |
+| `stoppage` | Le temps additionnel, en nombre. Vide quand la minute ne l'est pas |
+| `clock` | La minute telle qu'ecrite : `90+3'`, ou l'horloge d'un match de hockey |
+| `detail` | La phrase du journal : `But de M. Odegaard`, `Score corrige` |
+
+**Rien de plus, parce qu'il n'y a rien de plus.** Ces champs sortent tous de ce
+que le journal porte vraiment ; aucun n'est complete aupres de la source au
+moment de l'export. Le passeur, le pied, la distance, le nom complet du buteur :
+personne ne les a jamais ecrits dans ce fichier, et une colonne toujours vide
+serait une promesse tenue par personne.
+
+**Les noms de colonnes sont en anglais et ne se traduisent pas**, alors que
+toute la prose du programme, elle, se traduit. Un en-tete de colonne n'est pas
+une phrase, c'est un contrat : un tableur ouvert sur une machine anglaise et un
+script lance sur une machine francaise doivent lire le meme fichier, et une
+colonne qui changerait de nom avec la langue casserait le second a chaque
+voyage. Le contenu, lui, reste ce que le journal a ecrit - donc en francais.
+
+**Les dates et les heures sortent en ISO 8601**, jamais dans la mise en page du
+journal : c'est la seule forme qu'une machine relit sans qu'on lui explique.
+Sans fuseau horaire, en revanche : le journal ecrit l'heure de la machine et ne
+dit pas laquelle, et coller un `Z` ou un decalage inventerait une precision que
+personne n'a. `evening` est la **soiree** du but et non son jour de calendrier -
+le but de 00h12 appartient a la soiree de la veille, exactement comme dans
+[`--stats`](#les-formes-du-journal).
+
+**La minute de jeu sort en trois champs** parce qu'elle repond a trois
+questions : `minute` pour ranger un but dans un histogramme, `stoppage` pour
+savoir s'il est tombe dans le temps additionnel, et `clock` pour ne pas jeter ce
+que le journal a ecrit quand ce n'etait pas une minute de football. L'horloge
+d'un match de hockey (`12:07`) n'est lisible ni comme un nombre ni comme rien :
+`minute` et `stoppage` restent vides, `clock` la garde intacte.
+
+### Ce que l'export dit de la VAR
+
+**Toutes les lignes sortent, buts et annulations, et chacune porte
+`standing`.** C'est l'arbitrage central de cette commande, et il se joue en deux
+temps parce que la question est double.
+
+Taire les annulations mentirait : la ligne `BUT ANNULE` a bien existe, elle a
+son horodatage, et c'est elle qui explique pourquoi un score recule. Un export
+qui l'efface rend un journal que personne n'a vecu.
+
+Les melanger aux buts mentirait tout autant : un but repris par la VAR n'est pas
+un but, et un tableur qui compterait ses lignes trouverait un total que ni
+`--stats` ni `--top-scorers` ne rendent. D'ou `standing`, pose sur chaque
+ligne : garder les lignes ou il vaut `true` donne **exactement** les buts que le
+reste du programme compte, en une ligne de filtre.
+
+Le rattachement est celui de `--top-scorers`, repris tel quel et pas recrit a
+cote : une annulation retire le dernier but encore debout de la meme equipe dans
+le meme match. Une annulation dont le but est tombe avant l'ouverture de la
+fenetre n'est deduite de personne, et la sortie d'erreur le dit.
+
+### Le CSV, et le JSON
+
+Le CSV a **un en-tete, une seule forme de ligne, et la virgule pour
+separateur**. La virgule plutot que le point-virgule qu'attend un tableur
+francais : ce fichier est fait pour etre relu par un programme, et la virgule
+est ce que tous supposent par defaut. Le point-virgule ne plairait qu'a une
+locale, celle du lecteur, que le fichier ne peut pas connaitre au moment ou on
+l'ecrit ; un tableur qui n'en veut pas le demande a l'import, un script a qui on
+donne du point-virgule ne demande rien et lit tout de travers.
+
+Une virgule, un guillemet ou un accent dans un nom d'equipe ne sont pas des cas
+rares a plaindre - `Nice, OGC` est cite dans l'exemple plus haut. C'est le
+travail du module `csv` de la bibliotheque standard, qui protege la case comme
+il faut et que `csv.reader` rend intacte : **rien n'est echappe a la main ici**,
+exactement pour cette raison. Le fichier est en **UTF-8** quoi qu'en dise la
+console - une console Windows annonce volontiers du cp1252, et l'export
+mourrait sur le premier accent s'il la croyait - et ses lignes se terminent par
+un simple `\n`, parce que cette sortie part dans un tuyau aussi souvent que dans
+un fichier.
+
+Le JSON est **un seul grand tableau**, un objet par but, et non du JSON par
+lignes. `--record` fait l'inverse, et pour une bonne raison : c'est un flux sans
+fin, ecrit pendant qu'un match se joue, et une coupure au milieu doit laisser
+tout ce qui precede lisible. L'export est exactement le contraire - une reponse
+finie a une question posee - et l'arbitrage se retourne avec lui. Une fenetre du
+journal tient en memoire sans y penser, donc `json.load(open(...))` en une ligne
+suffit, ce que le JSON par lignes interdit. Et un fichier coupe en route ne
+parse plus, ce qui est justement ce qu'on veut : en JSON par lignes il parserait
+encore, en silence, avec les derniers buts en moins. Mieux vaut un export qui
+refuse de s'ouvrir qu'un export qui ment de trois lignes.
+
+### Deux sorties, et une seule porte les donnees
+
+**Les donnees vont sur la sortie standard, et rien d'autre n'y va.** La fenetre
+couverte, les totaux, les avertissements, le chemin du journal, la confirmation
+des noms passes a `--teams` : tout part sur la **sortie d'erreur**. Une phrase
+au milieu d'un CSV le rend illisible, et `butbutbut --export csv > buts.csv`
+doit rendre un fichier, pas un fichier plus un commentaire. Dans un terminal,
+les deux se melent et on lit tout ; des qu'on redirige, chacun va ou il doit.
+
+```
+$ butbutbut --export csv --week > buts.csv
+butbutbut : export csv du dim. 31/08/2026 au dim. 07/09/2026
+38 ligne(s) : 36 but(s) signale(s) dont 35 debout, 2 annulation(s).
+Le champ 'standing' dit lesquels la VAR a repris.
+Journal : /home/moi/.local/share/butbutbut/butbutbut.log
+```
+
+**Un journal absent, vide, ou une fenetre sans le moindre but restent des
+reponses valides** : un tableau JSON vide, un CSV reduit a son en-tete, et
+l'explication a cote. Un consommateur ne doit jamais avoir a distinguer "rien"
+de "casse" - c'est exactement le genre de difference qui fait planter un script
+un dimanche soir. Un tuyau referme en cours de route (`--export csv | head`) ne
+remonte pas non plus : il se dit sur la sortie d'erreur, et la commande s'en va.
+
+**L'export se fait hors reseau** : tout est deja dans le fichier. La meme
+reserve que `--stats` et `--top-scorers`, et c'est la seule : nommer une equipe
+fait d'abord verifier ce nom aupres du catalogue, et cette verification-la
+demande le reseau. Sans `--teams` ni `--exclude-teams`, rien ne sort de la
+machine.
+
+---
+
 ## Journal
 
 ```
@@ -2245,7 +2431,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1024 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1049 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

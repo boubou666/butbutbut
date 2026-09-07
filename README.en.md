@@ -112,6 +112,7 @@ butbutbut --month             # the last 30 days
 butbutbut --since 2026-09-01  # since that date
 butbutbut --top-scorers       # the ranking of the scorers seen going by
 butbutbut --stats             # the shapes hidden in the log
+butbutbut --export csv        # the log as data, for a spreadsheet
 butbutbut --record m.jsonl    # watch, and box up the raw polls as well
 butbutbut --replay m.jsonl    # replay a recording, cards and sounds included
 butbutbut --stop              # stop the daemon
@@ -2121,6 +2122,188 @@ so in plain words, just like `--today`.
 
 ---
 
+## The log as data
+
+`--on-goal` covers the upstream side: the moment the goal drops, you can fire
+off whatever you like. Nothing covered the downstream side. Months of goals lie
+asleep in the log, and everything that got them out until now was **laid out for
+a human eye**: aligned columns, percentage bars, shared ranks, totals spelled
+out in words. A spreadsheet, a notebook, a graph: all of those want data.
+
+```bash
+butbutbut --export csv > buts.csv         # the whole log, into a spreadsheet
+butbutbut --export json --month           # the last 30 days, as JSON
+butbutbut --export csv --since 2026-08-09 # since that date
+butbutbut --export json --teams om        # only Marseille's matches
+```
+
+Same windows and same filters as `--stats` and `--top-scorers`: `--week`,
+`--month`, `--since`, `--teams`, `--exclude-teams`. With no window, it is **the
+whole log**. And it is the same single read (`journal.goals_between`) as every
+other round-up: a second parser would end up counting differently from the
+first, and an export that contradicts `--stats` on the same log would be worth
+nothing.
+
+```
+timestamp,evening,kind,nature,standing,league,home,away,home_score,away_score,team,scorer,minute,stoppage,clock,detail
+2026-09-06T18:43:27,2026-09-06,goal,goal,true,Premier League,Arsenal,Chelsea,2,1,Arsenal,M. Odegaard,50,0,50',But de M. Odegaard
+2026-09-06T20:12:44,2026-09-06,goal,penalty,true,Ligue 1,"Nice, OGC",Lens,1,0,"Nice, OGC",G. Laborde,90,3,90+3',Penalty de G. Laborde
+2026-09-06T21:04:10,2026-09-06,goal,goal,false,Bundesliga,Bayer 04 Leverkusen,Bayern,1,0,Bayer 04 Leverkusen,P. Schick,12,0,12',But de P. Schick
+2026-09-06T21:05:58,2026-09-06,cancellation,cancelled,false,Bundesliga,Bayer 04 Leverkusen,Bayern,0,0,Bayer 04 Leverkusen,,13,0,13',Score corrige
+```
+
+```json
+[
+  {
+    "timestamp": "2026-09-06T18:43:27",
+    "evening": "2026-09-06",
+    "kind": "goal",
+    "nature": "goal",
+    "standing": true,
+    "league": "Premier League",
+    "home": "Arsenal",
+    "away": "Chelsea",
+    "home_score": 2,
+    "away_score": 1,
+    "team": "Arsenal",
+    "scorer": "M. Odegaard",
+    "minute": 50,
+    "stoppage": 0,
+    "clock": "50'",
+    "detail": "But de M. Odegaard"
+  }
+]
+```
+
+### The fields
+
+| Field | What it carries |
+| --- | --- |
+| `timestamp` | When butbutbut saw the goal, in ISO 8601: `2026-09-06T18:43:27` |
+| `evening` | The goal's evening, which is not always its day (see below) |
+| `kind` | `goal` or `cancellation`: the shape of the log line |
+| `nature` | `goal`, `own_goal`, `penalty`, `try`, `conversion`, `penalty_goal`, `drop_goal`, `cancelled` |
+| `standing` | Is the goal still standing, once the VAR has been through? |
+| `league` | The competition, as the log wrote it |
+| `home`, `away` | Home and away sides |
+| `home_score`, `away_score` | The score **after** this line |
+| `team` | The team that scored, or the one whose score went back |
+| `scorer` | The scorer. Empty when the source had not published the play yet |
+| `minute` | The minute of play, as a number. Empty when it is not readable |
+| `stoppage` | Stoppage time, as a number. Empty when the minute is not readable |
+| `clock` | The minute as written: `90+3'`, or an ice hockey clock |
+| `detail` | The log's own sentence: `But de M. Odegaard`, `Score corrige` |
+
+**Nothing more, because there is nothing more.** Every one of these fields comes
+out of what the log really carries; none of them is filled in from the source at
+export time. The assist, the foot, the distance, the scorer's full name: nobody
+ever wrote those into this file, and a column that is always empty is a promise
+kept by no one.
+
+**The column names are in English and are never translated**, while all the
+program's prose is. A column header is not a sentence, it is a contract: a
+spreadsheet opened on an English machine and a script run on a French one must
+read the same file, and a column that changed its name with the language would
+break the second one on every trip. The contents, on the other hand, stay
+exactly as the log wrote them - so, in French.
+
+**Dates and times come out in ISO 8601**, never in the log's own layout: that is
+the only shape a machine reads back without being told how. With no timezone,
+though: the log writes the machine's own clock and does not say which one, and
+bolting on a `Z` or an offset would invent a precision nobody has. `evening` is
+the goal's **evening**, not its calendar day - the goal at 00:12 belongs to the
+evening before, exactly as in [`--stats`](#the-shapes-of-the-log).
+
+**The minute of play comes out as three fields** because it answers three
+questions: `minute` to drop a goal into a histogram, `stoppage` to know whether
+it fell in added time, and `clock` so as not to throw away what the log wrote
+when it was not a football minute at all. An ice hockey clock (`12:07`) is
+readable neither as a number nor as nothing: `minute` and `stoppage` stay empty,
+`clock` keeps it intact.
+
+### What the export says about the VAR
+
+**Every line comes out, goals and cancellations alike, and each one carries
+`standing`.** That is this command's central trade-off, and it is settled in two
+moves because the question is a double one.
+
+Saying nothing about cancellations would be a lie: the `BUT ANNULE` line really
+did happen, it has its own timestamp, and it is what explains a score going
+backwards. An export that erases it hands back a log nobody lived through.
+
+Mixing them in with the goals would be just as much of a lie: a goal the VAR
+took back is not a goal, and a spreadsheet counting those lines would find a
+total neither `--stats` nor `--top-scorers` reports. Hence `standing`, on every
+line: keeping the lines where it is `true` gives **exactly** the goals the rest
+of the program counts, in a one-line filter.
+
+The matching is `--top-scorers`' own, reused as is rather than rewritten
+alongside: a cancellation removes the last goal still standing for the same team
+in the same match. A cancellation whose goal fell before the window opened is
+deducted from nobody, and the error output says so.
+
+### The CSV, and the JSON
+
+The CSV has **a header, a single line shape, and the comma as its separator**.
+The comma rather than the semicolon a French spreadsheet expects: this file is
+made to be read back by a program, and the comma is what all of them assume by
+default. The semicolon would only please one locale, the reader's, which the
+file cannot know at the time it is written; a spreadsheet that does not want a
+comma asks at import time, whereas a script handed semicolons asks nothing and
+reads everything crooked.
+
+A comma, a quote or an accent in a team name is not some rare case to be pitied
+- `Nice, OGC` is right there in the sample above. That is the standard library's
+`csv` module's job: it quotes the cell as needed and `csv.reader` hands it back
+intact, so **nothing is escaped by hand here**, for exactly that reason. The
+file is **UTF-8** whatever the console claims - a Windows console happily
+announces cp1252, and the export would die on the first accent if it believed it
+- and its lines end with a plain `\n`, because this output goes down a pipe as
+often as into a file.
+
+The JSON is **one single big array**, one object per goal, and not JSON Lines.
+`--record` does the opposite, and for a good reason: it is an endless stream,
+written while a match is being played, and a cut in the middle must leave
+everything before it readable. The export is the exact opposite - a finished
+answer to a question that was asked - and the trade-off turns over with it. A
+window of the log fits in memory without a second thought, so
+`json.load(open(...))` in one line is enough, which JSON Lines rules out. And a
+file cut short no longer parses, which is precisely what we want: as JSON Lines
+it would still parse, silently, with the last goals missing. Better an export
+that refuses to open than an export that lies by three lines.
+
+### Two outputs, and only one carries the data
+
+**The data goes to standard output, and nothing else goes there.** The window
+covered, the totals, the warnings, the path to the log, the confirmation of the
+names passed to `--teams`: all of it goes to **standard error**. A sentence in
+the middle of a CSV makes it unreadable, and `butbutbut --export csv >
+buts.csv` must produce a file, not a file plus a comment. In a terminal the two
+mingle and you read everything; the moment you redirect, each goes where it
+belongs.
+
+```
+$ butbutbut --export csv --week > buts.csv
+butbutbut : export csv du dim. 31/08/2026 au dim. 07/09/2026
+38 ligne(s) : 36 but(s) signale(s) dont 35 debout, 2 annulation(s).
+Le champ 'standing' dit lesquels la VAR a repris.
+Journal : /home/moi/.local/share/butbutbut/butbutbut.log
+```
+
+**A missing log, an empty one, or a window without a single goal are still valid
+answers**: an empty JSON array, a CSV cut down to its header, and the
+explanation next door. A consumer must never have to tell "nothing" from
+"broken" - that is exactly the kind of difference that crashes a script on a
+Sunday evening. A pipe closed halfway through (`--export csv | head`) does not
+blow up either: it is reported on the error output, and the command leaves.
+
+**The export happens offline**: it is all already in the file. The same caveat
+as `--stats` and `--top-scorers`, and it is the only one: naming a team first
+checks that name against the catalogue, and that check does need the network.
+Without `--teams` or `--exclude-teams`, nothing leaves the machine.
+
+---
+
 ## Log
 
 ```
@@ -2238,7 +2421,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1024 tests**, with no network and no screen: the source is simulated by an
+**1049 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

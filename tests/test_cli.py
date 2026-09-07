@@ -1,7 +1,9 @@
+import csv
 import io
 import json
 import os
 import re
+import sys
 import threading
 import time
 import unittest
@@ -11,8 +13,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import (cli, espn, hook, i18n, leagues, pinned, presenting,
-                       silence, sound, state, watcher)
+from butbutbut import (cli, espn, hook, i18n, journal, leagues, pinned,
+                       presenting, silence, sound, state, watcher)
 
 from helpers import at_local_hour, event, goal_detail, in_minutes, payload
 
@@ -931,6 +933,403 @@ class TestStats(unittest.TestCase):
         long_lines = [text for text in printed.splitlines()
                       if len(text) > 80 and str(self.paths["log"]) not in text]
         self.assertEqual(long_lines, [])
+
+
+class ConsoleStdout:
+    """Une sortie standard comme en a un vrai terminal : du texte sur des octets.
+
+    Une redirection en memoire (io.StringIO) ne suffit pas a tester l'export :
+    elle n'a pas de flux d'octets, donc elle ne peut ni mal encoder un accent
+    ni doubler un retour a la ligne - c'est-a-dire aucun des deux pieges que
+    --export doit desamorcer. Celle-ci annonce du cp1252, l'encodage qu'une
+    console Windows revendique par defaut et sur lequel un nom d'equipe
+    accentue casserait si l'export ecrivait naivement du texte.
+    """
+
+    def __init__(self):
+        self.buffer = io.BytesIO()
+        self.encoding = "cp1252"
+
+    def write(self, text):
+        self.buffer.write(text.encode(self.encoding))
+        return len(text)
+
+    def flush(self):
+        pass
+
+
+class TestExport(unittest.TestCase):
+    """--export json|csv : le journal en donnees, sur des journaux fabriques."""
+
+    # Un accent, une virgule et un guillemet dans le meme journal : les trois
+    # choses qui font mentir un export ecrit a la main. Ils sont ecrits en
+    # echappement parce que les sources du depot sont en ASCII pur, mais le
+    # journal, lui, les recoit en UTF-8 comme le vrai.
+    NICE = "Nice, OGC"                      # une virgule dans un nom d'equipe
+    LENS = 'Le "RC" Lens'                   # un guillemet dans un autre
+    ALAVES = "Alav\u00e9s"                 # un accent, dans un troisieme
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+
+    def write_log(self, *rows):
+        lines = ["{} {}  {}".format(day, clock, text)
+                 for day, clock, text in rows]
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    @staticmethod
+    def goal(league="Ligue 1", home="Angers", away="Stade Rennais",
+             home_score=1, away_score=0, team=None, scorer="C. Arcus",
+             minute="35'", head="BUT"):
+        return "{} [{}] {} {} - {} {} pour {} - But de {} ({})".format(
+            head, league, home, home_score, away_score, away,
+            team or home, scorer, minute)
+
+    def export(self, *argv):
+        """Rend (donnees relues, prose de la sortie d'erreur)."""
+        shape = argv[argv.index("--export") + 1]
+        code, printed, errors = self.run_cli(list(argv))
+        self.assertEqual(code, 0, errors)
+        if shape == "json":
+            return json.loads(printed), errors
+        rows = list(csv.reader(io.StringIO(printed)))
+        return rows, errors
+
+    # ------------------------------------------------ ce que ca sait ecrire --
+
+    def test_json_is_read_back_by_the_json_module(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal()),
+            (days_ago(0), "21:00:00", self.goal(league="LaLiga",
+                                                home=self.ALAVES,
+                                                away="Osasuna",
+                                                scorer="M. Diaz")),
+        )
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row["scorer"] for row in rows],
+                         ["C. Arcus", "M. Diaz"])
+        self.assertEqual(rows[1]["league"], "LaLiga")
+        self.assertEqual(rows[1]["home"], self.ALAVES)
+        # Les cles sont exactement celles annoncees, dans le meme ordre : un
+        # consommateur qui les lit une fois doit pouvoir s'y fier.
+        for row in rows:
+            self.assertEqual(list(row), list(cli.EXPORT_FIELDS))
+
+    def test_csv_is_read_back_by_the_csv_module(self):
+        self.write_log((days_ago(0), "20:00:00", self.goal()))
+        rows, _errors = self.export("--export", "csv")
+        self.assertEqual(rows[0], list(cli.EXPORT_FIELDS))
+        self.assertEqual(len(rows), 2)
+        # Une seule forme de ligne : autant de cases que d'en-tetes, toujours.
+        for row in rows:
+            self.assertEqual(len(row), len(cli.EXPORT_FIELDS))
+        row = dict(zip(rows[0], rows[1]))
+        self.assertEqual(row["home"], "Angers")
+        self.assertEqual(row["home_score"], "1")
+        self.assertEqual(row["scorer"], "C. Arcus")
+
+    def test_a_comma_and_a_quote_in_a_name_survive_the_round_trip(self):
+        """Un nom d'equipe n'a aucune raison de respecter la grammaire du CSV."""
+        self.write_log((days_ago(0), "20:00:00",
+                        self.goal(home=self.NICE, away=self.LENS)))
+        rows, _errors = self.export("--export", "csv")
+        row = dict(zip(rows[0], rows[1]))
+        self.assertEqual(row["home"], self.NICE)
+        self.assertEqual(row["away"], self.LENS)
+        self.assertEqual(row["team"], self.NICE)
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual(rows[0]["home"], self.NICE)
+        self.assertEqual(rows[0]["away"], self.LENS)
+
+    def test_an_accent_comes_out_in_utf8_whatever_the_console_says(self):
+        """Le journal est en UTF-8 ; une console Windows annonce du cp1252."""
+        self.write_log((days_ago(0), "20:00:00",
+                        self.goal(home=self.ALAVES, away="Osasuna")))
+        for shape in ("json", "csv"):
+            console = ConsoleStdout()
+            with mock.patch.object(sys, "stdout", console):
+                with redirect_stderr(io.StringIO()):
+                    code = cli.main(["--export", shape])
+            self.assertEqual(code, 0, shape)
+            written = console.buffer.getvalue()
+            self.assertIn(self.ALAVES.encode("utf-8"), written, shape)
+            # Et le flux reste ouvert : l'export ne ferme pas la sortie du
+            # programme derriere lui.
+            self.assertFalse(console.buffer.closed, shape)
+            text = written.decode("utf-8")
+            if shape == "json":
+                self.assertEqual(json.loads(text)[0]["home"], self.ALAVES)
+            else:
+                # Aucune ligne doublee par le mode texte de Windows.
+                self.assertNotIn("\r", text)
+                back = list(csv.reader(io.StringIO(text)))
+                self.assertEqual(len(back), 2, back)
+                self.assertEqual(dict(zip(back[0], back[1]))["home"],
+                                 self.ALAVES)
+
+    # ----------------------------------------------------- dates et minutes --
+
+    def test_dates_and_times_come_out_in_iso_8601(self):
+        self.write_log((days_ago(0), "20:04:09", self.goal()))
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual(rows[0]["timestamp"],
+                         "{}T20:04:09".format(days_ago(0)))
+        self.assertEqual(rows[0]["evening"], days_ago(0))
+
+    def test_a_goal_after_midnight_belongs_to_the_evening_before(self):
+        """La meme soiree que --stats, pas le jour du calendrier."""
+        self.write_log((days_ago(0), "00:12:00", self.goal()))
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual(rows[0]["evening"], days_ago(1))
+
+    def test_the_minute_comes_out_as_a_number_and_keeps_what_was_written(self):
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal(minute="90+3'")),
+            (days_ago(0), "20:10:00", self.goal(minute="Mi-temps",
+                                                home="Nice", away="Lens")),
+        )
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual((rows[0]["minute"], rows[0]["stoppage"]), (90, 3))
+        self.assertEqual(rows[0]["clock"], "90+3'")
+        # Une minute que le journal n'ecrit pas comme une minute de jeu ne
+        # devient pas un zero : elle devient un trou, et le texte reste.
+        self.assertIsNone(rows[1]["minute"])
+        self.assertIsNone(rows[1]["stoppage"])
+        self.assertEqual(rows[1]["clock"], "Mi-temps")
+
+    def test_an_unknown_number_is_an_empty_cell_in_csv(self):
+        self.write_log((days_ago(0), "20:00:00", self.goal(minute="Mi-temps")))
+        rows, _errors = self.export("--export", "csv")
+        row = dict(zip(rows[0], rows[1]))
+        self.assertEqual(row["minute"], "")
+        self.assertEqual(row["stoppage"], "")
+
+    # ------------------------------------------------------------- la VAR ---
+
+    def test_a_goal_the_var_took_back_does_not_come_out_as_a_goal(self):
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal(scorer="M. Odegaard")),
+            (days_ago(0), "20:02:00", self.goal(home_score=2,
+                                                scorer="B. Saka")),
+            (days_ago(0), "20:04:00", "BUT ANNULE [Ligue 1] Angers 1 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (41')"),
+        )
+        rows, _errors = self.export("--export", "json")
+        # Trois lignes de journal, trois lignes d'export : l'annulation a bien
+        # eu lieu, la taire rendrait un journal que personne n'a vecu.
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([row["kind"] for row in rows],
+                         ["goal", "goal", "cancellation"])
+        # Mais le but repris n'est plus debout, et l'annulation non plus.
+        self.assertEqual([row["standing"] for row in rows],
+                         [True, False, False])
+        # Garder les lignes debout rend exactement ce que compte le classement.
+        standing = [row for row in rows if row["standing"]]
+        self.assertEqual([row["scorer"] for row in standing], ["M. Odegaard"])
+
+    def test_the_standing_goals_are_the_ones_the_scoreboard_counts(self):
+        """Un seul rattachement positionnel dans le programme, pas deux."""
+        self.write_log(
+            (days_ago(2), "20:00:00", self.goal(scorer="M. Odegaard")),
+            (days_ago(2), "20:02:00", self.goal(home_score=2,
+                                                scorer="B. Saka")),
+            (days_ago(1), "20:04:00", "BUT ANNULE [Ligue 1] Angers 1 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (41')"),
+            (days_ago(0), "21:00:00", self.goal(league="LaLiga", home="Girona",
+                                                away="Real Madrid",
+                                                scorer="K. Mbappe")),
+        )
+        rows, _errors = self.export("--export", "json")
+        standing = sum(1 for row in rows if row["standing"])
+        entries = journal.goals_between(self.paths["log"])
+        self.assertEqual(standing, journal.scoreboard(entries).confirmed)
+
+    def test_a_cancellation_says_which_goal_kind_it_was(self):
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal(head="BUT SUR PENALTY")),
+            (days_ago(0), "20:04:00", "BUT ANNULE [Ligue 1] Angers 0 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (41')"),
+        )
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual([row["nature"] for row in rows],
+                         ["penalty", "cancelled"])
+
+    def test_an_orphan_cancellation_is_owned_up_to_on_the_error_output(self):
+        self.write_log((days_ago(0), "20:04:00",
+                        "BUT ANNULE [Ligue 1] Angers 0 - 0 Stade Rennais "
+                        "pour Angers - Score corrige (41')"))
+        _rows, errors = self.export("--export", "json")
+        self.assertIn("1 annulation(s) sans but a retirer", errors)
+
+    # ------------------------------------------- fenetres, filtres, reseau ---
+
+    def test_the_window_is_the_one_of_stats_and_top_scorers(self):
+        self.write_log(
+            (days_ago(40), "20:00:00", self.goal(scorer="K. Mbappe")),
+            (days_ago(0), "20:00:00", self.goal(scorer="C. Arcus")),
+        )
+        whole, errors = self.export("--export", "json")
+        self.assertEqual(len(whole), 2)
+        self.assertIn("depuis le debut du journal", errors)
+        week, _errors = self.export("--export", "json", "--week")
+        self.assertEqual([row["scorer"] for row in week], ["C. Arcus"])
+        since, _errors = self.export("--export", "json", "--since",
+                                     days_ago(50))
+        self.assertEqual(len(since), 2)
+
+    def test_the_team_filter_applies_and_stays_off_the_data(self):
+        """--teams verifie les noms aupres de la source : c'est de la prose."""
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal(home="Nice", away="Lens")),
+            (days_ago(0), "21:00:00", self.goal(home="Angers",
+                                                away="Stade Rennais")),
+        )
+        catalogue = [("Nice",), ("Lens",), ("Angers",), ("Stade Rennais",)]
+        with mock.patch.object(espn, "catalogue", return_value=catalogue):
+            with mock.patch.object(time, "sleep"):
+                code, printed, errors = self.run_cli(
+                    ["--export", "json", "--teams", "nice"])
+        self.assertEqual(code, 0)
+        rows = json.loads(printed)          # rien d'autre n'est arrive la
+        self.assertEqual([row["home"] for row in rows], ["Nice"])
+        # La confirmation du mot d'equipe est partie a cote, avec le reste.
+        self.assertIn("nice", errors)
+        self.assertIn("Nice", errors)
+
+    def test_excluding_a_team_leaves_it_out(self):
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal(home="Nice", away="Lens")),
+            (days_ago(0), "21:00:00", self.goal(home="Angers",
+                                                away="Stade Rennais")),
+        )
+        catalogue = [("Nice",), ("Lens",), ("Angers",), ("Stade Rennais",)]
+        with mock.patch.object(espn, "catalogue", return_value=catalogue):
+            with mock.patch.object(time, "sleep"):
+                code, printed, _errors = self.run_cli(
+                    ["--export", "json", "--exclude-teams", "nice"])
+        self.assertEqual(code, 0)
+        self.assertEqual([row["home"] for row in json.loads(printed)],
+                         ["Angers"])
+
+    def test_nothing_leaves_the_machine_without_a_team_word(self):
+        """Sans --teams, l'export ne touche que le fichier. Comme --stats."""
+        self.write_log((days_ago(0), "20:00:00", self.goal()))
+
+        def refuse(*_args, **_kwargs):
+            raise AssertionError("l'export a demande le reseau")
+
+        with mock.patch.object(espn, "fetch", refuse):
+            with mock.patch.object(espn, "catalogue", refuse):
+                rows, _errors = self.export("--export", "json")
+        self.assertEqual(len(rows), 1)
+
+    # ------------------------------------------------- rien, mais pas casse --
+
+    def test_a_missing_journal_still_gives_valid_data(self):
+        for shape, expected in (("json", "[]"), ("csv", None)):
+            code, printed, errors = self.run_cli(["--export", shape])
+            self.assertEqual(code, 0, shape)
+            self.assertIn("journal vide", errors, shape)
+            self.assertIn(str(self.paths["log"]), errors, shape)
+            if expected is not None:
+                self.assertEqual(json.loads(printed), [])
+            else:
+                # Un CSV reduit a son en-tete reste un CSV.
+                self.assertEqual(list(csv.reader(io.StringIO(printed))),
+                                 [list(cli.EXPORT_FIELDS)])
+
+    def test_an_empty_journal_still_gives_valid_data(self):
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("", encoding="utf-8")
+        rows, errors = self.export("--export", "json")
+        self.assertEqual(rows, [])
+        self.assertIn("journal vide", errors)
+
+    def test_a_window_without_a_goal_still_gives_valid_data(self):
+        self.write_log((days_ago(40), "20:00:00", self.goal()))
+        rows, errors = self.export("--export", "csv", "--week")
+        self.assertEqual(rows, [list(cli.EXPORT_FIELDS)])
+        self.assertIn("aucun but sur cette periode", errors)
+
+    def test_lines_the_parser_cannot_read_never_reach_the_data(self):
+        self.write_log(
+            (days_ago(0), "18:00:00", "demarrage (pid 3752) - les 5 champ"),
+            (days_ago(0), "18:04:00", "Bundesliga injoignable (timeout)"),
+            (days_ago(0), "18:06:00", "COUP D'ENVOI [Ligue 1] Nice 0 - 0 Lens"),
+            (days_ago(0), "20:00:00", self.goal()),
+        )
+        rows, _errors = self.export("--export", "json")
+        self.assertEqual(len(rows), 1)
+
+    # ---------------------------------------------------- deux sorties ------
+
+    def test_the_standard_output_carries_data_and_nothing_else(self):
+        """C'est toute la promesse : `--export csv > buts.csv` rend un CSV."""
+        self.write_log(
+            (days_ago(0), "20:00:00", self.goal()),
+            (days_ago(0), "20:04:00", "BUT ANNULE [Ligue 1] Angers 0 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (41')"),
+        )
+        for shape in ("json", "csv"):
+            code, printed, errors = self.run_cli(["--export", shape])
+            self.assertEqual(code, 0, shape)
+            self.assertNotIn("butbutbut :", printed, shape)
+            self.assertNotIn(str(self.paths["log"]), printed, shape)
+            # Et la prose est bien quelque part : ailleurs, pas nulle part.
+            self.assertIn("butbutbut : export {}".format(shape), errors)
+            self.assertIn("2 ligne(s)", errors)
+            self.assertIn("Journal :", errors)
+
+    def test_a_date_that_is_not_one_leaves_the_data_output_untouched(self):
+        code, printed, errors = self.run_cli(["--export", "json",
+                                              "--since", "hier"])
+        self.assertEqual(code, 2)
+        self.assertEqual(printed, "")
+        self.assertIn("AAAA-MM-JJ", errors)
+
+    def test_a_closed_pipe_is_said_beside_and_not_raised(self):
+        """`--export csv | head` referme le tuyau : rien ne doit remonter."""
+        self.write_log((days_ago(0), "20:00:00", self.goal()))
+
+        def broken(*_args, **_kwargs):
+            raise OSError(32, "Broken pipe")
+
+        with mock.patch.object(cli, "_write_json", broken):
+            code, _printed, errors = self.run_cli(["--export", "json"])
+        self.assertEqual(code, 1)
+        self.assertIn("export interrompu", errors)
+
+    # ------------------------------------------------------------ la ligne --
+
+    def test_only_the_two_formats_are_accepted(self):
+        for wrong in ("xml", "JSON!", ""):
+            with self.assertRaises(SystemExit):
+                with redirect_stderr(io.StringIO()):
+                    cli.build_parser().parse_args(["--export", wrong])
+
+    def test_export_is_reachable_and_documented(self):
+        help_text = cli.build_parser().format_help()
+        self.assertIn("--export", help_text)
+        self.assertIsNone(cli.build_parser().parse_args([]).export)
+
 
 
 class OneShot:
