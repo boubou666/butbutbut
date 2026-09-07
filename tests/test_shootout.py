@@ -31,6 +31,7 @@ aucune action pour elle. Vegas 4-3 Chicago, 3 decembre 2025 (`nhl`).
 
 import copy
 import io
+import os
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -44,11 +45,26 @@ FA_CUP = leagues.BY_SLUG["eng.fa"]
 NHL = leagues.BY_SLUG["nhl"]
 
 
+_LANGUE = {}
+
+
 def setUpModule():
     # Ces tests affirment des formulations francaises. Sans cet epinglage ils
     # passeraient sur une machine francaise et echoueraient sur la CI, dont les
-    # machines sont anglaises.
+    # machines sont anglaises. La variable d'environnement en plus de
+    # i18n.use() : main() refixe la langue a chaque appel, et un test qui
+    # passe par la ligne de commande perdrait l'epinglage en chemin. C'est la
+    # meme precaution qu'en tete de tests/test_cli.py, et pour la meme raison.
+    _LANGUE["avant"] = os.environ.get(i18n.ENV)
+    os.environ[i18n.ENV] = "fr"
     i18n.use("fr")
+
+
+def tearDownModule():
+    if _LANGUE["avant"] is None:
+        os.environ.pop(i18n.ENV, None)
+    else:
+        os.environ[i18n.ENV] = _LANGUE["avant"]
 
 
 # --- Les charges utiles, telles que la source les sert -----------------------
