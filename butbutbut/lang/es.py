@@ -13,7 +13,14 @@ Deux contraintes ont guide le choix des mots :
     elles le peuvent ("escala" et non "tamano"), et les accents restants
     tombent, comme le francais du projet le fait deja.
 
-Les phrases que l'espagnol laisse identiques - le nom du programme, les
+Les libelles ne suffisent pas : ce que --status, --scores et --list affichent
+dans leurs colonnes est une valeur, pas un gabarit. "il y a 12 s", "en cours",
+"les 5 grands championnats" viennent de state, espn et leagues, et se
+traduisent ici comme le reste, sans quoi une ligne espagnole finirait sur un
+mot francais.
+
+Les phrases que l'espagnol laisse identiques - le nom du programme,
+"(principal)", les etiquettes deja espagnoles ("config", "daemon"), les
 gabarits purement typographiques ("{:<16} {}", "\\n{}") - sont absentes d'ici :
 elles rendent le francais, c'est-a-dire elles-memes.
 """
@@ -23,6 +30,13 @@ MESSAGES = {
     "actif (pid {})": "activo (pid {})",
     "arrete": "detenido",
     "  releve      : {}": "  sondeo      : {}",
+    "aucun pour l'instant": "todavia ninguno",
+    "aucun (le daemon efface son etat en s'arretant)":
+        "ninguno (el daemon borra su estado al detenerse)",
+    "date inconnue": "fecha desconocida",
+    "il y a {} s": "hace {} s",
+    "il y a {} min": "hace {} min",
+    "il y a {} h {:02d}": "hace {} h {:02d}",
     "                etat laisse par un daemon qui ne tourne plus":
         "                estado dejado por un daemon que ya no corre",
     "                (!) plus rien depuis, alors que la cadence est de {}s : "
@@ -32,40 +46,65 @@ MESSAGES = {
     "  en cours    : inconnu (le dernier releve est trop vieux)":
         "  en juego    : desconocido (el ultimo sondeo es demasiado viejo)",
     "  en cours    : {}": "  en juego    : {}",
+    "{} match(s)": "{} partido(s)",
+    " sur {} au programme": " de {} programados",
     "  buts du jour: {}  (le detail : butbutbut --today)":
         "  goles de hoy: {}  (el detalle: butbutbut --today)",
     "  equipes     : {}": "  equipos     : {}",
     "  langue      : {}": "  idioma      : {}",
     "  suivi       : {}": "  siguiendo   : {}",
     "  competitions: {}": "  competic.   : {}",
+    "les 5 grands championnats": "las 5 grandes ligas",
+    "tout le catalogue ({} competitions)":
+        "todo el catalogo ({} competiciones)",
+    "{} et {} autres": "{} y {} mas",
     "  source      : ESPN scoreboard (public, sans cle)":
         "  fuente      : ESPN scoreboard (publico, sin clave)",
     "  cadence     : {}s en direct / {}s au repos":
         "  cadencia    : {}s en directo / {}s en reposo",
     "  donnees     : {}": "  datos       : {}",
+    "  (absent, voir --write-config)": "  (ausente, ver --write-config)",
     "  son         : {}{}": "  sonido      : {}{}",
+    " (+{} autre(s), tirage au hasard)": " (+{} otro(s), elegido al azar)",
     "  son         : {} ({})": "  sonido      : {} ({})",
+    "fourni": "incluido",
+    "corne synthetisee": "bocina sintetizada",
     "  sons perso  : {}  ({} fichier(s))":
         "  mis sonidos : {}  ({} fichero(s))",
     "  ecussons    : {}": "  escudos     : {}",
     "desactives (--no-logos)": "desactivados (--no-logos)",
     "  ecrans      : {} -> carte en {} sur {}":
         "  pantallas   : {} -> tarjeta en {} en {}",
+    "1 ecran ({}x{})": "1 pantalla ({}x{})",
+    "{} ecrans [{}]": "{} pantallas [{}]",
     "l'ecran principal": "la pantalla principal",
     "ecran {}": "pantalla {}",
     "  plein ecran : {}": "  p. completa : {}",
+    "detecte (la carte masquee est notee au journal)":
+        "detectado (la tarjeta tapada se anota en el registro)",
+    "non detectable sur cette plateforme": "no detectable en esta plataforma",
     "  journal     : {}": "  registro    : {}",
     "  lecteur     : winsound + MCI (integres)":
         "  reproductor : winsound + MCI (integrados)",
     "  lecteur     : {}": "  reproductor : {}",
+    "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)":
+        "NINGUNO (instala mpv/ffmpeg/pipewire/alsa-utils)",
     "  affichage   : tkinter OK": "  interfaz    : tkinter OK",
     "  affichage   : tkinter MANQUANT (voir README)":
         "  interfaz    : tkinter AUSENTE (ver README)",
+    "\n  Connexion   : ": "\n  Conexion    : ",
     "OK ({} : {} match(s))": "OK ({} : {} partido(s))",
     "ECHEC ({})": "FALLO ({})",
 
     # ---------------------------------------------------------- --scores ----
     "injoignable ({})": "inaccesible ({})",
+    "  (aucun match au programme)": "  (ningun partido programado)",
+    "  (aucun match de ces equipes)": "  (ningun partido de estos equipos)",
+    "en cours": "en juego",
+    "termine": "finalizado",
+    "a venir": "por jugar",
+    "imminent": "inminente",
+    "dans {} min": "en {} min",
     "\n{} match(s), '>' = en cours.": "\n{} partido(s), '>' = en juego.",
 
     # ----------------------------------------------------------- --today ----
@@ -89,6 +128,10 @@ MESSAGES = {
     "Exemples :": "Ejemplos:",
 
     # ------------------------------------------------------------ --list ----
+    "butbutbut : competitions surveillables\n":
+        "butbutbut : competiciones vigilables\n",
+    "Les 5 grands (defaut)": "Las 5 grandes (por defecto)",
+    "Aussi disponibles": "Tambien disponibles",
     "\nExemples :": "\nEjemplos:",
     "  butbutbut --exclude liga,seriea        (les 5 grands moins deux)":
         "  butbutbut --exclude liga,seriea        (las 5 grandes menos dos)",
@@ -111,6 +154,7 @@ MESSAGES = {
     "butbutbut {} - mise a jour": "butbutbut {} - actualizacion",
 
     # ------------------------------------------------------------ --stop ----
+    "butbutbut : aucun daemon en cours.": "butbutbut : ningun daemon en curso.",
     "butbutbut : daemon {} arrete.": "butbutbut : daemon {} detenido.",
     "butbutbut : impossible d'arreter {} : {}":
         "butbutbut : imposible detener {} : {}",
@@ -123,6 +167,20 @@ MESSAGES = {
     "butbutbut : corne regeneree -> {}": "butbutbut : bocina regenerada -> {}",
 
     # -------------------------------------------------------------- aide ----
+    "Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : "
+    "le son part et le score s'affiche a l'ecran.":
+        "Cae un gol en Ligue 1, Premier League, LaLiga, Serie A o Bundesliga: "
+        "suena el aviso y el marcador sale en pantalla.",
+
+    # Les metavariables : ce que --help montre a la place de la valeur.
+    "CHEMIN": "RUTA",
+    "LISTE": "LISTA",
+    "COIN": "ESQUINA",
+    "CHOIX": "OPCION",
+    "SECONDES": "SEGUNDOS",
+    "MINUTES": "MINUTOS",
+    "CODE": "CODIGO",
+
     "affiche N cartes de demonstration puis quitte "
     "(defaut 1 ; --test 3 montre l'empilement)":
         "muestra N tarjetas de demostracion y sale "
