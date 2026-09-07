@@ -101,6 +101,8 @@ butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
 butbutbut --next              # les prochains matchs, groupes par jour
+butbutbut --table             # le classement des competitions suivies
+butbutbut --table om          # ... celui de l'OM, sa ligne surlignee
 butbutbut --list              # les competitions surveillables
 butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
@@ -268,6 +270,7 @@ disent pas la meme chose, et butbutbut ne fait jamais semblant du contraire.
 | Tableau d'actions | oui | **non** | oui, mais sans drapeaux |
 | Buteur, minute de l'action | oui | **non** | oui |
 | Cartons rouges (`--red-cards`) | oui | sans objet | oui |
+| Classement (`--table`) | oui | oui, par conference | oui, points de bonus compris |
 
 **Le hockey ne publie aucun tableau d'actions** - ni pendant le match, ni
 apres. On a le score, l'horloge et la periode ; jamais le buteur. La carte le
@@ -497,6 +500,153 @@ calendrier sort quand meme, avec ce qui manque dit en toutes lettres.
 
 Quand aucune ne repond, la commande le dit et sort en erreur plutot que de
 laisser croire a un week-end sans football.
+
+### Le classement
+
+`--scores` dit ce qui se joue, `--next` ce qui arrive, `--top-scorers` ce qu'on
+a vu passer. Restait la seule question qu'un supporter pose sans regarder de
+match : **ils sont ou, au classement ?**
+
+```bash
+butbutbut --table             # le classement des competitions suivies
+butbutbut --table l1          # ... d'une competition
+butbutbut --table om          # ... de la competition de cette equipe, sa ligne surlignee
+butbutbut --table l1,om       # les deux a la fois, dans n'importe quel ordre
+```
+
+```
+butbutbut : classement - Ligue 1
+
+Ligue 1 (2026-27)
+   #  Equipe                     J     G     N     P  Diff   Pts
+   1  AS Monaco                  3     3     0     0    +4     9
+   2  Paris FC                   3     2     1     0    +4     7
+   3  Lyon                       3     2     1     0    +4     7
+   ...
+> 10  Marseille                  3     1     0     2    +1     3
+   ...
+  18  AJ Auxerre                 3     0     0     3    -7     0
+```
+
+(La ligne surlignee est celle de `--table om`.)
+
+Le mot qui suit `--table` est lu comme une **competition** si le catalogue le
+reconnait, comme une **equipe** sinon. Ce sont exactement les noms de
+`--leagues` et de `--teams` : `l1`, `nhl`, `top14` d'un cote, `om`, `barca`,
+`manu` de l'autre. Aucun club ne s'appelle `big5`, l'ambiguite ne se produit
+pas.
+
+Une equipe nommee ne montre pas sa seule ligne : un rang tout seul ne veut rien
+dire, c'est le classement de sa competition qui repond a la question. Elle est
+surlignee d'un chevron, le meme signe que `--scores` emploie pour "en cours" -
+pas une couleur, parce qu'un terminal peut etre en noir sur blanc ou redirige
+dans un fichier.
+
+`--exclude-teams` n'a **aucun effet** ici, et c'est voulu : on ne retire pas une
+equipe d'un classement. Les rangs se comptent les uns par rapport aux autres, et
+une ligne manquante ferait un tableau qui ment. Taire un match, oui ; trouer un
+classement, non.
+
+#### Les colonnes suivent le sport
+
+Le rugby et le hockey n'ont pas la meme notion de classement que le football, et
+les colonnes le disent :
+
+| Sport    | Colonnes                          | Ce qui change |
+|----------|-----------------------------------|---------------|
+| Football | `J G N P Diff Pts`                | le socle |
+| Hockey   | `J G P DP Diff Pts`               | pas de match nul, mais les **defaites en prolongation** |
+| Rugby    | `J G N P Bon Diff Pts`            | les **points de bonus** |
+
+Un match de hockey se decide toujours, en prolongation ou aux tirs au but :
+afficher une colonne "N" de zeros serait inventer une statistique. En revanche
+une defaite en prolongation rapporte un point, et sans la colonne `DP` le total
+de la ligne ne se retrouve pas. Au rugby, ce sont les points de bonus qui font
+passer une equipe devant une autre a nombre de victoires egal. **Rien n'est
+fabrique** : chaque colonne vient d'une statistique que la source publie, et une
+statistique absente donne un tiret, jamais un zero.
+
+Le tableau tient dans **80 colonnes**, meme au rugby qui en compte le plus. Un
+tableau qui se replie sur deux lignes ne se lit plus du tout.
+
+#### Ce qui vient de la source, et ce qu'on n'invente pas
+
+Le classement a son propre endpoint chez ESPN, lu avec le meme client, les memes
+en-tetes et la meme politesse que les scores :
+
+```
+https://site.api.espn.com/apis/v2/sports/<sport>/<slug>/standings
+```
+
+C'est bien `apis/v2` et non `apis/site/v2` comme le tableau de bord : la
+deuxieme adresse repond 200 avec un objet vide, ce qui ressemble a une
+intersaison alors que c'est juste la mauvaise porte.
+
+**Le rang n'est jamais calcule.** Le depart entre deux equipes a egalite se joue
+sur des regles propres a chaque competition - difference de buts ici,
+confrontations directes la, essais marques ailleurs - et les refaire finirait
+par mentir un jour, sur une competition qu'on ne regarde pas. On affiche le rang
+qu'ESPN publie (`rank` au football et au rugby, `playoffSeed` au hockey, qui n'a
+pas de `rank` du tout).
+
+Le **tri**, lui, est necessaire, et c'est une surprise de la source : un
+championnat arrive deja trie, mais un groupe de Coupe du monde arrive dans le
+desordre et la conference Ouest de la NHL commence a sa 4e tete de serie. On
+range donc les lignes par le rang publie ; quand la source n'en publie aucun, on
+garde son ordre et on numerote.
+
+**Un bloc, ou plusieurs.** La source met toujours une *liste* de blocs, meme
+quand il n'y en a qu'un : un championnat en a un, la NHL deux (ses conferences),
+une Coupe du monde douze (ses groupes). Le nom du bloc n'est ecrit que s'il y en
+a plusieurs - sur un championnat, la source appelle son unique bloc "French
+Ligue 1 2026-27", ce qui ne ferait que repeter la ligne du dessus.
+
+```
+butbutbut : classement - NHL
+
+NHL (2025-26)
+  Eastern Conference
+   #  Equipe                     J     G     P    DP  Diff   Pts
+   1  Carolina Hurricanes       82    53    22     7   +56   113
+   ...
+  Western Conference
+   #  Equipe                     J     G     P    DP  Diff   Pts
+   1  Colorado Avalanche        82    55    16    11   +99   121
+   ...
+```
+
+#### Quand il n'y a rien a classer
+
+Une coupe se joue en tableau, pas en classement, et entre deux saisons la source
+n'a rien a servir. Dans les deux cas la reponse est une phrase, pas un tableau
+vide - qui ressemblerait trop a une panne - et elle nomme l'endroit exact ou on
+est alle voir :
+
+```
+butbutbut : classement - Coupe de France
+
+Aucun classement a afficher pour Coupe de France.
+  (Coupe de France : aucun classement publie sous soccer/fra.coupe_de_france)
+  (une coupe se joue en tableau ; hors saison, la source n'a rien a servir)
+```
+
+Une equipe qu'on ne trouve nulle part obtient le meme traitement, et c'est la
+que se voit une faute de frappe : comme `--next`, `--table` ne confronte pas le
+mot au catalogue des clubs, verification qui couterait une requete de plus par
+competition sur une commande qu'on lance en passant.
+
+```
+Aucune ligne pour zzzclub dans les classements de Ligue 1.
+```
+
+**Une requete par competition**, les unes apres les autres et espacees, comme
+`--next` et comme le demarrage du daemon. **Si l'une echoue, les autres
+continuent** ; quand aucune ne repond, la commande le dit et sort en erreur.
+
+```
+  (Bundesliga injoignable : HTTP 500 sur ger.1)
+  (le classement ci-dessus est donc incomplet ; les autres competitions ont repondu)
+```
 
 ### Placer les cartes
 
@@ -1043,6 +1193,19 @@ ca un parametre `dates`, un jour (`?dates=20260908`) ou un intervalle
 (`?dates=20260908-20260915`), bornes comprises. C'est ce dernier qui permet a
 `--next` de couvrir une semaine entiere en une seule requete par competition,
 la ou un jour a la fois en couterait sept.
+
+Le meme hote publie deux autres endpoints, lus avec le meme client et les memes
+en-tetes : `.../teams`, qui sert a valider ce qu'on tape dans `--teams`, et le
+classement de `--table`, dont l'adresse n'a pas tout a fait la meme forme.
+
+```
+https://site.api.espn.com/apis/v2/sports/<sport>/<code>/standings
+```
+
+`apis/v2`, et non `apis/site/v2` comme le tableau de bord : la seconde adresse
+existe pourtant, et repond 200 avec un objet vide - une intersaison en apparence,
+une mauvaise porte en realite. La difference est notee dans le code pour ne pas
+avoir a la redecouvrir.
 
 ### Comment un but est detecte
 
@@ -1792,7 +1955,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**896 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**937 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

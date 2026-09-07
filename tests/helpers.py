@@ -198,6 +198,49 @@ def payload(*events):
     return {"events": list(events)}
 
 
+# --- Les classements ---------------------------------------------------------
+# Le classement a un endpoint et une forme a lui, releves sur la vraie source :
+# un objet, un tableau `children` de blocs (un championnat en a un, la NHL deux,
+# une Coupe du monde douze), et dans chaque bloc des `entries` faites d'une
+# equipe et d'une liste plate de statistiques.
+
+def standing_entry(name, team_id="1", note="", **stats):
+    """Une ligne de classement : une equipe et ses statistiques.
+
+    Les statistiques se passent par leur `type` ESPN - gamesplayed, wins,
+    pointdifferential, rank - parce que c'est sous ce nom que les colonnes de
+    sports.py vont les chercher. La source les nomme deux fois, `type` et
+    `name` ; on pose les deux, comme elle.
+    """
+    return {
+        "team": {"id": team_id, "displayName": name,
+                 "shortDisplayName": name.split()[-1],
+                 "abbreviation": name[:3].upper()},
+        "note": {"description": note} if note else {},
+        "stats": [{"name": key, "type": key, "displayValue": str(value)}
+                  for key, value in stats.items()],
+    }
+
+
+def standings_payload(*groups, **kwargs):
+    """La reponse du classement. `groups` : des (nom du bloc, [lignes]).
+
+    Sans aucun bloc, c'est la reponse d'une coupe hors saison : la source rend
+    alors un objet complet, mais sans le moindre `children`.
+    """
+    name = kwargs.pop("name", "French Ligue 1")
+    season = kwargs.pop("season", "2026-27 French Ligue 1")
+    answer = {"name": name, "abbreviation": name,
+              "season": {"year": 2026, "displayName": season}}
+    if groups:
+        answer["children"] = [
+            {"name": group_name, "abbreviation": season,
+             "standings": {"name": "overall", "seasonDisplayName": season,
+                           "entries": list(entries)}}
+            for group_name, entries in groups]
+    return answer
+
+
 def opener_for(state):
     """Un opener() pour espn.fetch, qui sert state['payload'] a chaque appel."""
     def opener(_url, _timeout):

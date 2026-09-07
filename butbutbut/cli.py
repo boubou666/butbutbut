@@ -53,6 +53,17 @@ MAX_NEXT_DAYS = 30
 # Meme espacement que Watcher.prime() : avec --leagues all ce sont 36 requetes,
 # et une rafale finit par se faire jeter par la source.
 NEXT_PAUSE = 0.2
+# --table interroge les competitions les unes apres les autres, exactement pour
+# la meme raison que --next : une rafale de requetes finit par se faire jeter.
+TABLE_PAUSE = 0.2
+
+# La largeur du classement, en signes. On vise 80 colonnes ecussons exclus -
+# c'est le terminal le plus etroit qu'on croise encore, et un tableau qui se
+# replie sur deux lignes ne se lit plus du tout. Le compte : 2 pour la marque
+# de surlignage, 2 pour le rang, 2 de separation, le nom, puis une cellule par
+# colonne du sport (sept au maximum, au rugby).
+TABLE_NAME_WIDTH = 22
+TABLE_CELL_WIDTH = 6
 
 # Les jours de la semaine, ecrits ici plutot que tires de la locale : %A rend
 # ce que la machine veut bien (parfois de l'anglais, parfois des accents), et
@@ -1224,6 +1235,211 @@ def do_next(args) -> int:
     return 1 if unreachable and len(unreachable) == total else 0
 
 
+# ------------------------------------------------------------- classement ----
+# --scores dit ce qui se joue, --next ce qui arrive, --top-scorers ce qu'on a vu
+# passer. Restait "ils sont ou, au classement ?", la seule question qu'un
+# supporter pose sans regarder de match.
+#
+# Ce qui a ete arbitre ici :
+#
+#   - les colonnes viennent du sport et de nulle part ailleurs (sports.py). Un
+#     classement de hockey n'a pas de colonne de matchs nuls parce que le
+#     hockey n'a pas de match nul, pas parce qu'on aurait oublie de la remplir ;
+#   - on ne calcule aucun rang : les regles de depart a egalite changent d'une
+#     competition a l'autre, et les refaire, c'est se tromper un jour de
+#     printemps sur une competition qu'on ne regarde pas. Le rang affiche est
+#     celui que la source publie (voir espn._parse_group) ;
+#   - une competition sans classement (une coupe, une intersaison) le dit en
+#     toutes lettres, avec l'endroit ou on est alle voir. Un tableau vide
+#     ressemble trop a une panne.
+
+
+def _table_request(value) -> tuple:
+    """Ce que --table a recu : (competitions, equipes).
+
+    Un jeton que le catalogue reconnait est une competition, tout le reste est
+    une equipe. C'est la meme ruse que --next, qui distingue les jours des
+    equipes en regardant si le mot est un nombre : ici la question posee au
+    catalogue est aussi tranchee, et aucun club ne s'appelle "l1" ni "big5".
+    """
+    picked = []
+    wanted = []
+    for token in str(value or "").replace(";", ",").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        (picked if leagues.names_a_league(token) else wanted).append(token)
+    return ",".join(picked), ",".join(wanted)
+
+
+def _table_filter(args, wanted):
+    """Les equipes a surligner : --teams, plus ce qui suit --table.
+
+    --exclude-teams n'entre pas ici, et c'est volontaire : on ne retire pas une
+    equipe d'un classement. Le classement est un tout, les rangs se comptent
+    les uns par rapport aux autres, et une ligne manquante ferait un tableau
+    qui ment. Taire un match, oui ; trouer un classement, non.
+
+    Comme pour --next, le mot n'est pas confronte au catalogue des equipes :
+    ca couterait une requete par competition. Une faute de frappe se voit
+    ailleurs, dans la phrase finale qui repete le mot cherche.
+    """
+    both = ",".join(part for part in (args.teams, wanted) if part)
+    chosen = teams.Filter(both)
+    return chosen if chosen.active else None
+
+
+def _table_name(name) -> str:
+    """Le nom du club, coupe a la largeur de sa colonne.
+
+    espn.py rend deja le nom court quand le nom complet depasse ; il reste les
+    clubs dont le nom court lui-meme deborde, et la colonne qui glisse d'un
+    caractere derange plus que le mot ampute.
+    """
+    name = str(name or "")
+    return name if len(name) <= TABLE_NAME_WIDTH else name[:TABLE_NAME_WIDTH]
+
+
+def table_header(sport) -> str:
+    """La ligne d'en-tete du classement, colonnes du sport comprises."""
+    cells = "".join("{:>{}}".format(title, TABLE_CELL_WIDTH)
+                    for title, _keys in sport.table)
+    return "  {:>2}  {:<{}}{}".format("#", "Equipe", TABLE_NAME_WIDTH,
+                                      cells).rstrip()
+
+
+def table_row(row, sport, marked=False) -> str:
+    """Une ligne de classement. `marked` la surligne d'un chevron.
+
+    Un chevron et pas une couleur : le terminal de quelqu'un peut etre en noir
+    sur blanc, sur fond clair, ou redirige dans un fichier. C'est deja le signe
+    que --scores emploie pour "en cours", et il ne coute rien a personne.
+    """
+    cells = "".join("{:>{}}".format(row.cell(keys), TABLE_CELL_WIDTH)
+                    for _title, keys in sport.table)
+    return "{} {:>2}  {:<{}}{}".format(
+        ">" if marked else " ", row.rank, _table_name(row.team),
+        TABLE_NAME_WIDTH, cells).rstrip()
+
+
+def table_groups(table, chosen) -> list:
+    """Les blocs a montrer : tous, ou seulement ceux ou l'equipe figure.
+
+    "--table om" ne demande pas la Ligue 1, il demande la ligne de l'OM - et le
+    classement de sa competition avec, sans quoi un rang tout seul ne veut rien
+    dire. On garde donc le bloc entier des qu'une de ses lignes repond.
+    """
+    if chosen is None:
+        return [group for group in table.groups if group.rows]
+    return [group for group in table.groups
+            if any(chosen.team_matches(row.names) for row in group.rows)]
+
+
+def _no_table_text(league) -> str:
+    """La ligne d'une competition sans classement.
+
+    Elle nomme l'endroit exact ou on est alle voir : c'est ce qui distingue
+    "cette coupe n'a pas de classement" de "butbutbut s'est trompe d'adresse",
+    et c'est la seule chose qu'on puisse dire honnetement des deux.
+    """
+    return "{} : aucun classement publie sous {}/{}".format(
+        league.name, league.sport.code, league.slug)
+
+
+def do_table(args) -> int:
+    """Le classement des competitions surveillees."""
+    picked, wanted = _table_request(args.table)
+    try:
+        selection = leagues.resolve(picked or args.leagues, args.exclude)
+    except leagues.SelectionError as exc:
+        # Les competitions de --table ne passent pas par le controle de main() :
+        # elles arrivent dans un autre argument, elles se verifient ici.
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+    chosen = _table_filter(args, wanted)
+
+    print(tr("butbutbut : classement - {}", leagues.describe(selection)))
+    if chosen is not None:
+        print(tr("  {}", chosen.describe()))
+
+    shown = 0
+    silent = []
+    unreachable = []
+    total = len(selection)
+    for index, league in enumerate(selection):
+        # La pause se prend AVANT la requete plutot qu'apres : elle vaut alors
+        # pour toutes les sorties de boucle, y compris celle d'une competition
+        # injoignable, sans avoir a la repeter a chaque branche.
+        if index:
+            time.sleep(TABLE_PAUSE)
+        try:
+            table = espn.standings(league)
+        except espn.SourceError as exc:
+            # Une competition muette n'emporte pas les autres, exactement comme
+            # pour --next : un classement partiel, et dit comme tel, vaut mieux
+            # qu'une erreur a la place de tout ce qui a bien repondu.
+            unreachable.append((league, exc))
+            continue
+
+        groups = table_groups(table, chosen)
+        if groups:
+            shown += 1
+            _print_table(table, groups, chosen)
+        elif table.empty:
+            # Rien a montrer, et deux raisons possibles : la source n'a pas de
+            # classement (on le dit), ou l'equipe cherchee n'est pas de cette
+            # competition-la (on se tait, elle est peut-etre dans la suivante).
+            silent.append(league)
+
+    if not shown:
+        if len(unreachable) == total:
+            print(tr("\nAucune competition n'a repondu : rien a classer."))
+        else:
+            print(tr("\n{}", _nothing_ranked_text(chosen, selection)))
+    for league in silent:
+        print(tr("  ({})", _no_table_text(league)))
+    if silent:
+        # La raison, une seule fois : elle est la meme pour toutes, et la
+        # repeter sur trente-six lignes de coupes noierait le classement.
+        print(tr("  (une coupe se joue en tableau ; hors saison, la source "
+                 "n'a rien a servir)"))
+    for league, exc in unreachable:
+        print(tr("  ({} injoignable : {})", league.name, exc))
+    if unreachable and len(unreachable) < total:
+        print(tr("  (le classement ci-dessus est donc incomplet ; les autres "
+                 "competitions ont repondu)"))
+    return 1 if unreachable and len(unreachable) == total else 0
+
+
+def _print_table(table, groups, chosen) -> None:
+    """Un classement : son titre, ses blocs, ses lignes."""
+    season = " ({})".format(table.season) if table.season else ""
+    print(tr("\n{}{}", table.league.name, season))
+    for group in groups:
+        # Le nom du bloc n'est ecrit que s'il y en a plusieurs : sur un
+        # championnat, la source appelle son unique bloc "French Ligue 1
+        # 2026-27", ce qui ne fait que repeter la ligne du dessus.
+        if len(table.groups) > 1 and group.name:
+            print(tr("  {}", group.name))
+        print(table_header(table.sport))
+        for row in group.rows:
+            marked = chosen is not None and chosen.team_matches(row.names)
+            print(table_row(row, table.sport, marked=marked))
+
+
+def _nothing_ranked_text(chosen, selection) -> str:
+    """La phrase du classement vide : ce qui a ete cherche, et ou.
+
+    Meme raison que pour --next : un ecran sans tableau laisse croire a une
+    panne, et c'est la que se voit une faute de frappe dans le nom d'equipe.
+    """
+    where = leagues.describe(selection)
+    if chosen is not None and chosen.wanted_tokens:
+        return "Aucune ligne pour {} dans les classements de {}.".format(
+            ", ".join(chosen.wanted_tokens), where)
+    return "Aucun classement a afficher pour {}.".format(where)
+
+
 def _print_activity(pid, quiet_teams=None) -> None:
     """L'activite du daemon, relue dans le fichier d'etat.
 
@@ -1887,6 +2103,15 @@ def build_parser() -> argparse.ArgumentParser:
                                 "suivies. '--next om' cible une equipe, "
                                 "'--next 14' allonge la fenetre ({} au plus)",
                                 DEFAULT_NEXT_DAYS, MAX_NEXT_DAYS))
+    # Meme const vide que --next, et pour la meme raison : '--table' tout court
+    # doit se distinguer de '--table' absent.
+    parser.add_argument("--table", nargs="?", const="", default=None,
+                        metavar=tr("COMPETITION|EQUIPE"),
+                        help=tr("affiche le classement puis quitte. Sans rien : "
+                                "les competitions suivies. '--table l1' cible "
+                                "une competition, '--table om' surligne une "
+                                "equipe dans la sienne, et les deux se "
+                                "combinent"))
     parser.add_argument("--status", action="store_true",
                         help=tr("affiche l'etat (daemon, dernier releve, matchs "
                              "en cours, son, ecrans, connexion)"))
@@ -2164,6 +2389,8 @@ def main(argv=None) -> int:
         return do_test_hook(args)
     if args.next is not None:
         return do_next(args)
+    if args.table is not None:
+        return do_table(args)
     if args.test:
         return do_test(args)
     if args.replay:

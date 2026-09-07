@@ -7,6 +7,49 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **`--table` : le classement du championnat.** `--scores` disait ce qui se
+  joue, `--next` ce qui arrive, `--top-scorers` ce qu'on a vu passer. Restait la
+  seule question qu'un supporter pose sans regarder de match : ils sont ou, au
+  classement ? C'etait le dernier trou visible dans la famille des commandes
+  ponctuelles.
+- `--table l1` cible une competition (les memes noms que `--leagues`),
+  `--table om` surligne la ligne d'une equipe et affiche le classement de sa
+  competition (les memes noms que `--teams`), et les deux se combinent :
+  `--table l1,om`. Le mot est lu comme une competition si le catalogue le
+  reconnait, comme une equipe sinon.
+- Le classement a son propre endpoint chez ESPN
+  (`apis/v2/sports/<sport>/<slug>/standings`, et non `apis/site/v2` comme le
+  tableau de bord), lu par le meme client, avec les memes en-tetes, les memes
+  delais et la meme politesse : `espn.standings()` et `espn.parse_standings()`.
+- **Les trois sports sont couverts, chacun avec ses vraies colonnes**
+  (`sports.py`) : `J G N P Diff Pts` au football, `J G P DP Diff Pts` au hockey
+  - qui n'a pas de match nul mais compte les defaites en prolongation -, et
+  `J G N P Bon Diff Pts` au rugby, points de bonus compris.
+- 41 tests hors reseau (`tests/test_table.py`) : charges utiles completes,
+  amputees et vides, la selection par competition et par equipe, le surlignage,
+  la largeur des lignes et une competition injoignable parmi d'autres.
+
+### Notes
+
+- **Rien n'est fabrique.** Chaque colonne vient d'une statistique que la source
+  publie ; une statistique absente donne un tiret, jamais un zero. Une colonne
+  de matchs nuls au hockey inventerait une statistique qui n'existe pas.
+- **Le rang n'est jamais calcule** : le depart entre deux equipes a egalite suit
+  des regles propres a chaque competition, et les refaire finirait par mentir un
+  jour. On affiche celui qu'ESPN publie (`rank` au football et au rugby,
+  `playoffSeed` au hockey). Le tri, lui, est necessaire : un championnat arrive
+  trie, mais un groupe de Coupe du monde arrive dans le desordre et la
+  conference Ouest de la NHL commence a sa 4e tete de serie.
+- Un classement absent (une coupe, une intersaison) rend une phrase et non un
+  tableau vide, en nommant l'endroit exact ou on est alle voir. Les competitions
+  sont interrogees les unes apres les autres, espacees comme pour `--next`, et
+  **une competition injoignable n'emporte pas les autres**.
+- `--exclude-teams` est sans effet sur `--table` : on ne retire pas une equipe
+  d'un classement, les rangs qui resteraient ne voudraient plus rien dire.
+- Le tableau tient dans 80 colonnes, ecussons exclus - on est en terminal.
+
 ## [1.7.0] - 2026-09-07
 
 ### Ajoute
