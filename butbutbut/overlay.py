@@ -42,7 +42,10 @@ Multiplateforme, comme doot :
 
 Une carte reste une fenetre `topmost` : une application en plein ecran lui
 passe devant. `fullscreen` sait le dire sous Windows ; la pile le note alors
-dans le journal, et peut reproposer la carte plus tard (voir `push`).
+dans le journal, et peut reproposer la carte plus tard (voir `push`). Passer
+devant est une chose, sortir l'autre de son plein ecran en est une autre : une
+carte n'active jamais rien et n'a pas de bouton dans la barre des taches, sous
+peine de la faire remonter par-dessus le jeu (voir `_make_click_through`).
 """
 
 from __future__ import annotations
@@ -394,7 +397,24 @@ def _logo_size(fonts) -> int:
 
 
 def _make_click_through(window) -> None:
-    """Windows : la fenetre ignore la souris et ne prend jamais le focus."""
+    """Windows : la fenetre ignore la souris et ne prend jamais le focus.
+
+    A poser AVANT le premier `deiconify`, et c'est tout l'interet de la
+    fonction. Windows decide de l'activation d'une fenetre au moment ou elle
+    apparait : une fenetre `overrideredirect` encore ordinaire a cet instant
+    reclame le premier plan et recoit un bouton dans la barre des taches. Le
+    bureau refuse souvent le vol - le focus reste au jeu - mais il repond alors
+    en faisant clignoter ce bouton, et un bouton qui clignote fait remonter la
+    barre des taches par-dessus une application en plein ecran. Le but arrive,
+    le plein ecran s'en va : mesure faite sur Windows 10, une carte poussee
+    devant un jeu sans bordure a suffi a lui prendre le premier plan.
+
+    WS_EX_NOACTIVATE ecarte la fenetre de l'activation, WS_EX_TOOLWINDOW du
+    bouton, donc du clignotement. Poses ensuite, les deux styles arrivent trop
+    tard : le mal est fait a l'affichage. Une fois poses, ils tiennent - ni le
+    fondu ni les deplacements ne les effacent (verifie sous Tk 8.6), un seul
+    appel par carte suffit donc.
+    """
     if sys.platform != "win32":
         return
     try:
@@ -742,6 +762,12 @@ class _Panel:
         self.canvas = tk.Canvas(self.window, bg=self.background,
                                 highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
+
+        # Tant que la fenetre est retiree, elle n'a encore rien pris a
+        # personne : c'est le seul moment ou ces styles la protegent de
+        # l'affichage a venir. Voir _make_click_through.
+        _make_click_through(self.window)
+
         self._render(card)
 
     def _render(self, card: Card) -> None:
@@ -773,7 +799,6 @@ class _Panel:
             self.window.deiconify()
         except Exception:
             return
-        _make_click_through(self.window)
         self._fade(self.stack.opacity, FADE_STEPS,
                    max(10, int(FADE_IN * 1000 / FADE_STEPS)), lambda: None)
 
@@ -820,7 +845,6 @@ class _Toast(_Panel):
             self.window.deiconify()
         except Exception:
             return
-        _make_click_through(self.window)
 
         hold_ms = max(200, int((self.duration - FADE_IN - FADE_OUT) * 1000))
         self._fade(self.stack.opacity, FADE_STEPS,

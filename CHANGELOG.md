@@ -7,6 +7,28 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Une carte ne sort plus une application de son plein ecran.** Sous Windows,
+  la carte etait bien marquee "ne prend jamais le focus, pas de bouton dans la
+  barre des taches" (`WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`), mais un cran trop
+  tard : les styles etaient poses **apres** `deiconify()`, alors que Windows
+  tranche l'activation a l'instant precis ou une fenetre apparait. Le temps de
+  ces quelques millisecondes, la carte etait une fenetre ordinaire : elle
+  reclamait le premier plan et recevait un bouton de barre des taches. Quand le
+  bureau refusait le vol, il faisait clignoter ce bouton a la place - et un
+  bouton qui clignote fait remonter la barre des taches par-dessus un jeu en
+  plein ecran. Mesure sur Windows 10 : une carte poussee devant un jeu sans
+  bordure lui a pris le premier plan. Les styles se posent maintenant pendant
+  que la fenetre est encore retiree, donc avant qu'elle n'existe pour le
+  bureau ; verifie ensuite qu'ils tiennent jusqu'a la fin de la carte (ni le
+  fondu ni les deplacements ne les effacent), les appels d'apres-coup ont donc
+  disparu plutot que d'etre dedoubles.
+- 1306 -> **1310 tests** : les styles poses avant le premier affichage, une
+  carte de but et une carte epinglee qui ne se montrent qu'ensuite, et un seul
+  passage par carte - l'ordre est ce qui compte ici, et c'est exactement ce
+  qu'aucun test ne regardait.
+
 ## [1.10.0] - 2026-09-07
 
 ### Ajoute

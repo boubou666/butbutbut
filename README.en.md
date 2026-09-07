@@ -2088,6 +2088,15 @@ goal you probably missed:
 
 The sound, for its part, fires as usual.
 
+**It never pulls anyone out of full screen, though.** A card is never
+activated and has no taskbar button (`WS_EX_NOACTIVATE` and
+`WS_EX_TOOLWINDOW`, set **before** it is first shown). Without them Windows
+would hand the card the foreground the moment it appears; and when it refuses
+the steal, it flashes the card's taskbar button instead - a flashing button
+brings the taskbar back over the game, and full screen is lost over a goal.
+The order matters as much as the styles: set after the window is shown, they
+arrive once the damage is done.
+
 ```bash
 butbutbut --retry-fullscreen        # show the card again later (120 s at most)
 butbutbut --retry-fullscreen 300    # ... for 5 minutes
