@@ -100,12 +100,33 @@ def label_of(key) -> str:
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\s\s+(.+)$")
 _SCORE = re.compile(r"^(?P<home>.+?) (?P<home_score>\d+) - (?P<away_score>\d+) "
                     r"(?P<away>.+)$")
-# La minute de jeu telle que le journal l'ecrit : 50', 90+3', ou 45 tout sec.
+# La minute de jeu telle que le journal l'ecrit : 50', 45 tout sec, et le temps
+# additionnel sous SES DEUX FORMES. La source ecrit 90'+9' - apostrophe des les
+# deux cotes du plus - et c'est cette forme-la qui arrive vraiment dans le
+# journal ; 90+3' est celle qu'on ecrit a la main et que les captures de test
+# portent depuis toujours. N'accepter que la seconde revenait a rendre illisible
+# tout but marque dans les arrets de jeu, c'est-a-dire celui qu'on retient.
 # Tout le reste - l'horloge d'un match de hockey (12:34), un libelle de phase,
 # une ligne d'une version dont on ne connait plus la forme - n'est pas une
 # minute de jeu : mieux vaut l'avouer que la faire entrer de travers dans un
 # histogramme dont c'est justement la precision qui fait tout l'interet.
-_MINUTE = re.compile(r"^(\d{1,3})\s*(?:\+\s*(\d{1,3}))?\s*'?$")
+_MINUTE = re.compile(r"^(\d{1,3})\s*'?\s*(?:\+\s*(\d{1,3})\s*'?)?$")
+
+
+def minute_of(text):
+    """(minute, temps additionnel) d'un libelle de minute, ou None.
+
+    Publique, et pas seulement parce que Entry s'en sert : c'est le canari qui
+    en a besoin. Ce bug-la n'etait pas une cle disparue mais une forme jamais
+    confrontee au lecteur - la source ecrivait 90'+9' depuis toujours, le
+    lecteur n'acceptait que 90+3', et les buts des arrets de jeu tombaient
+    dans le silence. Une fonction que le canari peut appeler sur ce qu'il
+    vient de telecharger fait le rapprochement que personne n'avait fait.
+    """
+    found = _MINUTE.match(str(text or "").strip())
+    if found is None:
+        return None
+    return int(found.group(1)), int(found.group(2) or 0)
 
 
 class Entry:
@@ -146,12 +167,9 @@ class Entry:
     def clock(self):
         """(minute, temps additionnel) du but, ou None si ce n'est pas lisible.
 
-        Voir _MINUTE : le journal n'ecrit pas que des minutes de football.
+        Voir minute_of() : le journal n'ecrit pas que des minutes de football.
         """
-        found = _MINUTE.match(self.minute.strip())
-        if found is None:
-            return None
-        return int(found.group(1)), int(found.group(2) or 0)
+        return minute_of(self.minute)
 
     @property
     def scorer(self) -> str:

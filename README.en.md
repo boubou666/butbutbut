@@ -1541,7 +1541,15 @@ It queries the source for real, then checks that every key read by
 `butbutbut/espn.py` is still there, and of the right type. It even hands the
 reply back to `espn.parse()`, the very code the daemon runs: keys that are
 present but no longer yield a match, a goal or a scorer would be just as
-serious a drift. The report gives one line per key:
+serious a drift.
+
+A key can also stay in place and **change shape**, which shows up nowhere else.
+So the canary re-reads goal minutes with the log's own reader, the one behind
+the `--stats` histogram: a clock nobody can read any more earns a red line.
+Football alone is held to that rule - `12:34`, an ice hockey clock, is not a
+minute of play.
+
+The report gives one line per key:
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2268,7 +2276,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1090 tests**, with no network and no screen: the source is simulated by an
+**1100 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

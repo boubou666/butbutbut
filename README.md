@@ -1547,7 +1547,15 @@ Il interroge la source pour de vrai, puis verifie que chaque cle lue par
 `butbutbut/espn.py` est encore la, et du bon type. Il va meme repasser la
 reponse a `espn.parse()`, le code que le daemon execute : des cles presentes
 qui ne produisent plus ni match, ni but, ni buteur seraient une derive tout
-aussi grave. Le rapport donne une ligne par cle :
+aussi grave.
+
+Une cle peut aussi rester en place et **changer de forme**, ce qui ne se voit
+nulle part ailleurs. Le canari relit donc la minute des buts avec le lecteur du
+journal, celui dont sort l'histogramme de `--stats` : une horloge que plus
+personne ne sait lire vaut une ligne rouge. Le football seul est tenu a cette
+regle - `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+
+Le rapport donne une ligne par cle :
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2275,7 +2283,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1090 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1100 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
