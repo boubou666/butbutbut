@@ -48,8 +48,6 @@ MESSAGES = {
     '  butbutbut --exclude liga,seriea        (les 5 grands moins deux)':
         '  butbutbut --exclude liga,seriea        (i 5 grandi campionati '
         'meno due)',
-    '  butbutbut --leagues all                (tout le catalogue)':
-        '  butbutbut --leagues all                (tutto il catalogo)',
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         '  butbutbut --leagues por.1              (un codice ESPN qualsiasi)',
     'butbutbut : {} ecran(s) detecte(s)':
@@ -133,12 +131,6 @@ MESSAGES = {
     "(n'ecrase rien)":
         'scrive un file di configurazione di esempio, commentato, poi esce '
         '(non sovrascrive nulla)',
-    'competitions suivies, separees par des virgules (defaut : les 5 grands '
-    "championnats). Ex : --leagues l1,pl,ucl ; 'all' pour tout le catalogue "
-    '; un code ESPN marche aussi (por.1)':
-        'competizioni seguite, separate da virgole (di base: i 5 grandi '
-        "campionati). Es: --leagues l1,pl,ucl ; 'all' per tutto il catalogo "
-        '; funziona anche un codice ESPN (por.1)',
     'competitions a ne pas suivre, meme syntaxe. Ex : --exclude liga,seriea':
         'competizioni da non seguire, stessa sintassi. Es: --exclude '
         'liga,seriea',
@@ -240,10 +232,6 @@ MESSAGES = {
         'irraggiungibile ({})',
 
     # --- la prose du parseur -------------------------------------------------
-    'Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : '
-    "le son part et le score s'affiche a l'ecran.":
-        'Un gol in Ligue 1, Premier League, LaLiga, Serie A o Bundesliga: '
-        'parte il suono e il punteggio compare sullo schermo.',
     # Les metavariables du --help. SECONDI se retrouve dans l'aide de
     # --retry-fullscreen, plus haut : les deux doivent dire le meme mot.
     'CHEMIN':

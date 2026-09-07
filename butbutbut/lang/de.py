@@ -36,8 +36,6 @@ MESSAGES = {
     '\nExemples :': '\nBeispiele:',
     '  butbutbut --exclude liga,seriea        (les 5 grands moins deux)':
         '  butbutbut --exclude liga,seriea        (die 5 Topligen minus zwei)',
-    '  butbutbut --leagues all                (tout le catalogue)':
-        '  butbutbut --leagues all                (der ganze Katalog)',
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         '  butbutbut --leagues por.1              (jeder ESPN-Code)',
     'butbutbut : {} ecran(s) detecte(s)': 'butbutbut : {} Monitor(e) erkannt',
@@ -103,12 +101,6 @@ MESSAGES = {
      "(n'ecrase rien)"):
         ('schreibt eine kommentierte Beispiel-Konfiguration und beendet sich '
          '(eine vorhandene Datei bleibt)'),
-    ('competitions suivies, separees par des virgules (defaut : les 5 grands '
-     "championnats). Ex : --leagues l1,pl,ucl ; 'all' pour tout le catalogue "
-     '; un code ESPN marche aussi (por.1)'):
-        ('verfolgte Wettbewerbe, mit Komma getrennt (Standard : die 5 '
-         "Topligen). Bsp : --leagues l1,pl,ucl ; 'all' nimmt den ganzen "
-         'Katalog ; ein ESPN-Code geht auch (por.1)'),
     'competitions a ne pas suivre, meme syntaxe. Ex : --exclude liga,seriea':
         ('Wettbewerbe, die nicht verfolgt werden, gleiche Syntax. Bsp : '
          '--exclude liga,seriea'),
@@ -256,11 +248,6 @@ MESSAGES = {
     # --- l'en-tete de --help -------------------------------------------------
     # Le verbe francais ('tombe') n'a pas d'equivalent sans trema ('faellt') :
     # la phrase allemande se passe donc de verbe pour son sujet.
-    ('Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga '
-     ": le son part et le score s'affiche a l'ecran."):
-        ('Ein Tor in Ligue 1, Premier League, LaLiga, Serie A oder Bundesliga '
-         ': der Ton geht los und der Spielstand erscheint auf dem '
-         'Bildschirm.'),
 
     # --- les metavariables de --help ----------------------------------------
     # CODE et LISTE s'ecrivent pareil en allemand : pas d'entree.
