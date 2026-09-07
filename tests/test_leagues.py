@@ -164,5 +164,26 @@ class TestAdHocCompetition(unittest.TestCase):
         self.assertEqual(league.label, "LIGUE 1")
 
 
+class TestDesignates(unittest.TestCase):
+    """Le pendant sans effet de bord de find(), pour les noms de fichiers son."""
+
+    def test_a_code_a_name_or_an_alias_all_designate_the_league(self):
+        for token in ("fra.1", "l1", "ligue1", "Ligue 1", "france"):
+            found = leagues.designates(token)
+            self.assertIsNotNone(found, token)
+            self.assertEqual(found.slug, "fra.1", token)
+
+    def test_a_word_that_is_not_a_competition_gives_nothing(self):
+        for token in ("om", "corne", "contre", ""):
+            self.assertIsNone(leagues.designates(token), token)
+
+    def test_an_unknown_espn_code_is_not_opened_on_the_way(self):
+        # find() ouvrirait la competition ; ici on ne fait que repondre.
+        slug = "gre.2"
+        self.assertNotIn(slug, leagues.BY_SLUG)
+        self.assertIsNone(leagues.designates(slug))
+        self.assertNotIn(slug, leagues.BY_SLUG)
+
+
 if __name__ == "__main__":
     unittest.main()

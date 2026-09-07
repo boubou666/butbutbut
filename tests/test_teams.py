@@ -290,5 +290,21 @@ class TestWatcherFiltering(unittest.TestCase):
         self.assertEqual(len(guard.all_matches()), 1)
 
 
+class TestDesignates(unittest.TestCase):
+    """L'entree publique dont se sert le choix du son par nom de fichier."""
+
+    def test_a_nickname_designates_its_club(self):
+        self.assertTrue(teams.designates("om", ("Marseille", "OLM")))
+        self.assertTrue(teams.designates("barca", ("Barcelona", "BAR")))
+
+    def test_the_abbreviation_and_the_start_of_a_word_work_too(self):
+        self.assertTrue(teams.designates("olm", ("Marseille", "OLM")))
+        self.assertTrue(teams.designates("rennai", ("Stade Rennais", "REN")))
+
+    def test_another_club_is_not_designated(self):
+        self.assertFalse(teams.designates("psg", ("Marseille", "OLM")))
+        self.assertFalse(teams.designates("corne", ("Marseille", "OLM")))
+
+
 if __name__ == "__main__":
     unittest.main()

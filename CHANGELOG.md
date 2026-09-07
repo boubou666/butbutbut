@@ -9,6 +9,35 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Des sons par contexte, decides par le nom du fichier.** Le dossier `sound`
+  ne se contente plus d'un tirage au hasard : `om.mp3` ne sort que quand l'OM
+  marque, `fra.1.mp3` (ou `l1.mp3`) que pour un but de Ligue 1, et surtout
+  `contre.mp3` quand une equipe suivie avec `--teams` **encaisse**. Suivre un
+  club, c'est enfin entendre la difference entre "on a marque" et "on a pris".
+- Les noms acceptes sont ceux qu'on tape deja ailleurs : les surnoms et
+  abreviations de `--teams` (`om`, `barca`, `manu`, `olm`...) et les codes ou
+  alias de `--list` (`fra.1`, `l1`, `ligue1`, `ucl`). Le mot pour "encaisse"
+  s'ecrit aussi `encaisse`, `against` ou `conceded`.
+- Plusieurs fichiers pour la meme chose se distinguent par un suffixe apres
+  `-`, `_`, un espace ou un point (`om-1.mp3`, `om-2.mp3`) : le tirage au
+  hasard reste, mais entre eux seulement.
+- `butbutbut --status` deroule le dossier et dit, fichier par fichier, ce que
+  butbutbut a compris de son nom - y compris qu'un `contre.mp3` ne servira
+  jamais sans `--teams`, ou qu'un son vise une competition non suivie.
+
+### Change
+
+- La priorite va du plus etroit au plus large - equipe, `contre`, competition,
+  fond sonore - pour qu'une intention precise ne soit jamais recouverte par une
+  plus large, et un etage vide passe la main au suivant. Un dossier sans nom
+  reconnaissable se comporte donc exactement comme avant.
+- Le son est desormais choisi **par but** et non par releve : deux buts du meme
+  tour peuvent venir de deux equipes, donc de deux fichiers.
+
+
+
+### Ajoute
+
 - **Le mode sans spoiler** : `--spoiler-free EQUIPES` (et la cle
   `spoiler_free`). Pour les matchs de ces equipes, plus rien n'arrive a l'ecran
   ni au haut-parleur - ni but, ni but annule, ni temps fort, ni carton rouge, ni

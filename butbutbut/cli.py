@@ -171,18 +171,58 @@ def release_pid_file() -> None:
 
 # ---------------------------------------------------------------- media ------
 
-def resolve_sound(args):
+def sound_clubs(args) -> list:
+    """Les mots dont butbutbut sait qu'ils designent un club.
+
+    Les surnoms usuels, plus tout ce que --teams et --exclude-teams ont recu.
+    De quoi reconnaitre `psg.mp3` comme un son d'equipe meme un soir ou le PSG
+    ne joue pas, et donc ne pas le verser dans le fond sonore des autres buts.
+    """
+    chosen = teams.Filter(args.teams, args.exclude_teams)
+    return list(teams.ALIASES) + chosen.wanted_tokens + chosen.excluded_tokens
+
+
+def sound_context(args, event):
+    """Le contexte d'un but, pour que le nom des fichiers puisse parler.
+
+    Rend None hors d'un but : une carte muette n'a pas de son a choisir, et
+    --test n'a aucun match derriere lui.
+    """
+    if event is None or not event.goal:
+        return None
+
+    match = event.match
+    if event.side == "away":
+        scorer, beaten = match.away_names, match.home_names
+    else:
+        scorer, beaten = match.home_names, match.away_names
+
+    # `contre` ne se declenche que pour une equipe SUIVIE : sans --teams, il
+    # n'y a pas de camp, et tous les buts encaisses se valent.
+    chosen = team_filter(args)
+    conceded = bool(chosen is not None and chosen.wanted
+                    and chosen.team_matches(beaten))
+    return sound.Context(league=event.league, scorer_names=scorer,
+                         beaten_names=beaten, conceded=conceded,
+                         clubs=sound_clubs(args))
+
+
+def resolve_sound(args, event=None):
     """(chemin du son, duree d'affichage). Relu a chaque but.
 
     Tu peux deposer un mp3 dans <data>/sound pendant que le daemon tourne : il
-    le prendra au but suivant, sans redemarrage.
+    le prendra au but suivant, sans redemarrage. `event` est ce qui permet au
+    nom des fichiers de designer une equipe, une competition ou un but
+    encaisse ; il reste facultatif, faute de quoi --test et les cartes muettes
+    n'auraient plus de son du tout.
     """
     p = paths()
 
     chosen = None
     if not args.no_sound:
         try:
-            chosen = sound.pick_sound(p["wav"], p["sound"], args.volume)
+            chosen = sound.pick_sound(p["wav"], p["sound"], args.volume,
+                                      context=sound_context(args, event))
         except Exception as exc:
             log("son indisponible : {}".format(exc), quiet=args.quiet)
 
@@ -491,7 +531,6 @@ def _watch_headless(guard, args, stopping, reporter, pin) -> None:
     aucune raison qu'elle mente parce qu'on a coupe les cartes.
     """
     while not stopping.is_set():
-        media = None
         events = guard.tick()
         follow = pin.update(guard.all_matches())
         reporter.update(guard.all_matches(), events,
@@ -502,9 +541,9 @@ def _watch_headless(guard, args, stopping, reporter, pin) -> None:
                 continue            # match en differe : le journal, et rien d'autre
             if not event.goal:
                 continue            # but annule et phases de match : muets
-            if media is None:
-                media = resolve_sound(args)
-            play_goal_sound(media[0])
+            # Un son par but, et pas un par releve : deux buts du meme tour
+            # peuvent venir de deux equipes, donc de deux fichiers.
+            play_goal_sound(resolve_sound(args, event)[0])
 
         # plan_wait() et pas next_delay() : le watcher retient ce qu'on s'est
         # engage a attendre, et voit ainsi au tick suivant qu'on a dormi.
@@ -579,6 +618,8 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
         # un but arrive dans le meme tour se pose du premier coup au bon
         # endroit, au lieu d'etre deplace juste apres.
         drain_pin()
+        # Le son sans contexte n'est resolu qu'une fois : il ne sert qu'a la
+        # duree des cartes muettes, alors qu'un but choisit son fichier.
         media = None
         while True:
             try:
@@ -599,11 +640,15 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                                duration=args.duration or default)
                     continue
 
-                if media is None:
-                    media = resolve_sound(args)
-                stack.push(overlay.Card.from_event(event, crest), duration=media[1])
                 if event.goal:
-                    play_goal_sound(media[0])
+                    chosen = resolve_sound(args, event)
+                else:
+                    if media is None:
+                        media = resolve_sound(args)
+                    chosen = media
+                stack.push(overlay.Card.from_event(event, crest), duration=chosen[1])
+                if event.goal:
+                    play_goal_sound(chosen[0])
             except Exception as exc:
                 log("echec de l'affichage : {}".format(exc), quiet=args.quiet)
 
@@ -959,6 +1004,43 @@ def pin_summary(token) -> str:
         token, row.get("league", "?"), row.get("home", "?"),
         row.get("home_score", "?"), row.get("away_score", "?"),
         row.get("away", "?"), row.get("clock", "")).rstrip()
+SOUNDS_SHOWN = 12       # au-dela, --status resume plutot que de derouler
+
+
+def _sound_arming(sounds, args, selection=()) -> list:
+    """Ce que chaque fichier du dossier `sound` arme, d'apres son seul nom.
+
+    C'est la reponse a la question que se pose qui vient d'y deposer un
+    fichier : est-ce que butbutbut a compris ce nom-la ? On repond donc avant
+    le prochain but, sans match sous la main - d'ou les limites de
+    sound.declared() : un nom de club inconnu de --teams passe pour du fond
+    sonore, et jouera pourtant pour son equipe.
+    """
+    clubs = sound_clubs(args)
+    followed = team_filter(args)
+    watched = bool(followed is not None and followed.wanted)
+    slugs = {league.slug for league in selection}
+
+    rows = []
+    for path in sounds[:SOUNDS_SHOWN]:
+        tier, target = sound.declared(path, clubs=clubs)
+        if tier == sound.TIER_CONCEDED:
+            label = tr("quand une equipe suivie encaisse")
+            if not watched:
+                label += tr("  (jamais : aucune equipe suivie, voir --teams)")
+        elif tier == sound.TIER_LEAGUE:
+            label = tr("les buts de {}", target.name)
+            if target.slug not in slugs:
+                label += tr("  (competition non suivie)")
+        elif tier == sound.TIER_TEAM:
+            label = tr("quand cette equipe marque")
+        else:
+            label = tr("tirage general")
+        rows.append((path.name, label))
+
+    if len(sounds) > SOUNDS_SHOWN:
+        rows.append(("...", tr("et {} autre(s)", len(sounds) - SOUNDS_SHOWN)))
+    return rows
 
 
 def _announced_cadence(data):
@@ -1041,14 +1123,15 @@ def do_status(args) -> int:
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
-        extra = (tr(" (+{} autre(s), tirage au hasard)", len(sounds) - 1)
-                 if len(sounds) > 1 else "")
-        print(tr("  son         : {}{}", sounds[0].name, extra))
+        print(tr("  son         : {} fichier(s), le nom dit quand ils jouent",
+                 len(sounds)))
+        for name, label in _sound_arming(sounds, args, selection):
+            print("                {:<22} {}".format(name, label))
     else:
-        chosen = sound.pick_sound(p["wav"], p["sound"])
-        origin = (tr("fourni") if chosen == sound.BUNDLED_SOUND
+        fallback = sound.pick_sound(p["wav"], p["sound"])
+        origin = (tr("fourni") if fallback == sound.BUNDLED_SOUND
                   else tr("corne synthetisee"))
-        print(tr("  son         : {} ({})", chosen.name, origin))
+        print(tr("  son         : {} ({})", fallback.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
 
     cached = crest_cache(args).cached()

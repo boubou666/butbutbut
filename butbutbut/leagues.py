@@ -378,6 +378,24 @@ def find(token: str):
     return None
 
 
+def designates(token):
+    """La competition que ce mot designe, ou None. Sans effet de bord.
+
+    A la difference de find(), un code ESPN hors catalogue n'est pas ouvert au
+    passage : ici on repond a une question - `fra.1.mp3` parle-t-il d'une
+    competition ? - et inscrire une competition parce qu'un fichier son porte
+    son nom n'aurait aucun sens. Celles ouvertes par --leagues sont deja dans
+    BY_SLUG, elles repondent donc quand meme.
+    """
+    lowered = str(token or "").strip().lower()
+    if not lowered:
+        return None
+    for league in CATALOGUE:
+        if league.matches_token(lowered):
+            return league
+    return BY_SLUG.get(lowered)
+
+
 def _expand(value, default=()) -> list:
     tokens = _tokens(value)
     if not tokens:
