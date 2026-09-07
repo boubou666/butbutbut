@@ -269,4 +269,14 @@ MESSAGES = {
     'CHOIX': 'AUSWAHL',
     'SECONDES': 'SEKUNDEN',
     'MINUTES': 'MINUTEN',
+    'francais': 'Franzoesisch',
+    'anglais': 'Englisch',
+    'espagnol': 'Spanisch',
+    'italien': 'Italienisch',
+    'allemand': 'Deutsch',
+    'aucune competition selectionnee.': 'kein Wettbewerb angegeben.',
+    'plus aucune competition a surveiller apres exclusion.':
+        'nach dem Ausschluss bleibt nichts zu beobachten.',
+    'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
+        'butbutbut : Teams lassen sich nicht kontrollieren (Quelle nicht erreichbar), es geht ohne Kontrolle weiter.',
 }

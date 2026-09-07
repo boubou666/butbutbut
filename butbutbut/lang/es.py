@@ -282,4 +282,15 @@ MESSAGES = {
         "volumen de la bocina sintetizada, 0.0 a 1.0",
     "regenere la corne synthetisee": "regenera la bocina sintetizada",
     "n'ecrit que dans le journal": "solo escribe en el registro",
+    'francais': 'frances',
+    'anglais': 'ingles',
+    'espagnol': 'castellano',
+    'italien': 'italiano',
+    'allemand': 'aleman',
+    'aucune competition selectionnee.':
+        'no hay ninguna competicion seleccionada.',
+    'plus aucune competition a surveiller apres exclusion.':
+        'no queda ninguna competicion que seguir tras las exclusiones.',
+    'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
+        'butbutbut : no se pueden comprobar los equipos (fuente inaccesible), se continua sin comprobar.',
 }

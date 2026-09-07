@@ -270,4 +270,14 @@ MESSAGES = {
         "volume of the synthesised horn, 0.0 to 1.0",
     "regenere la corne synthetisee": "regenerate the synthesised horn",
     "n'ecrit que dans le journal": "write to the log only",
+    'francais': 'French',
+    'anglais': 'English',
+    'espagnol': 'Spanish',
+    'italien': 'Italian',
+    'allemand': 'German',
+    'aucune competition selectionnee.': 'no competition selected.',
+    'plus aucune competition a surveiller apres exclusion.':
+        'nothing left to watch after the exclusions.',
+    'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
+        'butbutbut: cannot check the teams (source unreachable), carrying on without checking.',
 }

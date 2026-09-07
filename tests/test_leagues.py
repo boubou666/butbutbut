@@ -1,9 +1,15 @@
 import unittest
 
-from butbutbut import espn, leagues
+from butbutbut import espn, i18n, leagues
 
 from helpers import event, payload
 
+
+def setUpModule():
+    # describe() est traduit depuis la 1.6.0 : sans cet epinglage ces tests
+    # suivraient la langue de la machine et echoueraient sur la CI, qui est en
+    # anglais. Meme raison que dans test_cli, test_watcher et test_overlay.
+    i18n.use("fr")
 
 class TestCatalogue(unittest.TestCase):
     def test_the_five_big_ones_are_the_default(self):

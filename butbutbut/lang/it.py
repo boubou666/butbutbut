@@ -340,4 +340,15 @@ MESSAGES = {
         'imminente',
     'dans {} min':
         'tra {} min',
+    'francais': 'francese',
+    'anglais': 'inglese',
+    'espagnol': 'spagnolo',
+    'italien': 'italiano',
+    'allemand': 'tedesco',
+    'aucune competition selectionnee.':
+        'nessuna competizione selezionata.',
+    'plus aucune competition a surveiller apres exclusion.':
+        'non resta nessuna competizione da seguire dopo le esclusioni.',
+    'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
+        'butbutbut : impossibile verificare le squadre (fonte irraggiungibile), si continua senza verifica.',
 }

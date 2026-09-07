@@ -111,9 +111,16 @@ class TestChoix(unittest.TestCase):
             self.assertEqual(i18n.use(None), "it")
 
     def test_describe_nomme_la_langue(self):
+        # Le nom suit la langue : une interface allemande n'annonce pas
+        # "de (allemand)". On ne fige pas le mot allemand lui-meme, qu'un
+        # traducteur peut vouloir reformuler -- seulement le fait qu'il ne
+        # soit plus francais.
         i18n.use("de")
-        self.assertIn("de", i18n.describe())
-        self.assertIn("allemand", i18n.describe())
+        rendu = i18n.describe()
+        self.assertTrue(rendu.startswith("de ("), rendu)
+        self.assertNotIn("allemand", rendu)
+        i18n.use("fr")
+        self.assertEqual(i18n.describe(), "fr (francais)")
 
 
 class TestDetection(unittest.TestCase):
