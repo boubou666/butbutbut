@@ -550,8 +550,11 @@ def _watch_headless(guard, args, stopping, reporter, pin,
             log(event.log_line(), quiet=args.quiet)
             if event.spoiler_free:
                 continue            # match en differe : le journal, et rien d'autre
-            # Le crochet part avec le journal, pas avec la carte : il decrit un
-            # but, pas un affichage, et doit partir meme en --no-overlay.
+            # Le crochet part avec le journal, pas avec la carte : il decrit
+            # un but, pas un affichage, et doit partir meme en --no-overlay.
+            # Un match regarde en differe, en revanche, n'en declenche aucun :
+            # le crochet est une alerte de plus, et --spoiler-free les coupe
+            # toutes - d'ou le `continue` juste au-dessus.
             if on_goal is not None:
                 on_goal.fire(event)
             if not event.goal:

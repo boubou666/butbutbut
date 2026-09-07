@@ -10,7 +10,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, i18n, leagues, pinned, sound, state, watcher
+from butbutbut import (cli, espn, hook, i18n, leagues, pinned, sound,
+                       state, watcher)
 
 from helpers import event, goal_detail, payload
 
@@ -728,6 +729,42 @@ class TestSpoilerFreeLoops(unittest.TestCase):
                 cli._watch_with_cards(guard, self.args, stopping, stack,
                                       self.reporter(), pinned.Pin(""))
         return stack, horn, journal
+
+    def test_the_hook_does_not_fire_on_a_match_watched_late(self):
+        """Le crochet est une alerte de plus : --spoiler-free les coupe toutes.
+
+        Sans ca, une guirlande ou un webhook raconterait le but que l'ecran et
+        le haut-parleur viennent justement de taire.
+        """
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, True)
+        fired = []
+        runner = hook.Runner("peu importe",
+                             spawn=lambda *a: fired.append(a) or (0, ""))
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""), on_goal=runner)
+        self.assertEqual(fired, [])
+
+    def test_the_hook_still_fires_on_an_ordinary_goal(self):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, False)
+        fired = []
+        runner = hook.Runner("peu importe",
+                             spawn=lambda *a: fired.append(a) or (0, ""))
+        thread = None
+        original = runner.fire
+
+        def watched(event):
+            nonlocal thread
+            thread = original(event)
+            return thread
+
+        runner.fire = watched
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""), on_goal=runner)
+        if thread is not None:
+            thread.join(5.0)
+        self.assertEqual(len(fired), 1)
 
     def test_headless_loop_stays_silent(self):
         horn, journal = self.run_headless(True)

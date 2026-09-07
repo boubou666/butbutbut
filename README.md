@@ -859,7 +859,10 @@ promet un but.
 Le filtre par equipe s'applique comme au reste : avec `--teams om`, seuls les
 buts de l'OM lancent la commande. La cle `on_goal` du fichier de configuration
 fait la meme chose sans retaper l'option, et `butbutbut --status` rappelle ce
-qui est arme.
+qui est arme. Un match mis en `--spoiler-free`, lui, ne lance rien : le
+crochet est une alerte de plus, et le mode sans spoiler les coupe toutes -
+autrement une guirlande ou un webhook raconterait le but que l'ecran et le
+haut-parleur viennent justement de taire.
 
 ### La langue
 
@@ -1503,7 +1506,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**784 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**807 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
