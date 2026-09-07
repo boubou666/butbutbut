@@ -572,5 +572,95 @@ class TestLesTroisNumerosSeSuivent(unittest.TestCase):
         self.assertIn("## [{}] - ".format(__version__), texte)
 
 
+class TestLIntervalleDePythonEstLeMemePartout(unittest.TestCase):
+    """L'intervalle de versions supportees est ecrit a neuf endroits.
+
+    Le plancher est dit en toutes lettres : `requires-python`, le badge et les
+    prerequis des deux README, et les deux installeurs qui refusent un
+    interpreteur trop vieux. Le plafond, lui, n'est ecrit nulle part - il se
+    deduit des classifiers et de la matrice de CI. Rien ne relie ces endroits,
+    et c'est ainsi que la 3.14 a pu devenir la version de tous les jours sans
+    jamais etre essayee : la matrice s'arretait a la 3.13, les classifiers
+    aussi, et tout restait vert. Une matrice qui ne dit plus la verite est pire
+    qu'une matrice absente, parce qu'elle rassure.
+    """
+
+    # Chaque motif rend le chiffre mineur du plancher. Deux par fichier la ou
+    # le plancher y est ecrit deux fois : une prose qui vieillit a cote d'une
+    # comparaison qui, elle, marche encore est le mensonge le plus courant.
+    PLANCHERS = (
+        ("pyproject.toml", r'^requires-python = ">=3\.(\d+)"'),
+        ("README.md", r"badge/python-3\.(\d+)%2B"),
+        ("README.md", r"\*\*Python 3\.(\d+)\+\*\*"),
+        ("README.en.md", r"badge/python-3\.(\d+)%2B"),
+        ("README.en.md", r"\*\*Python 3\.(\d+)\+\*\*"),
+        ("install.sh", r"sys\.version_info >= \(3, (\d+)\)"),
+        ("install.sh", r"Python 3\.(\d+)\+ est introuvable"),
+        ("install.ps1", r"\[version\]'3\.(\d+)'"),
+        ("install.ps1", r"Python 3\.(\d+)\+ est introuvable"),
+    )
+
+    def texte(self, chemin):
+        return (RACINE / chemin).read_text(encoding="utf-8")
+
+    def couple(self, version):
+        """"3.14" -> (3, 14) : se compare comme un numero, pas comme un mot.
+
+        En chaines, "3.14" passe avant "3.9" - de quoi croire que la matrice
+        plafonne a la 3.9 juste au moment ou on lui demande son plus haut.
+        """
+        return tuple(int(morceau) for morceau in version.split("."))
+
+    def matrice(self):
+        """Les versions que la CI essaye, celle de l'`include` comprise.
+
+        Seules les versions entre guillemets comptent : les commentaires du
+        fichier en citent aussi, au fil de la phrase, et ce ne sont pas des
+        cases de la matrice.
+        """
+        bloc = self.texte(".github/workflows/ci.yml")
+        bloc = bloc.split("matrix:", 1)[1].split("steps:", 1)[0]
+        return {self.couple(trouve)
+                for trouve in re.findall(r'"(3\.\d+)"', bloc)}
+
+    def classifiers(self):
+        """Les versions que le paquet annonce a PyPI."""
+        return {self.couple(trouve) for trouve in re.findall(
+            r'"Programming Language :: Python :: (3\.\d+)"',
+            self.texte("pyproject.toml"))}
+
+    def test_le_plancher_est_le_meme_partout(self):
+        trouves = {}
+        for chemin, motif in self.PLANCHERS:
+            marque = re.search(motif, self.texte(chemin), re.M)
+            self.assertIsNotNone(marque, "{} : {}".format(chemin, motif))
+            trouves["{} ({})".format(chemin, motif)] = (3, int(marque.group(1)))
+        self.assertEqual(len(set(trouves.values())), 1, trouves)
+
+    def test_la_ci_essaye_le_plancher_annonce(self):
+        """Promettre un plancher sans jamais l'essayer, c'est le perdre."""
+        plancher = re.search(r'^requires-python = ">=(3\.\d+)"',
+                             self.texte("pyproject.toml"), re.M)
+        self.assertIsNotNone(plancher)
+        self.assertEqual(min(self.matrice()), self.couple(plancher.group(1)))
+
+    def test_la_ci_essaye_la_derniere_version_annoncee(self):
+        """Le classifier le plus haut est une promesse, pas un souhait.
+
+        C'est ce test qui aurait parle plus tot : le depot s'ecrivait en 3.14
+        et n'annoncait rien au-dela de la 3.13.
+        """
+        self.assertEqual(max(self.classifiers()), max(self.matrice()))
+
+    def test_chaque_version_essayee_est_annoncee(self):
+        """L'inverse n'est pas vrai : on annonce plus large qu'on n'essaye.
+
+        Les versions du milieu (3.10, 3.11) sont tenues sans etre essayees -
+        c'est un pari assume. Essayer une version sans l'annoncer, en revanche,
+        ne serait qu'un oubli.
+        """
+        self.assertEqual(sorted(self.matrice() - self.classifiers()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

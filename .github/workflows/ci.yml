@@ -13,9 +13,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Ce sont les deux bouts qui comptent : 3.8 tient le plancher annonce
+        # par `requires-python`, et 3.14 est celle sur laquelle le depot
+        # s'ecrit tous les jours - la seule qui manquait, donc la seule dont
+        # une rupture serait passee inapercue jusqu'a un rapport d'utilisateur.
+        # Entre les deux, deux versions suffisent : ce qui casse d'une version
+        # a l'autre en bibliotheque standard casse rarement au milieu seul.
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.9", "3.12", "3.13"]
+        python: ["3.9", "3.12", "3.13", "3.14"]
         include:
+          # Le plancher ne passe que sous Linux. Ce qu'on lui demande de
+          # prouver, c'est que le code se lit encore en 3.8 - pas que les trois
+          # systemes divergent a cette version-la plutot qu'aux autres.
           - os: ubuntu-latest
             python: "3.8"
     steps:

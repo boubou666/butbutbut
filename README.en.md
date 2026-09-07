@@ -2643,7 +2643,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1222 tests**, with no network and no screen: the source is simulated by an
+**1226 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
@@ -2655,6 +2655,27 @@ the two must produce exactly the same sequence of events.
 
 One single program in the repository really talks to ESPN, and it is not in
 this suite: [the canary](#the-canary), `python tools/canari.py`.
+
+### Where it runs
+
+[Continuous integration](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
+replays it on Linux, Windows and macOS, on **Python 3.9, 3.12, 3.13 and
+3.14**, plus **3.8** on Linux alone. It is the two ends that matter: 3.8 holds
+the floor announced in the requirements, and 3.14 is the one the repository is
+written on every day - for a long while the only one never tried, which is
+exactly the wrong one to forget. The versions in between (3.10, 3.11) are
+supported without being tried: a deliberate bet, since what breaks from one
+version to the next rarely breaks in the middle alone. And the floor only runs
+on Linux, because what it is asked to prove is that the code still reads in
+3.8, not that the three systems diverge at that version rather than the
+others.
+
+That floor, `3.8`, is written in nine places: `requires-python`, both badges,
+both requirement lists, and the installers' four guards - the comparison that
+refuses, and the sentence that explains it. The ceiling is written nowhere: it
+is deduced from the package classifiers and from the matrix. A test in the
+repository confronts them all, because that is exactly how 3.14 came to be
+missed - nothing tied those files together, and everything stayed green.
 
 ---
 

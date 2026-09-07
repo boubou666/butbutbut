@@ -2653,7 +2653,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1226 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -2665,6 +2665,28 @@ et les deux doivent rendre exactement la meme suite d'evenements.
 
 Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
 suite : c'est [le canari](#le-canari), `python tools/canari.py`.
+
+### Ou elle tourne
+
+L'[integration continue](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
+la rejoue sur Linux, Windows et macOS, en **Python 3.9, 3.12, 3.13 et 3.14**,
+plus la **3.8** sous Linux seul. Ce sont les deux bouts qui comptent : la 3.8
+tient le plancher annonce dans les prerequis, et la 3.14 est celle sur laquelle
+le depot s'ecrit tous les jours - longtemps la seule a n'avoir jamais ete
+essayee, ce qui est exactement la mauvaise a oublier. Les versions du milieu
+(3.10, 3.11) sont tenues sans etre essayees : c'est un pari assume, ce qui
+casse d'une version a l'autre casse rarement au milieu seul. Et le plancher ne
+passe que sous Linux, parce qu'on lui demande de prouver que le code se lit
+encore en 3.8, pas que les trois systemes divergent a cette version-la plutot
+qu'aux autres.
+
+Ce plancher, `3.8`, est ecrit a neuf endroits : `requires-python`, les deux
+badges, les deux listes de prerequis, et les quatre garde-fous des installeurs
+- la comparaison qui refuse, et la phrase qui l'explique. Le plafond, lui,
+n'est ecrit nulle part : il se deduit des classifiers du paquet et de la
+matrice. Un test du depot les confronte tous, parce que c'est exactement ainsi
+que la 3.14 avait pu manquer - rien ne reliait ces fichiers entre eux, et tout
+restait vert.
 
 ---
 
