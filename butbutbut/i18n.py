@@ -363,7 +363,25 @@ def describe() -> str:
     "en (anglais)" dans une interface anglaise serait cocasse.
     """
     code = language()
-    return "{} ({})".format(code, tr(NAMES.get(code, code)))
+    return "{} ({})".format(code, _name(code))
+
+
+def _name(code) -> str:
+    """Le nom d'une langue, traduit.
+
+    Les cinq appels sont ecrits en toutes lettres, et pas tr(NAMES[code]) :
+    l'extracteur qui garde les catalogues propres ne lit que des constantes,
+    et une cle qu'il ne voit pas, il la declare morte. Un detour qui se paie
+    en repetition, mais qui garde le garde-fou utile.
+    """
+    noms = {
+        "fr": tr("francais"),
+        "en": tr("anglais"),
+        "es": tr("espagnol"),
+        "it": tr("italien"),
+        "de": tr("allemand"),
+    }
+    return noms.get(code, code)
 
 
 # ---------------------------------------------------------------- texte ------

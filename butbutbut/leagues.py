@@ -252,8 +252,8 @@ def resolve(tokens=None, exclude=None) -> list:
     if not kept:
         if blocked:
             raise NoLeagueLeft(
-                "plus aucune competition a surveiller apres exclusion.")
-        raise NoLeagueLeft("aucune competition selectionnee.")
+                tr("plus aucune competition a surveiller apres exclusion."))
+        raise NoLeagueLeft(tr("aucune competition selectionnee."))
     return kept
 
 

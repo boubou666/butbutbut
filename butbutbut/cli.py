@@ -196,8 +196,9 @@ def check_teams(args, selection) -> int:
         time.sleep(0.15)
 
     if not catalogue:
-        print("butbutbut : impossible de verifier les equipes (source "
-              "injoignable), on continue sans verification.", file=sys.stderr)
+        print(tr("butbutbut : impossible de verifier les equipes (source "
+                 "injoignable), on continue sans verification."),
+              file=sys.stderr)
         return 0
 
     found, orphans = chosen.resolve(catalogue)
