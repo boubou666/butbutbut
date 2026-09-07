@@ -7,6 +7,19 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Teste
+
+- **`tests/test_shootout.py` dependait de la langue de la machine.** Il epingle
+  le francais par `i18n.use()`, ce qui suffit tant qu'on appelle les fonctions
+  directement - mais deux de ses tests passent par la ligne de commande, et
+  `main()` refixe la langue a chaque appel : l'epinglage etait perdu en
+  chemin. Tant que « tirs au but » n'etait traduit nulle part, la sortie
+  restait francaise partout et personne ne le voyait ; la traduction faite,
+  les machines anglaises de la CI ont rendu « penalty shootout » et huit cases
+  sur quinze ont vire au rouge. L'epinglage passe donc aussi par la variable
+  d'environnement, comme en tete de `tests/test_cli.py`, et pour la meme
+  raison - qui y etait deja ecrite.
+
 ### Ajoute
 
 - **Les catalogues de langue sont complets.** Sept commandes livrees depuis la
