@@ -24,6 +24,11 @@ sujet de `_parse_details` :
   - le **hockey** ne publie **rien** : `details` est absent, sur un match a
     venir comme sur un match termine. On a le score, l'horloge et la periode.
 
+Chaque camp porte aussi, dans la meme reponse, sa **forme** (`form`) et son
+**bilan** (`records`). C'est ce que la carte de coup d'envoi affiche, et ca ne
+coute pas un octet de plus : les deux cles sont deja dans le tableau de bord
+qu'on telecharge a chaque tour, on les jetait. Le hockey s'en tait la aussi.
+
 Le meme hote publie un second endpoint, le classement, sous une adresse qui
 n'a pas tout a fait la meme forme (voir STANDINGS_URL, plus bas). Il est lu
 avec le meme client et les memes en-tetes : c'est tout l'interet d'avoir un
@@ -54,6 +59,15 @@ STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/{sport}/{slug}/standin
 # Le resume d'un match, et la seule adresse de ce fichier qu'on n'appelle pas a
 # chaque tour : elle rend 450 ko. Voir summary() pour ce qui l'autorise.
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/summary"
+
+# Les lettres de la forme, telles que la source les ecrit : victoire, nul,
+# defaite. Tout le reste est refuse (voir team_form).
+FORM_LETTERS = "WDL"
+
+# Un bilan, et rien d'autre : trois nombres separes par des tirets. C'est ce
+# filtre qui distingue le "1-0-2" du football du "LWWWW" que le rugby publie
+# au meme endroit (voir team_record).
+RECORD = re.compile(r"^\d+-\d+-\d+$")
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
@@ -259,14 +273,16 @@ class Match:
                  "state", "status_name", "detail", "clock", "start", "plays",
                  "red_cards", "shootout", "home_shootout", "away_shootout",
                  "winner", "home_logo", "away_logo", "home_color",
-                 "away_color", "home_alt", "away_alt")
+                 "away_color", "home_alt", "away_alt", "home_form",
+                 "away_form", "home_record", "away_record")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
                  status_name="", home_names=(), away_names=(), red_cards=(),
                  shootout=(), home_shootout=0, away_shootout=0, winner="",
                  home_logo="", away_logo="", home_color="", away_color="",
-                 home_alt="", away_alt=""):
+                 home_alt="", away_alt="", home_form="", away_form="",
+                 home_record="", away_record=""):
         self.id = id
         self.league = league
         self.home = home
@@ -311,6 +327,15 @@ class Match:
         self.away_color = away_color
         self.home_alt = home_alt
         self.away_alt = away_alt
+        # La forme ("LLWWW") et le bilan ("1-0-2") de chaque club, vides quand
+        # la source ne les publie pas - au hockey, et sur tout match qu'elle ne
+        # rattache a aucune saison. Ce sont les seules valeurs du Match qui ne
+        # parlent PAS de ce match-ci : elles disent ce que l'equipe a fait
+        # avant, et c'est bien ce qu'on veut lire au coup d'envoi.
+        self.home_form = home_form
+        self.away_form = away_form
+        self.home_record = home_record
+        self.away_record = away_record
 
     @property
     def sport(self):
@@ -602,6 +627,47 @@ def team_colors(competitor) -> tuple:
     team = competitor.get("team") or {}
     return (crests.normalize(team.get("color")) or "",
             crests.normalize(team.get("alternateColor")) or "")
+
+
+def team_form(competitor) -> str:
+    """Les derniers resultats d'une equipe, du plus recent au plus ancien.
+
+    "LLWWW" se lit donc : defaite au dernier match, defaite avant, trois
+    victoires avant ca. La source ne documente cet ordre nulle part ; il a ete
+    verifie contre six matchs qui venaient de se terminer, dont la lettre de
+    tete disait bien le resultat du jour.
+
+    Une lettre inconnue fait jeter la chaine ENTIERE, pas la lettre : afficher
+    quatre resultats sur cinq sans le dire serait pire que se taire.
+    """
+    form = str(competitor.get("form") or "").strip().upper()
+    if not form or any(letter not in FORM_LETTERS for letter in form):
+        return ""
+    return form
+
+
+def team_record(competitor) -> str:
+    """Le bilan de la saison, "victoires-nuls-defaites", ou une chaine vide.
+
+    Deux reponses justes n'ont rien a dire et sont ecartees ici :
+
+      - le rugby republie sa forme sous `records` ("LWWWW" en guise de
+        resume) la ou le football y met des chiffres. Sans le filtre, la carte
+        afficherait la forme deux fois de suite ;
+      - "0-0-0" n'est pas un bilan, c'est une competition qui n'a pas
+        commence : la phase de groupes d'une coupe d'Europe le repond des
+        juillet. Des chiffres justes qui ne disent rien.
+    """
+    entries = [entry for entry in competitor.get("records") or []
+               if isinstance(entry, dict)]
+    # `type == "total"` d'abord : la ou la source publie plusieurs bilans
+    # (domicile, exterieur), c'est le seul qui parle de la saison entiere.
+    entries.sort(key=lambda entry: entry.get("type") != "total")
+    for entry in entries:
+        summary = str(entry.get("summary") or "").strip()
+        if RECORD.match(summary) and set(summary) - set("0-"):
+            return summary
+    return ""
 
 
 def team_logo(competitor) -> str:
@@ -924,6 +990,10 @@ def parse(payload: dict, league) -> list:
             winner=winner,
             home_logo=team_logo(home),
             away_logo=team_logo(away),
+            home_form=team_form(home),
+            away_form=team_form(away),
+            home_record=team_record(home),
+            away_record=team_record(away),
             home_color=home_color,
             away_color=away_color,
             home_alt=home_alt,

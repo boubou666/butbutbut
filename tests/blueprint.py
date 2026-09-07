@@ -344,6 +344,17 @@ def _scenarios():
                       accent="#f2e34c", title_color=overlay.MUTED,
                       home_logo=CREST, away_logo=CREST)),
 
+        ("coup-d-envoi", 1.0,
+         "Le coup d'envoi : une ligne par camp sous le score, sa forme et son"
+         " bilan, et pas de troisieme ligne au-dessus d'elles.",
+         overlay.Card(title="COUP D'ENVOI", league="LIGUE 1", minute="1'",
+                      home="Angers", away="Stade Rennais",
+                      home_score=0, away_score=0, side=None, detail=[],
+                      accent="#f2e34c", title_color=overlay.MUTED,
+                      extra=[[("Angers : ", False), ("PPGGG  1G 0N 2P", True)],
+                             [("Stade Rennais : ", False),
+                              ("GGNGP  2G 1N 0P", True)]])),
+
         ("fin-de-match", 1.0,
          "Le sifflet final : une ligne de buteurs par camp, sous le score.",
          overlay.Card(title="FIN DU MATCH", league="LIGUE 1", minute="90'+4'",

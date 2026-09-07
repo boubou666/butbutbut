@@ -119,6 +119,56 @@ class TestTeamLook(unittest.TestCase):
                          "https://a.espncdn.com/i/teamlogos/soccer/500/170.png")
 
 
+class TestFormAndRecord(unittest.TestCase):
+    """La forme et le bilan : deja dans le tableau de bord, longtemps jetes."""
+
+    def parse(self, **kwargs):
+        return espn.parse(payload(event(**kwargs)), LIGUE1)[0]
+
+    def test_the_form_is_read_as_the_source_writes_it(self):
+        match = self.parse(home_form="LLWWW", away_form="WWDWL")
+        self.assertEqual((match.home_form, match.away_form), ("LLWWW", "WWDWL"))
+
+    def test_a_lowercase_form_is_still_a_form(self):
+        self.assertEqual(self.parse(home_form="llwww").home_form, "LLWWW")
+
+    def test_an_unknown_letter_drops_the_whole_string(self):
+        # Quatre resultats sur cinq, sans le dire, seraient un mensonge par
+        # omission : la carte prefere se taire.
+        self.assertEqual(self.parse(home_form="LLW?W").home_form, "")
+
+    def test_no_form_at_all_is_not_a_problem(self):
+        # Le hockey : la source ne publie ni l'un ni l'autre.
+        match = self.parse()
+        self.assertEqual((match.home_form, match.home_record), ("", ""))
+
+    def test_the_record_is_read_as_the_source_writes_it(self):
+        self.assertEqual(self.parse(home_record="1-0-2").home_record, "1-0-2")
+
+    def test_a_record_that_is_a_form_in_disguise_is_dropped(self):
+        # Le rugby republie sa forme sous `records`. La carte l'afficherait
+        # deux fois de suite.
+        self.assertEqual(self.parse(home_record="LWWWW").home_record, "")
+
+    def test_zero_everywhere_is_not_a_record(self):
+        # La phase de groupes d'une coupe d'Europe repond "0-0-0" des juillet.
+        self.assertEqual(self.parse(home_record="0-0-0").home_record, "")
+
+    def test_a_two_number_record_is_dropped(self):
+        # "2-1" ne dit pas si le second nombre compte les nuls ou les
+        # defaites. Un bilan qu'on ne sait pas lire ne s'affiche pas.
+        self.assertEqual(self.parse(home_record="2-1").home_record, "")
+
+    def test_the_season_total_wins_over_the_home_and_away_splits(self):
+        raw = payload(event())
+        competitor = raw["events"][0]["competitions"][0]["competitors"][0]
+        competitor["records"] = [
+            {"name": "Home", "type": "home", "summary": "1-0-0"},
+            {"name": "All Splits", "type": "total", "summary": "1-0-2"},
+        ]
+        self.assertEqual(espn.parse(raw, LIGUE1)[0].home_record, "1-0-2")
+
+
 class TestPlays(unittest.TestCase):
     def test_scoring_plays_are_collected_with_scorer(self):
         details = (goal_detail("H1", "35'", "C. Arcus"),

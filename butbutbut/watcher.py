@@ -173,6 +173,51 @@ def _shootout_parts(match, lang=None) -> list:
     return [(head, False), (winner, True)]
 
 
+# La lettre que la source emploie, et la colonne de --table qui dit la meme
+# chose. Rien de nouveau n'est invente ici : "G" est deja ce qu'un francais lit
+# dans le classement, et une forme qui dirait "W" a cote d'une colonne "G"
+# ferait douter de l'une des deux.
+FORM_KEYS = {"W": "table_won", "D": "table_drawn", "L": "table_lost"}
+
+# L'ordre des trois nombres d'un bilan : "1-0-2" = une victoire, zero nul, deux
+# defaites. Meme vocabulaire, meme raison.
+RECORD_KEYS = ("table_won", "table_drawn", "table_lost")
+
+
+def _form_text(form, lang=None) -> str:
+    """"LLWWW" -> "PPGGG" en francais, "LLWWW" en anglais, "NNSSS" en allemand."""
+    return "".join(i18n.text(FORM_KEYS[letter], lang=lang) for letter in form)
+
+
+def _record_text(record, lang=None) -> str:
+    """"1-0-2" -> "1G 0N 2P".
+
+    Les chiffres nus seraient plus courts et illisibles : "1-0-2" ne dit pas
+    dans quel ordre, et personne ne va chercher la reponse pendant les huit
+    secondes ou la carte est a l'ecran.
+    """
+    return " ".join(count + i18n.text(key, lang=lang)
+                    for count, key in zip(record.split("-"), RECORD_KEYS))
+
+
+def _form_lines(match, lang=None) -> list:
+    """Une ligne par camp au coup d'envoi : sa forme, puis son bilan.
+
+    Un camp dont la source ne dit rien n'a pas de ligne, et une carte de hockey
+    n'en a donc aucune - exactement la carte qu'elle etait avant. C'est la
+    meme regle que partout ailleurs : on degrade, on n'invente pas.
+    """
+    lines = []
+    for team, form, record in ((match.home, match.home_form, match.home_record),
+                               (match.away, match.away_form, match.away_record)):
+        parts = [text for text in (_form_text(form, lang=lang),
+                                   _record_text(record, lang=lang) if record
+                                   else "") if text]
+        if parts:
+            lines.append([(team + " : ", False), ("  ".join(parts), True)])
+    return lines
+
+
 def _countdown(seconds: float, lang=None) -> str:
     """Le compte a rebours d'avant match, arrondi a la minute superieure."""
     minutes = int(seconds // 60) + 1
@@ -348,8 +393,11 @@ class Event:
             # (voir espn.Match.on_penalties), autant le dire.
             return _shootout_parts(self.match, lang=lang)
         if self.phase:
-            # Le titre dit tout : pas de troisieme ligne, la carte est plus
-            # basse et se distingue d'un but au premier coup d'oeil.
+            # Le titre dit tout : pas de troisieme ligne, et la carte se
+            # distingue d'un but au premier coup d'oeil. Le coup d'envoi
+            # ajoute des lignes plus bas (extra_parts), pas celle-ci : la
+            # forme des deux clubs ne se resume pas en une ligne unique sans
+            # que le lecteur ait a deviner quel bout va a quel camp.
             return []
 
         play = self.play
@@ -379,10 +427,11 @@ class Event:
     def extra_parts(self, lang=None) -> list:
         """Les lignes supplementaires de la carte, en morceaux.
 
-        Deux cartes en ont. La fin du match, parce que le score seul ne dit pas
-        qui a marque, alors que c'est la premiere chose qu'on cherche quand on
-        n'a pas vu le match ; un camp sans but n'a pas de ligne du tout. Et le
-        rattrapage de sortie de veille, une ligne par match qui a bouge.
+        Trois cartes en ont. La fin du match, parce que le score seul ne dit
+        pas qui a marque, alors que c'est la premiere chose qu'on cherche quand
+        on n'a pas vu le match ; un camp sans but n'a pas de ligne du tout. Le
+        rattrapage de sortie de veille, une ligne par match qui a bouge. Et le
+        coup d'envoi, une ligne par camp : sa forme et son bilan.
 
         Ni l'une ni l'autre ne borne sa liste ici : c'est `overlay._layout` qui
         coupe, sur la hauteur (MAX_EXTRA_LINES) comme sur la largeur (des
@@ -393,6 +442,13 @@ class Event:
             # se repete pas ici.
             return [_change_parts(change, full=True, lang=lang)
                     for change in self.changes[1:]]
+        if self.kind == KICKOFF:
+            # Le seul moment du match ou l'on n'a rien a raconter sur le match
+            # lui-meme : 0 - 0, aucune action, et le titre a tout dit. C'est la
+            # que la forme des deux clubs a sa place, et nulle part ailleurs -
+            # a la mi-temps, ce qui vient de se passer est plus interessant que
+            # ce qui s'est passe le mois dernier.
+            return _form_lines(self.match, lang=lang)
         if self.play is not None and self.play.assists:
             # Les passeurs prennent une ligne a eux plutot que la fin de celle
             # du buteur : ils sont deux, et la ligne du but doit rester celle
