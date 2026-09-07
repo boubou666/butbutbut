@@ -7,6 +7,65 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Un tir au but comptait pour un but sur les cartes.** La source publie
+  chaque tir reussi dans le meme tableau que les buts, avec le meme drapeau
+  `scoringPlay` et un `scoreValue` de 1 ; seul `shootout` l'en distingue, et ce
+  drapeau etait lu par `espn.py` puis jamais regarde par personne. La finale de
+  la FA Cup 2022, terminee 0-0, sortait donc une carte `FIN DU MATCH` annoncant
+  `Chelsea 0 - 0 Liverpool` suivie de **onze buteurs**, et `--scores` alignait
+  onze "Penalty de ..." sous un score nul. Les tirs sont maintenant mis de cote
+  des la lecture (`Match.shootout`), et rien de ce qui habille les cartes ne
+  les voit plus.
+- **La detection, elle, n'avait pas de bug** - et c'est le resultat le plus
+  utile de ce chantier, parce que personne ne le savait. Verifie contre la
+  source sur quatre seances reelles (FA Cup 2022, Coupe de France 2025, Coupe du
+  monde 2022, Ligue des champions 2025) : **le score publie ne bouge pas
+  pendant une seance de tirs au but**, il reste celui de la fin du temps
+  reglementaire et la seance est publiee a cote. Une finale ne declenchait donc
+  pas dix cornes, et n'en declenche toujours pas. Le detail de ce qui a ete
+  observe est dans le README, section "Les tirs au but".
+
+### Ajoute
+
+- **La carte de fin de match dit qui se qualifie.** `FIN DU MATCH / Angers
+  1 - 1 Stade de Reims` est exact et rate l'essentiel. La troisieme ligne porte
+  desormais `Tirs au but 3 - 5 : Stade de Reims`, le vainqueur mis en valeur
+  comme un buteur l'est ailleurs. Le total vient de `shootoutScore` quand la
+  source le donne, du decompte des tirs reussis sinon - il manque environ une
+  fois sur dix - et le nom du vainqueur du drapeau `winner`, sans lequel la
+  carte se contente de dire `Tirs au but` plutot que d'inventer un qualifie.
+  La carte reste muette : un verdict s'ecrit, il ne se corne pas.
+- `--scores` ajoute une ligne `tirs au but` sous un match de coupe decide ainsi,
+  pour la meme raison : une soiree de Coupe de France s'affichait en matchs nuls.
+- **Le hockey y est traite a part, parce que son reglement l'est.** Sa
+  fusillade donne un but au vainqueur, dans le score du match (Vegas 4-3
+  Chicago, `Final/SO`) : le score bouge donc pour de vrai, une fois, et la
+  corne sonne au bon moment - rien a corriger la. La carte de fin de match
+  ajoute seulement `Vainqueur aux tirs au but : ...`, parce qu'un 4-3 qui n'a
+  pas eu lieu dans le temps reglementaire merite d'etre explique. Le marqueur
+  vit dans `sports.py` (`Sport.shootout`) : le football le pose dans le nom
+  d'etat, le hockey dans le detail, et le rugby n'en a aucun.
+- **Le canari compte les tirs a part** et verifie qu'un match decide aux tirs
+  au but porte bien son drapeau `winner`. Sans ce comptage il aurait rougi a
+  chaque soiree de coupe, pour un comportement voulu.
+- 1222 -> **1257 tests** : les charges utiles de la FA Cup 2022, de la Coupe de
+  France 2025 et d'une fusillade de NHL sont figees dans `tests/test_shootout.py`
+  telles que la source les sert, drapeaux compris. Huit tirs qui tombent un par
+  un ne doivent produire aucune carte ; la neuvieme, celle de la fin du match,
+  doit nommer le qualifie.
+
+### Reste ouvert
+
+- Tout ceci est etabli sur des seances **terminees**. Ce que la source publie
+  pendant les quelques minutes que dure la seance n'a pas pu etre observe : il
+  aurait fallu etre devant un match a elimination directe au bon moment. Le
+  score final etant celui du temps reglementaire dans les quatre competitions
+  relevees, il n'y a pas de raison de croire qu'il bouge entre-temps - mais
+  c'est une deduction, pas une observation, et elle est ecrite dans le README
+  pour que le jour ou quelqu'un verra une carte de trop, il sache ou regarder.
+
 ## [1.9.0] - 2026-09-07
 
 ### Corrige

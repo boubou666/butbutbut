@@ -1192,6 +1192,13 @@ def do_scores(args) -> int:
                 match.away, note))
             if hidden:
                 continue        # les buteurs reconstitueraient le score
+            if match.on_penalties and match.winner_name:
+                # Sans cette ligne, une soiree de coupe s'affiche en matchs
+                # nuls et on ne sait pas qui joue le tour suivant.
+                tally = match.shootout_line()
+                print(tr("      {:<22} {}", tr("tirs au but"),
+                         "{} ({})".format(match.winner_name, tally) if tally
+                         else match.winner_name))
             for play in match.plays:
                 side = match.home if play.team_id == match.home_id else match.away
                 print(tr("      {:<22} {}", side, play.summary()))
