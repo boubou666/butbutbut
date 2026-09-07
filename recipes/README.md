@@ -55,8 +55,17 @@ butbutbut --test-hook
 ```
 
 La commande part sur un but fabrique, tout de suite, et butbutbut affiche les
-variables qu'elle a recues, sa sortie et son code de retour. C'est aussi la
-facon de verifier qu'un secret est bien arrive jusqu'au daemon.
+variables qu'elle a recues, sa sortie et son code de retour.
+
+Attention a ce que cet essai prouve, et a ce qu'il ne prouve pas. `--test-hook`
+tourne dans le terminal ou on le tape, avec l'environnement de CE terminal : il
+verifie la recette et le secret qu'on vient d'exporter, **pas** ce que voit le
+daemon lance a l'ouverture de session, qui a le sien. Un simple `export` fait
+donc reussir l'essai pendant que le service reste aveugle, et a l'inverse un
+fragment systemd parfaitement correct ne change rien a l'essai. Pour le daemon,
+c'est au journal que ca se lit : relance-le, et au premier but la recette y
+ecrira elle-meme qu'il lui manque sa variable - butbutbut note la premiere
+ligne de toute commande qui rend un code non nul.
 
 ## Ou poser le secret
 
