@@ -1245,6 +1245,36 @@ butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/my-goals.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sounds/airhorn.mp3'
 ```
 
+**Recipes that already work.** A way out is of no use if nobody knows what lies
+behind it: nobody will write their Discord webhook starting from a
+`notify-send`. So the
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) folder
+holds eight complete commands, to copy and to trim — a Discord webhook, a Slack
+webhook, a Home Assistant event your home automation answers, a WiZ bulb that
+turns green for the length of the goal then goes back to exactly the state it
+was in, a JSON goal counter that follows VAR cancellations too, a real system
+notification that stays in the notification centre, a text banner for OBS or a
+status bar, and a shell template to react only to the goals you care about.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependencies there as well: nothing but the Python standard library, or
+the machine's shell. No `curl` assumed to be there, no `jq`. A secret — webhook
+URL, token — is read from an environment variable and **never** travels through
+the command line, which shows up in `ps` and which `butbutbut --status` prints
+back. The instructions, each recipe's settings and where to put the secret on
+each system are in
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md)
+(in French, like the rest of that folder).
+
+Those recipes travel with the source code, and not inside the package `pipx`
+installs: butbutbut never runs them itself, you do. A test in the repository
+compares the `BUT_*` variables they read with the ones the hook really
+publishes — a recipe cannot rot silently by promising a detail that does not
+exist.
+
 **What the hook promises:**
 
 - **The data travels through the environment, never through the command.** A
@@ -2246,7 +2276,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1034 tests**, with no network and no screen: the source is simulated by an
+**1100 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

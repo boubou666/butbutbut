@@ -58,6 +58,55 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   peut dessiner - et herite seulement du remplacement : un accent approximatif
   vaut mieux qu'une trace d'appels a la place des resultats.
 
+### Ajoute
+
+- **Un dossier `recipes/` pour `--on-goal`.** Le crochet donne tout le detail
+  du but dans des variables `BUT_*` depuis la 1.7.0, et n'avait qu'un exemple :
+  une ligne `notify-send`. Personne n'ecrit son webhook Discord a partir de ca.
+  Huit recettes completes s'y trouvent desormais, a copier et a tailler :
+  webhook Discord (`discord_webhook.py`), webhook Slack (`slack_webhook.py`),
+  evenement Home Assistant a qui l'automatisation de la maison repond
+  (`home_assistant.py`), ampoule WiZ qui vire au vert le temps du but
+  (`ampoule_wiz.py`), compteur de buts en JSON (`compteur.py`), notification du
+  systeme sur les trois plateformes (`notification_bureau.py`), bandeau texte
+  pour OBS ou une barre d'etat (`obs_texte.py`), et un gabarit shell pour ne
+  reagir qu'a certains buts (`filtre.sh`).
+- **Zero dependance jusque dans les recettes** : bibliotheque standard de
+  Python 3.8+, ou shell POSIX. Aucune ne suppose `curl` present, aucune ne
+  demande `jq`. Les webhooks passent par `urllib`, l'ampoule par une trame UDP,
+  la notification Windows par le PowerShell deja installe.
+- **Un secret ne va ni dans le depot ni dans la ligne de commande** : chaque
+  recette qui en demande un le lit dans une variable d'environnement
+  (`BUTBUTBUT_DISCORD_WEBHOOK`, `BUTBUTBUT_HA_TOKEN`...). Une ligne de commande
+  se lit dans `ps` et `butbutbut --status` la reaffiche. `recipes/README.md`
+  dit ou poser la variable pour que le service de demarrage la voie, sur les
+  trois systemes.
+- Les deux recettes qui attendent (l'ampoule, le bandeau) sont bornees a 25
+  secondes, sous le delai de 30 du crochet, et un test le verifie contre
+  `hook.DEFAULT_TIMEOUT` : une recette qui deborderait serait tuee en plein
+  travail, l'ampoule restant verte jusqu'au matin.
+- 66 tests de plus, dont celui qui empechera ce dossier de pourrir : **chaque
+  nom `BUT_` ecrit dans `recipes/` est compare a ce que `hook.py` publie
+  vraiment**. Les autres verifient qu'une recette compile et se charge sans
+  configuration, qu'elle est listee dans `recipes/README.md`, que chaque
+  reglage `BUTBUTBUT_*` y est documente, qu'un echec tient en une ligne courte
+  (le journal n'en garde qu'une, tronquee a 120 signes), qu'une reussite se
+  tait, et que l'ampoule retrouve exactement l'etat qu'elle avait. Rien ne
+  parle au reseau : les recettes sont chargees comme des modules et leurs
+  fonctions pures sont eprouvees a part.
+- `MANIFEST.in` emporte `recipes/` dans l'archive des sources, et le paquet
+  installe ne l'emporte pas : butbutbut ne lance jamais ces fichiers lui-meme.
+  Un test du depot tient les deux moities de cette phrase.
+
+### Note
+
+- `recipes/README.md` n'existe qu'en francais, comme les commentaires du
+  depot ; les deux README principaux y renvoient depuis leur section
+  `--on-goal`.
+- `ampoule_wiz.py` est la seule recette qu'on ne peut pas eprouver de bout en
+  bout sans le materiel : les tests couvrent le dialogue (ce qui part, ce qui
+  revient, le verrou entre deux buts), pas une vraie ampoule au bout du fil.
+
 ## [1.8.0] - 2026-09-07
 
 ### Ajoute
