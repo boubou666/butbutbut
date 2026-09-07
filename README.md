@@ -416,6 +416,167 @@ Le reglage a sa cle de configuration, pour ne pas le retaper le samedi suivant :
 teams = om
 spoiler_free = om
 ```
+
+### Ne pas deranger
+
+Il y a deux moments ou une carte tombe mal, et aucun des deux ne depend du
+match : **la nuit**, et **quand quelqu'un d'autre regarde ton ecran**. Une carte
+« BUT » au milieu d'une visio partagee, c'est le bug qu'on ne decouvre qu'une
+fois, et devant temoins.
+
+```bash
+butbutbut --quiet-hours 23:00-08:00      # rien entre 23 h et 8 h
+butbutbut --quiet-while-presenting       # rien pendant une presentation
+```
+
+Pendant le silence, **rien a l'ecran et rien au haut-parleur** : ni but, ni but
+annule, ni temps fort, ni carton rouge, ni annonce d'avant match. La carte
+epinglee s'en va aussi - un tableau de bord allume toute la nuit est exactement
+ce dont on se plaint - et elle revient d'elle-meme au premier releve qui suit.
+
+**Le journal, lui, garde tout**, exactement comme en mode sans spoiler. C'est
+tout le contrat : on ne coupe que l'alerte, jamais la trace. Le lendemain matin,
+`butbutbut --today` raconte la nuit comme n'importe quel autre soir :
+
+```
+butbutbut : buts signales le 07/09/2026
+
+MLS
+    02:14:31  LA Galaxy 1 - 0 Seattle          But de R. Puig (58')
+```
+
+#### La plage horaire
+
+`--quiet-hours 23:00-08:00` se lit sur **l'horloge de la machine**, pas en UTC :
+la plage veut dire ce qu'elle veut dire pour celui qui l'ecrit, ou qu'il soit et
+quel que soit le fuseau des matchs suivis. Elle peut **enjamber minuit**, ce qui
+est meme le cas courant : personne ne dort de 9 h a 17 h.
+
+Le **debut est inclus, la fin exclue** : a 23:00 pile on se tait, a 08:00 pile on
+parle. Il faut trancher quelque part, et c'est ainsi qu'on lit un horaire - « de
+23 h a 8 h » ne compte pas 8 h.
+
+Les quatre formes que les gens tapent vraiment sont acceptees, et ramenees a une
+seule : `23:00-08:00`, `23h00-08h00`, `23h-8h` et `23-8` disent la meme chose.
+Une plage illisible, elle, est refusee tout de suite, en nommant le format
+attendu :
+
+```
+$ butbutbut --quiet-hours "de 23h a 8h"
+butbutbut : plage horaire illisible : 'de 23h a 8h' (attendu HH:MM-HH:MM, par exemple 23:00-08:00)
+```
+
+Une plage qui commence et finit a la meme heure (`08:00-08:00`) est refusee
+aussi : elle veut dire « tout le temps » ou « jamais » selon la personne a qui on
+demande, et ce n'est pas a butbutbut de choisir a sa place.
+
+Sur la ligne de commande, c'est fatal (code 2) : celui qui tape est devant son
+terminal. **Dans le fichier de configuration**, la meme faute est signalee sur la
+sortie d'erreur et la cle est simplement ignoree - le daemon est souvent lance au
+demarrage de la machine, sans personne pour lire l'erreur, et un daemon qui
+refuse de demarrer coute plus cher qu'une plage horaire perdue.
+
+#### Le partage d'ecran : ce qui est detecte, et ce qui ne l'est pas
+
+`--quiet-while-presenting` pose la question au systeme plutot que de la deviner.
+Sous Windows, `SHQueryUserNotificationState` est exactement l'API par laquelle
+Windows repond lui-meme a « est-ce le moment d'afficher une notification ? » : on
+lui pose donc la question telle quelle, et on retient deux de ses reponses.
+
+| Situation | Detectee ? |
+| --- | --- |
+| Mode presentation Windows (videoprojecteur branche, parametres de presentation) | oui |
+| Ecran **duplique** vers un projecteur ou une salle de reunion | oui, via l'assistant de concentration que Windows allume alors tout seul |
+| « Ne pas deranger » / assistant de concentration active a la main | oui |
+| Partage de **fenetre ou d'ecran** depuis Teams, Zoom ou Meet | **non** |
+| macOS, X11, Wayland | **non**, rien du tout |
+
+**Le partage depuis une application de visio n'est pas detectable, et il vaut
+mieux le dire que de le laisser croire.** Windows n'expose rien qui le signale.
+La seule facon d'y arriver serait de guetter le nom de classe de la barre
+flottante de chaque application (`ZPToolBarParentWnd` et compagnie) : cette
+heuristique-la tombe a la premiere mise a jour de Zoom, et se declenche de
+travers entre-temps. Ne rien detecter et l'ecrire ici vaut mieux que detecter
+parfois, au hasard.
+
+En pratique, le geste qui marche est donc : **allumer « ne pas deranger » avant
+la visio**. Windows le fait deja pour tout le reste du systeme, et butbutbut le
+suit. C'est aussi ce que Windows allume tout seul quand l'ecran est duplique, le
+cas de la salle de reunion et du videoprojecteur.
+
+Hors de Windows, il n'y a rien a suivre : macOS allume un point orange quand
+l'ecran est capture mais ne le dit a aucune API publique, le partage sous Wayland
+passe par un portail qui ne repond qu'a celui qui a demande le partage, et X11 ne
+sait meme pas qu'un partage existe. L'option y est refusee avec un avertissement,
+comme `--retry-fullscreen`.
+
+Une detection qui echoue **laisse passer la carte** - on retombe sur le
+comportement d'avant l'option - et le journal le note **une fois**, pas a chaque
+releve : un daemon tourne des heures, et une detection cassee qui ecrirait une
+ligne toutes les 25 secondes rendrait le journal illisible le jour ou on en
+aurait justement besoin.
+
+#### Le crochet, lui, part quand meme
+
+`--on-goal` continue de se declencher pendant le silence, contrairement au mode
+sans spoiler qui le coupe. Ce n'est pas un oubli : le silence protege **cet
+ecran** et **ce haut-parleur**, alors qu'une commande qui allume une guirlande,
+pousse une notification sur un telephone ou ecrit dans un tableur n'a aucune
+raison de se taire parce que la machine, elle, dort. Sans cela, `--quiet-hours`
+reviendrait a arreter le daemon. `--spoiler-free`, lui, coupe tout, et pour une
+raison differente : la, c'est le resultat qu'on ne veut pas connaitre, ou qu'il
+arrive.
+
+#### `--status` dit quand butbutbut se tait, et pourquoi
+
+C'est la premiere chose qu'on va verifier en croyant a une panne, donc la ligne
+est toujours la, meme quand rien ne fait taire :
+
+```
+  silence     : plage 23:00-08:00 - en veille jusqu'a 08:00
+  silence     : plage 23:00-08:00 - rien en ce moment
+  silence     : presentation ou ecran duplique - mode presentation
+  silence     : aucun (voir --quiet-hours)
+```
+
+Le journal dit la meme chose, et **seulement quand ca change** :
+
+```
+2026-09-06 23:00:14  silence : en veille jusqu'a 08:00
+2026-09-07 08:00:22  fin du silence : les cartes et le son repassent
+```
+
+#### Les trois fois ou butbutbut se demande « est-ce le moment ? »
+
+Ce sont trois formes d'une meme question, et elles se cumulent - d'ou un seul
+point de decision dans le code (`butbutbut/silence.py`) plutot que trois branches
+eparpillees. Elles ne rendent pas le meme verdict, et c'est voulu :
+
+| Question | Reglage | Verdict |
+| --- | --- | --- |
+| Quelle heure est-il ? | `--quiet-hours` | rien a l'ecran, rien au son |
+| Quelqu'un regarde-t-il cet ecran ? | `--quiet-while-presenting` | rien a l'ecran, rien au son |
+| La carte serait-elle seulement visible ? | `--retry-fullscreen` | la carte part **quand meme**, et peut repasser plus tard |
+
+Le sens du doute change avec la question. Se tromper sur le plein ecran ferait
+manquer un but pour rien, donc la carte passe ; se tromper a 2 h du matin ou
+pendant une presentation coute bien plus cher, donc on se tait. Et un jeu en
+plein ecran n'est jamais compte comme une presentation : personne d'autre ne le
+regarde, et rendre butbutbut muet pendant un match joue en plein ecran reviendrait
+a le couper exactement quand il sert.
+
+**Le silence ne concerne que le daemon.** `--test` et `--replay` affichent leurs
+cartes a 3 h du matin comme a midi : ce sont des commandes qu'on vient de taper,
+et les taire ressemblerait a une panne.
+
+Les deux reglages ont leur cle de configuration :
+
+```ini
+[butbutbut]
+quiet_hours = 23:00-08:00
+quiet_while_presenting = oui
+```
+
 ### Les prochains matchs
 
 `--scores` dit ce qui se joue aujourd'hui. `--next` repond a la question
@@ -721,6 +882,10 @@ no_overlay = non
 no_phase_cards = non
 catch_up = non
 quiet = non
+
+# Ne pas deranger : la nuit, et quand on presente
+quiet_hours = 23:00-08:00
+quiet_while_presenting = non
 ```
 
 **La ligne de commande garde toujours la priorite** : `ligne de commande >
@@ -1273,6 +1438,10 @@ ete tenue exactement quand elle ne servait a rien.
 > cartes s'affichent comme avant, sans ligne de journal supplementaire, et
 > `--retry-fullscreen` y est refuse avec un avertissement.
 
+C'est la premiere des trois fois ou butbutbut se demande "est-ce le moment ?" -
+les deux autres sont l'heure qu'il est et le regard des autres, et elles n'ont
+pas le meme verdict : voir [Ne pas deranger](#ne-pas-deranger).
+
 ---
 
 ## Enregistrer un match, et le rejouer
@@ -1792,7 +1961,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**896 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**939 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

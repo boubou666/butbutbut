@@ -15,8 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
-               journal, leagues, pinned, replay, screens, sound, state,
-               teams, watcher)
+               journal, leagues, pinned, presenting, replay, screens, silence,
+               sound, state, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -497,6 +497,14 @@ def do_daemon(args) -> int:
         log("rattrapage de sortie de veille : une carte de resume, sans son",
             quiet=args.quiet)
 
+    # Le seul point de decision du "est-ce le moment ?" : voir silence.py.
+    hush = silence.Silence(args.quiet_hours,
+                           while_presenting=args.quiet_while_presenting,
+                           on_log=lambda message: log(message, quiet=args.quiet))
+    if hush.armed:
+        log("ne pas deranger : {}. Le journal garde tout, l'ecran et le son se "
+            "taisent.".format(hush.describe()), quiet=args.quiet)
+
     on_goal = hook.Runner(args.on_goal,
                           on_log=lambda message: log(message, quiet=args.quiet))
     if on_goal:
@@ -541,10 +549,10 @@ def do_daemon(args) -> int:
     try:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
-                            on_goal=on_goal)
+                            on_goal=on_goal, hush=hush)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                              crest, on_goal=on_goal)
+                              crest, on_goal=on_goal, hush=hush)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -565,15 +573,20 @@ def do_daemon(args) -> int:
 
 
 def _watch_headless(guard, args, stopping, reporter, pin,
-                    on_goal=None) -> None:
+                    on_goal=None, hush=None) -> None:
     """Sans carte : un seul fil, le son et le journal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
     c'est lui qui alimente la ligne "epinglee" de `--status`, et il n'y a
     aucune raison qu'elle mente parce qu'on a coupe les cartes.
     """
+    hush = hush if hush is not None else silence.Silence()
     while not stopping.is_set():
         events = guard.tick()
+        # "Est-ce le moment ?" une fois par releve, pas une fois par but : la
+        # reponse ne bougerait pas entre deux buts du meme tour, et la poser
+        # deux fois ferait deux lignes de journal pour un seul changement.
+        hushed = hush.reason()
         follow = pin.update(guard.all_matches())
         reporter.update(guard.all_matches(), events,
                         pinned=follow.match if follow is not None else None)
@@ -585,11 +598,15 @@ def _watch_headless(guard, args, stopping, reporter, pin,
             # un but, pas un affichage, et doit partir meme en --no-overlay.
             # Un match regarde en differe, en revanche, n'en declenche aucun :
             # le crochet est une alerte de plus, et --spoiler-free les coupe
-            # toutes - d'ou le `continue` juste au-dessus.
+            # toutes - d'ou le `continue` juste au-dessus. Le silence de
+            # --quiet-hours, lui, le laisse passer : il protege cet ecran et ce
+            # haut-parleur, pas un telephone a l'autre bout de la maison.
             if on_goal is not None:
                 on_goal.fire(event)
             if not event.goal:
                 continue            # but annule et phases de match : muets
+            if hushed:
+                continue            # nuit, ou presentation : le journal a deja tout
             # Un son par but, et pas un par releve : deux buts du meme tour
             # peuvent venir de deux equipes, donc de deux fichiers.
             play_goal_sound(resolve_sound(args, event)[0])
@@ -600,7 +617,7 @@ def _watch_headless(guard, args, stopping, reporter, pin,
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                      crest=None, on_goal=None) -> None:
+                      crest=None, on_goal=None, hush=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -613,6 +630,7 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
     """
     from . import overlay
 
+    hush = hush if hush is not None else silence.Silence()
     pending = queue.Queue()
     pinning = queue.Queue()
 
@@ -620,11 +638,16 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
         while not stopping.is_set():
             try:
                 events = guard.tick()
+                hushed = hush.reason()
                 follow = pin.update(guard.all_matches())
                 reporter.update(guard.all_matches(), events,
                                 pinned=follow.match if follow is not None else None)
                 if pin.active:
-                    pinning.put(follow)
+                    # "AUCUNE carte" vaut aussi pour l'epinglee : un tableau de
+                    # bord allume toute la nuit est exactement ce dont on se
+                    # plaint. Elle revient d'elle-meme au premier releve d'apres
+                    # le silence, puisque chaque tour repose la question.
+                    pinning.put(None if hushed else follow)
                 for event in events:
                     log(event.log_line(), quiet=args.quiet)
                     # Depuis le fil de surveillance, et non depuis drain() :
@@ -637,6 +660,8 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                         continue
                     if on_goal is not None:
                         on_goal.fire(event)
+                    if hushed:
+                        continue    # rien ne monte a tkinter : ni carte, ni son
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
@@ -1697,6 +1722,13 @@ def do_status(args) -> int:
     if quiet_teams is not None:
         print(tr("  sans spoiler: {}  (journal seulement : ni carte, ni son)",
                  quiet_teams.describe()))
+    # Haut de page, et toujours affichee, meme quand rien ne fait taire : un
+    # silence sans explication est la premiere chose qu'on vient verifier en
+    # croyant a une panne, et "aucun" repond aussi bien que "en veille".
+    print(tr("  silence     : {}",
+             silence.Silence(args.quiet_hours,
+                             while_presenting=args.quiet_while_presenting
+                             ).describe()))
     print(tr("  langue      : {}", i18n.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
@@ -2009,6 +2041,20 @@ def build_parser() -> argparse.ArgumentParser:
                              "libere, pendant SECONDES au plus (defaut {:.0f} ; "
                              "Windows uniquement, voir README)", 
                                  RETRY_FULLSCREEN))
+    parser.add_argument("--quiet-hours", default=None, dest="quiet_hours",
+                        metavar=tr("PLAGE"),
+                        help=tr("plage horaire ou rien ne s'affiche et rien ne "
+                             "sonne, au format {} (ex : {}). Le but tombe quand "
+                             "meme dans le journal, et --today le retrouve. "
+                             "L'heure est celle de la machine, la plage peut "
+                             "enjamber minuit.", silence.FORMAT, silence.EXAMPLE))
+    parser.add_argument("--quiet-while-presenting", action="store_true",
+                        dest="quiet_while_presenting",
+                        help=tr("se taire aussi quand le systeme signale qu'on "
+                             "presente : mode presentation, ecran duplique ou "
+                             "'ne pas deranger'. Windows uniquement ; un "
+                             "partage de fenetre Teams/Zoom n'est pas "
+                             "detectable, voir README"))
     parser.add_argument("--red-cards", action="store_true", dest="red_cards",
                         help=tr("signale aussi les cartons rouges, par une carte "
                              "discrete et sans son"))
@@ -2085,6 +2131,21 @@ def main(argv=None) -> int:
         print("butbutbut : --retry-fullscreen ne sert que sous Windows, "
               "le plein ecran n'y est pas detectable ailleurs.", file=sys.stderr)
         args.retry_fullscreen = 0.0
+    # Une plage illisible est refusee ici, et nulle part ailleurs : le daemon
+    # comme --status la relisent ensuite sans avoir a se demander si elle tient
+    # debout. Le fichier de configuration, lui, l'ignore avec un avertissement
+    # plutot que d'empecher un daemon lance au demarrage de la machine.
+    try:
+        args.quiet_hours = silence.normalize(args.quiet_hours)
+    except silence.Invalid as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+    if args.quiet_while_presenting and not presenting.supported():
+        # Mieux vaut le dire que laisser croire a un filet de securite.
+        print("butbutbut : --quiet-while-presenting ne sert que sous Windows, "
+              "aucun autre systeme ne dit qu'une presentation est en cours.",
+              file=sys.stderr)
+        args.quiet_while_presenting = False
     args.before_kickoff = max(0, args.before_kickoff)
     if args.record and args.replay:
         print("butbutbut : --record enregistre le direct, --replay rejoue un "
