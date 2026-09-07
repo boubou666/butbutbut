@@ -1,0 +1,38 @@
+# Le coup d'envoi : une ligne par camp sous le score, sa forme et son bilan, et pas de troisieme ligne au-dessus d'elles.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 464 x 128 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400
+  0 |+--------------------------------------------------------+|
+  8 |##                                                       ||
+ 16 |##  COUP D'ENVOI   LIGUE                              1' ||
+ 24 |##                                                       ||
+ 32 |##                                                       ||
+ 40 |##                                                       ||
+ 48 |##                                                       ||
+ 56 |##           Angers      0  -   0    Stade Rennais       ||
+ 64 |##                                                       ||
+ 72 |##                                                       ||
+ 80 |##  Angers : PPGGG  1G 0N 2P                             ||
+ 88 |##                                                       ||
+ 96 |##                                                       ||
+104 |##  Stade Rennais : GGNGP  2G 1N 0P                      ||
+112 |##                                                       ||
+120 |##-------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    463    127
+filet               3      7     10    121
+titre              29     16    137     31  "COUP D'ENVOI"
+competition       151   17.5    200   29.5  "LIGUE 1"
+minute            428   17.5    442   29.5  "1'"
+equipe dom.       106   46.5    172   66.5  "Angers"
+score dom.        198     43    213     70  "0"
+separateur        213     43    258     70  " - "
+score ext.        258     43    273     70  "0"
+equipe ext.       299   46.5    442   66.5  "Stade Rennais"
+ligne 1            29   76.5    101   90.5  "Angers : "
+ligne 1           101     76    236     91  "PPGGG  1G 0N 2P"
+ligne 2            29   97.5    157  111.5  "Stade Rennais : "
+ligne 2           157     97    292    112  "GGNGP  2G 1N 0P"

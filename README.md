@@ -1343,6 +1343,35 @@ butbutbut --no-phase-cards    # seulement les buts a l'ecran
 
 Le journal, lui, garde la trace de ces moments meme avec cette option.
 
+La carte de **coup d'envoi** dit ce que les deux clubs ont fait avant : leur
+forme sur les cinq derniers matchs, du plus recent au plus ancien, puis leur
+bilan de la saison.
+
+```
+COUP D'ENVOI   LIGUE 1                                             1'
+Marseille           0 - 0              Paris FC
+Marseille : PPGGG  1G 0N 2P
+Paris FC : GGNGP  2G 1N 0P
+```
+
+Les lettres sont celles du classement - `G` gagne, `N` nul, `P` perdu - et
+elles suivent la langue des cartes, comme les colonnes de `--table` : la forme
+et le classement ne doivent pas dire la meme chose de deux facons. Marseille
+sort donc de trois victoires suivies de deux defaites, dont la derniere est son
+dernier match.
+
+Ces deux informations voyagent dans la **meme reponse que le score** : elles ne
+coutent pas une requete de plus, elles etaient simplement jetees. Un camp dont
+la source ne dit rien n'a pas de ligne, et la carte redevient alors exactement
+celle d'avant - c'est tout le hockey, dont le tableau de bord ne publie ni
+forme ni bilan. Le rugby, lui, a sa forme mais pas son bilan.
+
+La [carte d'avant-match](#lannonce-davant-match) dit la meme chose, sous son
+compte a rebours. Ce sont les deux seules a regarder en arriere, et c'est
+voulu : ce sont les deux seules ou le match n'a rien a raconter sur lui-meme.
+Des la mi-temps, ce qui vient de se passer est plus interessant que ce qui
+s'est passe le mois dernier.
+
 La carte de **fin de match** va un peu plus loin : elle liste les buteurs de
 chaque camp sous le score, parce qu'un `1 - 2` tout seul ne dit pas qui a
 marque, et que c'est justement la question quand on n'a pas vu le match.
@@ -1529,7 +1558,15 @@ match qui aurait deja du debuter serait faux.
 LE MATCH VA COMMENCER   LIGUE 1
 Angers              0 - 0              Stade Rennais
 Coup d'envoi dans 5 min
+Angers : PPGGG  1G 0N 2P
+Stade Rennais : GGNGP  2G 1N 0P
 ```
+
+Le compte a rebours reste la troisieme ligne - c'est ce pour quoi la carte
+existe - et la forme des deux camps passe dessous, comme au
+[coup d'envoi](#les-temps-forts-du-match). C'est la carte la plus haute du
+programme, et la seule dont la hauteur depende de ce que la source publie : un
+match dont elle ne dit rien redonne les trois lignes d'avant.
 
 Comme le carton rouge, cette carte a son propre interrupteur et ne depend pas de
 `--no-phase-cards`. Reglee plus tot qu'un quart d'heure, elle accelere aussi la
@@ -3075,7 +3112,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1426 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1463 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -3096,10 +3133,11 @@ mord ni sur le nom ni sur le score. Chacune est juste, aucune ne dit a quoi
 ressemble la carte, et un decalage de deux pixels passait entre elles sans
 qu'un seul test bronche.
 
-Huit cartes sont donc figees en **plans ASCII** dans `tests/plans/` : la carte
-de but, la carte epinglee, la fin de match, une carte de rugby, une carte avec
-des cartons rouges des deux cotes, des noms qui se font tronquer, et la carte
-de but a deux autres `--scale`. Chaque plan porte un dessin et un tableau.
+Dix cartes sont donc figees en **plans ASCII** dans `tests/plans/` : la carte
+de but, la carte epinglee, l'avant-match, le coup d'envoi, la fin de match, une
+carte de rugby, une carte avec des cartons rouges des deux cotes, des noms qui
+se font tronquer, et la carte de but a deux autres `--scale`. Chaque plan porte
+un dessin et un tableau.
 
 ```
      0         80        160       240       320       400       480
@@ -3137,7 +3175,7 @@ Windows ; et les cartes des scenarios sont ecrites dans `tests/blueprint.py`
 plutot que fabriquees par `Card.from_event`, parce qu'un plan fige une
 geometrie et n'a pas a casser le jour ou une traduction change.
 
-Apres un changement voulu de mise en page, **une** commande regenere les huit
+Apres un changement voulu de mise en page, **une** commande regenere les dix
 plans :
 
 ```bash

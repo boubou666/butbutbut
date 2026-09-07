@@ -9,6 +9,45 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Les cartes d'avant le premier ballon portent la forme et le bilan des deux
+  clubs.** `Marseille : PPGGG  1G 0N 2P` : trois victoires puis deux defaites,
+  dont la derniere est son dernier match, et une saison a une victoire, zero
+  nul, deux defaites. Les deux valeurs sont dans le tableau de bord depuis
+  toujours (`form` et `records`), dans la **meme reponse que le score** : elles
+  ne coutent pas une requete de plus, on les jetait.
+- **Deux cartes, et deux seulement : l'avant-match et le coup d'envoi.** Ce
+  sont les deux seules ou le match n'a rien a raconter sur lui-meme - 0 - 0,
+  aucune action, le titre a tout dit. Des la mi-temps, ce qui vient de se
+  passer est plus interessant que ce qui s'est passe le mois dernier, et un
+  test le verrouille dans les deux sens. Sur l'avant-match, le compte a
+  rebours **reste** la troisieme ligne et la forme passe dessous : c'est ce
+  pour quoi cette carte existe, elle ne se fait pas doubler.
+- **Les lettres sont celles de `--table`**, dans les cinq langues : `G`, `N` et
+  `P` en francais, `S`, `U` et `N` en allemand. Aucun vocabulaire nouveau n'a
+  ete invente pour l'occasion - une forme qui dirait `W` a cote d'une colonne
+  `G` ferait douter de l'une des deux. Le bilan s'ecrit `1G 0N 2P` et non
+  `1-0-2` : les chiffres nus ne disent pas dans quel ordre, et personne ne va
+  chercher la reponse pendant les huit secondes ou la carte est a l'ecran.
+- **L'ordre de la forme a ete verifie, pas suppose.** `LLWWW` se lit du plus
+  recent au plus ancien ; la source ne le documente nulle part, et six matchs
+  qui venaient de se terminer ont tous confirme que la lettre de tete disait
+  bien le resultat du jour.
+- **Deux reponses justes mais muettes sont ecartees.** Le rugby republie sa
+  forme sous `records` la ou le football y met des chiffres : sans filtre, la
+  carte l'afficherait deux fois de suite. Et `0-0-0` n'est pas un bilan, c'est
+  une phase de groupes qui n'a pas commence - la coupe d'Europe le repond des
+  juillet. Une lettre inconnue dans la forme fait jeter la chaine entiere :
+  quatre resultats sur cinq, sans le dire, seraient un mensonge par omission.
+- Le hockey ne publie ni l'un ni l'autre, comme il ne publie pas son tableau
+  d'actions : sa carte de coup d'envoi reste exactement celle d'avant, pas une
+  ligne vide.
+- **Deux plans ASCII de reference de plus**, `coup-d-envoi.txt` et
+  `avant-match.txt` : deux formes de carte que le depot n'avait pas encore
+  figees - l'une sans troisieme ligne au-dessus de ses deux lignes, l'autre
+  avec. L'avant-match devient au passage la carte la plus haute du programme
+  (153 px contre 128 au coup d'envoi), et la seule dont la hauteur depende de
+  ce que la source publie : sans forme, elle retrouve ses 111 px.
+
 - **La carte de hockey a enfin un buteur.** Le tableau de bord d'ESPN ne
   publie aucun tableau d'actions pour ce sport - `details` est absent sur les
   798 matchs termines releves - mais le resume d'un match, lui, porte les
@@ -35,9 +74,10 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   pas cette requete ; le hockey est le seul des trois a la declarer, et c'est
   ce drapeau qui l'autorise, jamais un tableau d'actions trouve vide.
 
-- **La mise en page des cartes est figee en plans ASCII de reference.** Huit
-  cartes - but, epinglee, fin de match, rugby, cartons rouges des deux cotes,
-  noms tronques, et deux autres `--scale` - sont rangees dans `tests/plans/`
+- **La mise en page des cartes est figee en plans ASCII de reference.** Dix
+  cartes - but, epinglee, avant-match, coup d'envoi, fin de match, rugby,
+  cartons rouges des deux cotes, noms tronques, et deux autres `--scale` - sont
+  rangees dans `tests/plans/`
   sous la forme d'un dessin et d'un tableau de boites au pixel pres. Jusqu'ici
   `overlay.py` (1285 lignes, toutes les cartes du programme) n'etait tenu que
   par des assertions ponctuelles : les cartons rouges de la 1.11.0 ont demande
@@ -60,7 +100,7 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   fabriquees par `Card.from_event` (un plan fige une geometrie, il n'a pas a
   casser le jour ou une traduction change), et aucune coordonnee n'est ecrite
   avec plus d'un dixieme de pixel.
-- **Une commande regenere les huit plans** : `python tools/plans.py`. Sans
+- **Une commande regenere les dix plans** : `python tools/plans.py`. Sans
   elle, la premiere evolution legitime de mise en page aurait rendu ces tests
   insupportables et quelqu'un les aurait supprimes. C'est un script de `tools/`
   et non une option du programme, comme le canari : ces plans ne servent qu'au

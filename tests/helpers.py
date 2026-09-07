@@ -81,22 +81,41 @@ def team(name, color="", alternate="", logo=""):
     return entry
 
 
+def _standing(form, record) -> dict:
+    """La forme et le bilan d'un camp, absents quand on ne les demande pas.
+
+    Absents, et non vides : c'est ce que la source fait au hockey, et c'est ce
+    que la grande majorite des tests doit voir - sans quoi ils passeraient tous
+    par un chemin que le hockey ne prend jamais.
+    """
+    extra = {}
+    if form:
+        extra["form"] = form
+    if record:
+        extra["records"] = [{"name": "All Splits", "type": "total",
+                             "summary": record, "abbreviation": "Total"}]
+    return extra
+
+
 def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
           away_score=0, state="in", detail="35'", clock="35'",
           date="2026-09-06T15:15Z", details=(), status_name="",
-          home_colors=(), away_colors=(), home_logo="", away_logo=""):
+          home_colors=(), away_colors=(), home_logo="", away_logo="",
+          home_form="", away_form="", home_record="", away_record=""):
     return {
         "id": match_id,
         "competitions": [{
             "id": match_id,
             "date": date,
             "competitors": [
-                {"homeAway": "home", "score": str(home_score),
-                 "team": dict(team(home, *home_colors, logo=home_logo),
-                              id="H" + match_id)},
-                {"homeAway": "away", "score": str(away_score),
-                 "team": dict(team(away, *away_colors, logo=away_logo),
-                              id="A" + match_id)},
+                dict({"homeAway": "home", "score": str(home_score),
+                      "team": dict(team(home, *home_colors, logo=home_logo),
+                                   id="H" + match_id)},
+                     **_standing(home_form, home_record)),
+                dict({"homeAway": "away", "score": str(away_score),
+                      "team": dict(team(away, *away_colors, logo=away_logo),
+                                   id="A" + match_id)},
+                     **_standing(away_form, away_record)),
             ],
             "status": {"displayClock": clock,
                        "type": {"state": state, "shortDetail": detail,

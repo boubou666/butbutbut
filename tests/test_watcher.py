@@ -158,6 +158,51 @@ class TestMatchPhases(unittest.TestCase):
         self.assertTrue(events[0].phase)
         self.assertFalse(events[0].goal)
 
+    def test_the_kickoff_card_carries_the_form_of_both_sides(self):
+        events = self.transition(
+            {"state": "pre"},
+            {"state": "in", "home_form": "LLWWW", "away_form": "WWDWL",
+             "home_record": "1-0-2", "away_record": "2-1-0"})
+        # "G", "N" et "P" sont les colonnes de --table : la forme et le
+        # classement ne doivent pas dire la meme chose de deux facons.
+        self.assertEqual(events[0].extra_lines(),
+                         ["Angers : PPGGG  1G 0N 2P",
+                          "Stade Rennais : GGNGP  2G 1N 0P"])
+
+    def test_the_form_is_translated_like_the_table(self):
+        events = self.transition({"state": "pre"},
+                                 {"state": "in", "home_form": "LLWWW"})
+        self.assertEqual(events[0].extra_lines(lang="de"), ["Angers : NNSSS"])
+
+    def test_a_side_without_a_record_shows_its_form_alone(self):
+        events = self.transition({"state": "pre"},
+                                 {"state": "in", "home_form": "LLWWW"})
+        self.assertEqual(events[0].extra_lines(), ["Angers : PPGGG"])
+
+    def test_a_kickoff_the_source_says_nothing_about_is_the_card_of_before(self):
+        # Le hockey, et tout match dont la source ne dit rien : la carte de
+        # coup d'envoi reste ce qu'elle etait, titre et score.
+        events = self.transition({"state": "pre"}, {"state": "in"})
+        self.assertEqual(events[0].extra_lines(), [])
+        self.assertEqual(events[0].detail_line(), "")
+
+    def test_nothing_looks_back_once_the_ball_has_rolled(self):
+        # Avant le premier ballon, la forme des deux clubs est ce qu'on a de
+        # mieux a dire. A la mi-temps, ce qui vient de se passer est plus
+        # interessant que ce qui s'est passe le mois dernier.
+        for first, second in (({"state": "in"},
+                               {"state": "in", "status_name": "STATUS_HALFTIME"}),
+                              ({"state": "in"}, {"state": "post"})):
+            events = self.transition(
+                first, dict(second, home_form="LLWWW", home_record="1-0-2"))
+            self.assertEqual(events[0].extra_lines(), [], events[0].kind)
+
+    def test_the_journal_keeps_the_form_in_french(self):
+        events = self.transition({"state": "pre"},
+                                 {"state": "in", "home_form": "LLWWW",
+                                  "home_record": "1-0-2"})
+        self.assertIn("Angers : PPGGG  1G 0N 2P", events[0].log_line())
+
     def test_halftime(self):
         events = self.transition(
             {"state": "in"}, {"state": "in", "status_name": "STATUS_HALFTIME"})
@@ -503,6 +548,24 @@ class TestPrematchCard(unittest.TestCase):
         # prime() photographie : meme dans la fenetre, rien ne sort.
         guard = make_watcher(self.state, before_kickoff=10 * 60.0)
         self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_the_card_carries_the_form_under_the_countdown(self):
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            home_form="LLWWW", away_form="WWDWL",
+            home_record="1-0-2", away_record="2-1-0"))
+        events = self.guard().refresh(LIGUE1)
+        # Le compte a rebours reste la troisieme ligne : c'est ce pour quoi la
+        # carte existe, la forme passe dessous.
+        self.assertEqual(events[0].detail_line(), "Coup d'envoi dans 5 min")
+        self.assertEqual(events[0].extra_lines(),
+                         ["Angers : PPGGG  1G 0N 2P",
+                          "Stade Rennais : GGNGP  2G 1N 0P"])
+
+    def test_a_prematch_the_source_says_nothing_about_keeps_its_countdown(self):
+        events = self.guard().refresh(LIGUE1)
+        self.assertEqual(events[0].extra_lines(), [])
+        self.assertEqual(events[0].detail_line(), "Coup d'envoi dans 5 min")
 
     def test_a_match_too_far_away_says_nothing(self):
         self.state["payload"] = payload(event(state="pre", date=in_minutes(45)))
