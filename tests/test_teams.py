@@ -306,5 +306,47 @@ class TestDesignates(unittest.TestCase):
         self.assertFalse(teams.designates("corne", ("Marseille", "OLM")))
 
 
+class TestWomensTeams(unittest.TestCase):
+    """Une equipe feminine porte le nom de son club, et c'est voulu.
+
+    La source ecrit "Paris Saint-Germain" dans `fra.w.1` comme dans `fra.1`,
+    "Arsenal" dans la WSL comme en Premier League : releve, pas suppose. Le
+    rapprochement travaillant sur les libelles, `--teams psg` attrape donc les
+    deux equipes du club des qu'on suit les deux competitions.
+
+    C'est la bonne reponse, et non un defaut a corriger : quelqu'un qui suit
+    le PSG suit le PSG. Rien dans le nom ne permettrait d'ailleurs de trancher
+    - il faudrait un catalogue d'equipes feminines ecrit a la main, qui
+    vieillirait mal. Ce qui separe les deux cartes, c'est la competition, et
+    c'est ce que l'en-tete annonce (LIGUE 1 contre PREMIERE LIGUE F).
+
+    Et quand on ne veut qu'une des deux, `--leagues` suffit deja : suivre
+    `l1f` seul ne fait pas apparaitre les buts des hommes.
+    """
+
+    WOMEN = [
+        ("Paris Saint-Germain", "Paris Saint-Germain", "PSG"),
+        ("Paris FC", "Paris FC", "PFC"),
+        ("OL Lyonnes", "OL Lyonnes", "OLL"),
+        ("Montpellier", "Montpellier", "MTP"),
+    ]
+
+    def test_a_club_word_catches_the_womens_team_too(self):
+        found, orphans = teams.Filter(wanted="psg").resolve(self.WOMEN)
+        self.assertEqual(orphans, [])
+        self.assertEqual(found["psg"], ["Paris Saint-Germain"])
+
+    def test_a_nickname_written_for_the_mens_club_still_lands(self):
+        # "ol" est le surnom de Lyon dans teams.ALIASES : il vise "lyon", que
+        # l'equipe feminine n'ecrit plus depuis qu'elle s'appelle OL Lyonnes.
+        # Le prefixe de mot la rattrape quand meme, par "ol" exactement.
+        found, _orphans = teams.Filter(wanted="lyonnes").resolve(self.WOMEN)
+        self.assertEqual(found["lyonnes"], ["OL Lyonnes"])
+
+    def test_the_filter_does_not_confuse_two_clubs_of_the_same_city(self):
+        found, _orphans = teams.Filter(wanted="paris fc").resolve(self.WOMEN)
+        self.assertEqual(found["paris fc"], ["Paris FC"])
+
+
 if __name__ == "__main__":
     unittest.main()

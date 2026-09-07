@@ -2236,6 +2236,25 @@ class TestSpoilerFreeCommands(unittest.TestCase):
         self.assertIn("C. Arcus", printed)
         self.assertNotIn("sans spoiler", printed)
 
+    def test_scores_says_which_competition_a_womens_match_belongs_to(self):
+        # Arsenal joue dans les deux : sans l'en-tete de competition, les deux
+        # lignes seraient indiscernables.
+        matches = espn.parse(
+            payload(event(match_id="1", home="Arsenal", away="Chelsea",
+                          state="in", home_score=1,
+                          details=[goal_detail("H1", "35'", "B. Mead")])),
+            leagues.BY_SLUG["eng.w.1"])
+        buffer = io.StringIO()
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            with mock.patch.object(espn, "catalogue", return_value=self.CATALOGUE):
+                with redirect_stdout(buffer):
+                    code = cli.main(["--scores", "--leagues", "wsl"])
+        printed = buffer.getvalue()
+        self.assertEqual(code, 0)
+        self.assertIn("Women's Super League", printed)
+        self.assertIn("1 - 0", printed)
+        self.assertIn("B. Mead", printed)
+
     def test_scores_only_masks_the_match_concerned(self):
         # L'autre match du jour garde son score : on ne coupe pas tout.
         matches = espn.parse(payload(event(state="in", home_score=1),
@@ -2778,6 +2797,23 @@ class TestNextCommand(unittest.TestCase):
         self.assertIn("Rien au programme dans les 7 prochains jours", printed)
         # Le mot cherche est repete : c'est la qu'une faute de frappe se voit.
         self.assertIn("om", printed)
+
+    def test_it_reads_a_womens_competition_like_any_other(self):
+        # Meme endpoint, meme lecture : ce qui se verifie ici, c'est que la
+        # competition arrive bien jusqu'au bout de la commande, en-tete
+        # compris - et que les deux Arsenal ne se melangent pas.
+        code, printed = run_next(
+            ["--next", "--leagues", "l1f,wsl"],
+            {"fra.w.1": fixtures(("1", "Paris FC", "OL Lyonnes",
+                                  at_local_hour(1, 21)), slug="fra.w.1"),
+             "eng.w.1": fixtures(("2", "Arsenal", "Chelsea",
+                                  at_local_hour(1, 18)), slug="eng.w.1")})
+        self.assertEqual(code, 0)
+        self.assertIn("Premiere Ligue F", printed)
+        self.assertIn("Women's Super League", printed)
+        self.assertIn("OL Lyonnes", printed)
+        self.assertIn("2 match(s) a venir dans 2 competition(s), sur 7 jour(s).",
+                      printed)
 
     def test_one_unreachable_competition_does_not_stop_the_others(self):
         code, printed = run_next(

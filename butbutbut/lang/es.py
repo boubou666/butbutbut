@@ -130,9 +130,14 @@ MESSAGES = {
         "butbutbut : competiciones vigilables\n",
     "Les 5 grands (defaut)": "Las 5 grandes (por defecto)",
     "Aussi disponibles": "Tambien disponibles",
+    "Football feminin (a demander)": "Futbol femenino (a peticion)",
     "\nExemples :": "\nEjemplos:",
     "  butbutbut --exclude liga,seriea        (les 5 grands moins deux)":
         "  butbutbut --exclude liga,seriea        (las 5 grandes menos dos)",
+    "  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)":
+        "  butbutbut --leagues l1f,wsl,uclf       (lo mismo, en femenino: una f al final)",
+    "  butbutbut --leagues feminines          (tout le football feminin)":
+        "  butbutbut --leagues feminines          (todo el futbol femenino)",
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         "  butbutbut --leagues por.1              (cualquier codigo ESPN)",
 

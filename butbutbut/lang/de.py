@@ -239,6 +239,11 @@ MESSAGES = {
     'Les 5 grands (defaut)': 'Die 5 Topligen (Standard)',
     # 'Ausserdem verfuegbar' demanderait deux tremas et un eszett.
     'Aussi disponibles': 'Weitere Wettbewerbe',
+    'Football feminin (a demander)': 'Frauenfussball (auf Anfrage)',
+    '  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)':
+        '  butbutbut --leagues l1f,wsl,uclf       (dasselbe bei den Frauen: f am Ende)',
+    '  butbutbut --leagues feminines          (tout le football feminin)':
+        '  butbutbut --leagues feminines          (der ganze Frauenfussball)',
     'butbutbut : competitions surveillables\n':
         'butbutbut : verfolgbare Wettbewerbe\n',
     'butbutbut : aucun daemon en cours.': 'butbutbut : kein Daemon aktiv.',

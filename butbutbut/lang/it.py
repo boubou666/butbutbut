@@ -306,6 +306,12 @@ MESSAGES = {
         'I 5 grandi (di base)',
     'Aussi disponibles':
         'Anche disponibili',
+    'Football feminin (a demander)':
+        'Calcio femminile (a richiesta)',
+    '  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)':
+        '  butbutbut --leagues l1f,wsl,uclf       (lo stesso, al femminile: una f finale)',
+    '  butbutbut --leagues feminines          (tout le football feminin)':
+        '  butbutbut --leagues feminines          (tutto il calcio femminile)',
     'butbutbut : competitions surveillables\n':
         'butbutbut : competizioni sorvegliabili\n',
 

@@ -2734,7 +2734,7 @@ def do_status(args) -> int:
 def do_list(args) -> int:
     """Le catalogue des competitions, tous sports confondus."""
     print(tr("butbutbut : competitions surveillables\n"))
-    for title, name, slug, alias in leagues.catalogue_lines(all_sports=True):
+    for title, name, slug, alias in leagues.catalogue_lines(everything=True):
         if title is not None:
             print(tr("{}:", title))
             continue
@@ -2744,6 +2744,8 @@ def do_list(args) -> int:
     print("  butbutbut --leagues l1,ucl,ligue2")
     print(tr("  butbutbut --exclude liga,seriea        (les 5 grands moins deux)"))
     print(tr("  butbutbut --leagues all                (tout le catalogue de football)"))
+    print(tr("  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)"))
+    print(tr("  butbutbut --leagues feminines          (tout le football feminin)"))
     print(tr("  butbutbut --leagues nhl,top14          (hockey et rugby, a la demande)"))
     print(tr("  butbutbut --leagues rugby              (tout le rugby du catalogue)"))
     print(tr("  butbutbut --leagues all-sports         (vraiment tout)"))

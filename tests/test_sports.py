@@ -72,8 +72,10 @@ class TestCatalogue(unittest.TestCase):
             self.assertIs(league.sport, sports.SOCCER, league.slug)
 
     def test_the_other_sports_live_beside_it(self):
+        # Tout le football d'abord - masculin puis feminin -, les autres
+        # sports ensuite : c'est l'ordre de --list, et celui de all-sports.
         self.assertEqual(list(leagues.FULL_CATALOGUE),
-                         list(leagues.CATALOGUE) + list(leagues.OTHER_SPORTS))
+                         list(leagues.FOOTBALL) + list(leagues.OTHER_SPORTS))
         self.assertTrue(leagues.HOCKEY_LEAGUES)
         self.assertTrue(leagues.RUGBY_LEAGUES)
         for league in leagues.HOCKEY_LEAGUES:
@@ -191,8 +193,8 @@ class TestSelection(unittest.TestCase):
         self.assertEqual(len([r for r in football if r[0] is None]),
                          len(leagues.CATALOGUE))
 
-        everything = leagues.catalogue_lines(all_sports=True)
-        self.assertEqual(len([t for t, _n, _s, _a in everything if t]), 4)
+        everything = leagues.catalogue_lines(everything=True)
+        self.assertEqual(len([t for t, _n, _s, _a in everything if t]), 5)
         self.assertEqual(len([r for r in everything if r[0] is None]),
                          len(leagues.FULL_CATALOGUE))
 
