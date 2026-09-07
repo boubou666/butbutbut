@@ -35,8 +35,10 @@ MESSAGES = {
         '  suoni pers. : {}  ({} file)',
     '  ecussons    : {}':
         '  stemmi      : {}',
+    # 'su' + 'lo schermo' donnerait 'su lo schermo' : la preposition
+    # articulee ('sullo') est portee par la valeur, pas par le gabarit.
     '  ecrans      : {} -> carte en {} sur {}':
-        '  schermi     : {} -> scheda in {} su {}',
+        '  schermi     : {} -> scheda in {} {}',
     '  plein ecran : {}':
         '  fullscreen  : {}',
     '  journal     : {}':
@@ -179,7 +181,7 @@ MESSAGES = {
     "des que l'ecran se libere, pendant SECONDES au plus (defaut {:.0f} ; "
     'Windows uniquement, voir README)':
         "quando un'applicazione a schermo intero copre lo schermo, rimettere "
-        'la scheda appena lo schermo si libera, per SECONDES al massimo (di '
+        'la scheda appena lo schermo si libera, per SECONDI al massimo (di '
         'base {:.0f} ; solo Windows, vedi README)',
     'signale aussi les cartons rouges, par une carte discrete et sans son':
         'segnala anche i cartellini rossi, con una scheda discreta e senza '
@@ -223,9 +225,9 @@ MESSAGES = {
     '{}  ({} en cache)':
         '{}  ({} in cache)',
     "l'ecran principal":
-        'lo schermo principale',
+        'sullo schermo principale',
     'ecran {}':
-        'schermo {}',
+        'sullo schermo {}',
     '  affichage   : tkinter MANQUANT (voir README)':
         '  grafica     : tkinter ASSENTE (vedi README)',
     'ECHEC ({})':
@@ -236,4 +238,106 @@ MESSAGES = {
         'butbutbut : cartella dati inutilizzabile: {}',
     'injoignable ({})':
         'irraggiungibile ({})',
+
+    # --- la prose du parseur -------------------------------------------------
+    'Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : '
+    "le son part et le score s'affiche a l'ecran.":
+        'Un gol in Ligue 1, Premier League, LaLiga, Serie A o Bundesliga: '
+        'parte il suono e il punteggio compare sullo schermo.',
+    # Les metavariables du --help. SECONDI se retrouve dans l'aide de
+    # --retry-fullscreen, plus haut : les deux doivent dire le meme mot.
+    'CHEMIN':
+        'PERCORSO',
+    'LISTE':
+        'ELENCO',
+    'COIN':
+        'ANGOLO',
+    'CHOIX':
+        'SCELTA',
+    'SECONDES':
+        'SECONDI',
+    'MINUTES':
+        'MINUTI',
+    'CODE':
+        'CODICE',
+
+    # --- les valeurs de --status ---------------------------------------------
+    # 'Connexion' fait 9 signes, 'Connessione' en fait 11 : les deux espaces
+    # de bourrage disparaissent et le ' : ' ne bouge pas d'un cran.
+    '\n  Connexion   : ':
+        '\n  Connessione : ',
+    "aucun pour l'instant":
+        'nessuno per ora',
+    "aucun (le daemon efface son etat en s'arretant)":
+        'nessuno (il daemon cancella il suo stato quando si ferma)',
+    '{} match(s)':
+        '{} partite',
+    ' sur {} au programme':
+        ' su {} in programma',
+    '  (absent, voir --write-config)':
+        '  (assente, vedi --write-config)',
+    ' (+{} autre(s), tirage au hasard)':
+        ' (+{} altri, scelto a sorte)',
+    'fourni':
+        'incluso',
+    'corne synthetisee':
+        'tromba sintetizzata',
+    'detecte (la carte masquee est notee au journal)':
+        'rilevato (la scheda coperta viene notata nel registro)',
+    'non detectable sur cette plateforme':
+        'non rilevabile su questa piattaforma',
+    'AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)':
+        'NESSUNO (installa mpv/ffmpeg/pipewire/alsa-utils)',
+    'butbutbut : aucun daemon en cours.':
+        'butbutbut : nessun daemon in esecuzione.',
+
+    # --- l'age du dernier releve ---------------------------------------------
+    # L'italien met le 'fa' apres la duree la ou le francais met 'il y a'
+    # devant : le trou a valeur change de place, jamais de rang.
+    'date inconnue':
+        'data sconosciuta',
+    'il y a {} s':
+        '{} s fa',
+    'il y a {} min':
+        '{} min fa',
+    'il y a {} h {:02d}':
+        '{} h {:02d} fa',
+
+    # --- les ecrans ----------------------------------------------------------
+    '1 ecran ({}x{})':
+        '1 schermo ({}x{})',
+    '{} ecrans [{}]':
+        '{} schermi [{}]',
+    '  (principal)':
+        '  (principale)',
+
+    # --- les competitions ----------------------------------------------------
+    'les 5 grands championnats':
+        'i 5 grandi campionati',
+    'tout le catalogue ({} competitions)':
+        'tutto il catalogo ({} competizioni)',
+    '{} et {} autres':
+        '{} e altre {}',
+    'Les 5 grands (defaut)':
+        'I 5 grandi (di base)',
+    'Aussi disponibles':
+        'Anche disponibili',
+    'butbutbut : competitions surveillables\n':
+        'butbutbut : competizioni sorvegliabili\n',
+
+    # --- les matchs de --scores ----------------------------------------------
+    '  (aucun match au programme)':
+        '  (nessuna partita in programma)',
+    '  (aucun match de ces equipes)':
+        '  (nessuna partita di queste squadre)',
+    'en cours':
+        'in corso',
+    'termine':
+        'finita',
+    'a venir':
+        'da giocare',
+    'imminent':
+        'imminente',
+    'dans {} min':
+        'tra {} min',
 }
