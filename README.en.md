@@ -1744,7 +1744,10 @@ football evening does not: a 9 p.m. kick-off that goes to extra time, a South
 American fixture, an NHL game watched from Europe. The goal at 11:50 p.m. and
 the one at 12:12 a.m. belong to the same evening, and counting by date would
 make two half-evenings, neither of which existed. Six in the morning cuts the
-night. When evenings tie, they are all named rather than separated at random.
+night. **Three evenings are named**, and any ties with the third are counted on
+one more line - `... et 17 autre(s) soiree(s) a 6 but(s).` Naming them all would
+push the rest of the output off the screen on a multiplex night; stopping at
+three without counting the others would suggest a podium that does not exist.
 
 **A goal the VAR turned down counts nowhere**, exactly as in
 [the scorers' ranking](#the-scorers-ranking): the positional matching is the
@@ -1768,9 +1771,15 @@ them here. A minute the log does not write as a minute of play - an ice hockey
 clock, a phase label, a line from a version we can no longer read - stays out
 of the histogram, and the footer counts it rather than forcing it in sideways.
 
-Everything reads **offline**: it is already in the file. A missing log, an
-empty one, or one where no line falls inside the window says so in plain words,
-just like `--today`.
+**The arithmetic happens offline**: it is all already in the file. One caveat,
+the same one `--top-scorers` carries: naming a team first checks that name
+against the catalogue, and that check does need the network. It is deliberate -
+`--stats --teams om` returning an empty page over a typo would be worse than
+silent - and an unreachable source says so, then lets the command through.
+Without `--teams` or `--exclude-teams`, nothing leaves the machine.
+
+A missing log, an empty one, or one where no line falls inside the window says
+so in plain words, just like `--today`.
 
 ---
 

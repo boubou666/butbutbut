@@ -1748,8 +1748,11 @@ minuit, une soiree de football non : un coup d'envoi a 21h qui part en
 prolongation, une affiche sud-americaine, un match de NHL vu depuis l'Europe.
 Le but de 23h50 et celui de 00h12 sont de la meme soiree, et compter par date
 en ferait deux demi-soirees dont aucune n'a existe. Six heures du matin coupe
-la nuit. A egalite, les soirees ex aequo sont toutes nommees plutot que
-departagees au hasard.
+la nuit. **Trois soirees sont nommees**, et les ex aequo de la troisieme sont
+comptees en une ligne de plus - `... et 17 autre(s) soiree(s) a 6 but(s).` Les
+nommer toutes chasserait le reste de la sortie hors de l'ecran un soir de
+multiplex ; s'arreter a trois sans compter les autres laisserait croire a un
+podium qui n'existe pas.
 
 **Un but refuse par la VAR ne compte nulle part**, exactement comme dans
 [le classement des buteurs](#le-classement-des-buteurs) : le rattachement
@@ -1775,9 +1778,15 @@ un libelle de phase, une ligne d'une version qu'on ne sait plus lire - reste
 hors de l'histogramme, et le pied de sortie la compte plutot que de la faire
 entrer de travers.
 
-Tout se lit **hors reseau** : c'est deja dans le fichier. Un journal absent,
-vide, ou dont aucune ligne ne tombe dans la fenetre le dit en toutes lettres,
-comme `--today`.
+**Le calcul se fait hors reseau** : tout est deja dans le fichier. Une reserve,
+la meme que pour `--top-scorers` : nommer une equipe fait d'abord verifier ce
+nom aupres du catalogue, et cette verification-la, elle, demande le reseau.
+C'est voulu - `--stats --teams om` qui rendrait une page vide sur une faute de
+frappe serait pire que muet - et une source injoignable le dit puis laisse
+passer. Sans `--teams` ni `--exclude-teams`, rien ne sort de la machine.
+
+Un journal absent, vide, ou dont aucune ligne ne tombe dans la fenetre le dit
+en toutes lettres, comme `--today`.
 
 ---
 
