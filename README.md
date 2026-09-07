@@ -104,6 +104,8 @@ butbutbut --list              # les competitions surveillables
 butbutbut --list-teams        # les equipes des competitions suivies
 butbutbut --status            # daemon, dernier releve, matchs en cours, son, ecrans
 butbutbut --today             # les buts signales aujourd'hui
+butbutbut --record m.jsonl    # surveille, et met les releves bruts en boite
+butbutbut --replay m.jsonl    # rejoue un enregistrement, cartes et sons compris
 butbutbut --stop              # arrete le daemon
 butbutbut --check-update      # une version plus recente existe-t-elle ?
 butbutbut --update            # recupere, reinstalle, relance le daemon
@@ -762,6 +764,203 @@ ete tenue exactement quand elle ne servait a rien.
 
 ---
 
+## Enregistrer un match, et le rejouer
+
+`butbutbut --test` montre des cartes fabriquees : jolies, mais figees. Le vrai
+enchainement - coup d'envoi, but, expulsion, mi-temps, but retire par la VAR,
+fin du match - ne tombe qu'un samedi soir. `--record` le met en boite,
+`--replay` le ressort autant de fois qu'on veut.
+
+```bash
+butbutbut --record match.jsonl --leagues l1    # pendant le match
+butbutbut --replay match.jsonl                 # plus tard, en temps reel
+butbutbut --replay match.jsonl --speed 60      # une heure de match en une minute
+```
+
+Ca sert a trois choses a la fois :
+
+- **mettre au point l'affichage** sans attendre le prochain multiplex : la carte
+  qui deborde, l'ecusson qui manque, la couleur illisible se corrigent en
+  rejouant le meme match dix fois de suite ;
+- **reproduire un bug** : "chez moi la carte deborde sur ce match-la" devient un
+  fichier de quelques mega-octets qu'on joint au ticket, et la personne d'en
+  face voit exactement la meme chose ;
+- **fabriquer les captures et les GIF** de ce README, avec de vrais noms, de
+  vrais scores et un vrai enchainement.
+
+### `--record` : se poser entre le programme et la source
+
+`--record` ne change rien a la surveillance : le daemon tourne normalement,
+affiche ses cartes, joue son son et ecrit son journal. Il ecrit **en plus**
+chaque reponse brute d'ESPN sur le disque, avec son horodatage et le code de la
+competition. Toutes les options habituelles s'appliquent :
+
+```bash
+butbutbut --record psg-om.jsonl --leagues l1 --teams psg,om --red-cards
+```
+
+Il y a une bonne raison de mettre `--leagues` : voir plus bas, ce que ca pese.
+
+### `--replay` : la meme soiree, sans reseau
+
+Le rejeu ne relit pas le fichier pour en tirer des buts. Il **remplace la
+source** et laisse le reste du programme faire son travail : la comparaison des
+scores, le premier releve muet, le buteur pioche dans les actions, la cadence
+qui s'adapte, les cartes, le son, les lignes de journal - tout passe par les
+memes chemins qu'un vrai samedi soir. C'est la seule facon qu'un rejeu prouve
+quelque chose : un rejeu qui prendrait un raccourci ne testerait que lui-meme.
+
+`--speed` divise les ecarts de temps entre deux releves. `--speed 1` (le defaut)
+rejoue en temps reel, `--speed 60` fait passer une heure de match en une minute.
+Les competitions rejouees sont **celles du fichier**, pas celles de `--leagues` :
+un enregistrement de Ligue 1 se rejoue en Ligue 1, quoi qu'on tape.
+
+```
+2026-09-07 21:04:11  rejeu de match.jsonl - 288 releve(s) - Ligue 1 - 1 h 52 - enregistre le 2026-09-06 20:41:03 - x60
+2026-09-07 21:04:11  journal, etat et pid du rejeu isoles dans /home/toi/.local/share/butbutbut/replay
+2026-09-07 21:04:13  COUP D'ENVOI [Ligue 1] Angers 0 - 0 Stade Rennais (3')
+2026-09-07 21:04:22  BUT [Ligue 1] Angers 1 - 0 Stade Rennais pour Angers - But de B. Saka (12')
+2026-09-07 21:04:35  CARTON ROUGE [Ligue 1] Angers 1 - 0 Stade Rennais pour Stade Rennais - Stade Rennais : M. Caicedo (37')
+2026-09-07 21:05:06  FIN DU MATCH [Ligue 1] Angers 1 - 0 Stade Rennais - Angers : B. Saka 12' (FT)
+2026-09-07 21:05:12  rejeu termine : 288 releve(s) servi(s) sur 288, 1 h 52 parcourues.
+```
+
+Les cartons rouges et l'annonce d'avant match restent a la demande au rejeu
+comme en direct : `--replay match.jsonl --red-cards` les fait ressortir meme si
+l'enregistrement a ete fait sans.
+
+### Le format du fichier
+
+Du **JSON Lines** : une ligne = un objet JSON complet. Deux proprietes en
+decoulent, et ce sont exactement celles qu'on cherchait - ca se lit a l'oeil
+nu, et une session tuee en plein match laisse un fichier dont seule la derniere
+ligne est a jeter.
+
+La premiere ligne est un en-tete, les suivantes sont les releves :
+
+```json
+{"kind":"butbutbut-record","format":1,"version":"1.5.0","recorded_at":1757270481.4,"recorded_text":"2026-09-06 20:41:21","leagues":["fra.1"]}
+{"at":1757270481.6,"slug":"fra.1","payload":{"events":[...]}}
+{"at":1757270506.7,"slug":"fra.1","repeat":true}
+```
+
+| cle | ce que c'est |
+| --- | --- |
+| `format` | le numero du **format**, pas celui du programme |
+| `at` | l'heure du releve : c'est l'ecart entre deux `at` que `--speed` divise |
+| `slug` | le code ESPN de la competition (un fichier peut en porter plusieurs) |
+| `payload` | la reponse d'ESPN, telle quelle, sans rien retirer |
+| `repeat` | reponse identique a la precedente du meme championnat (voir plus bas) |
+
+**Un fichier plus vieux reste rejouable**, c'est la raison d'etre de `format` :
+un lecteur accepte tout numero inferieur ou egal au sien. Un fichier ecrit par
+une version future dit clairement pourquoi il ne passe pas, plutot que de partir
+de travers :
+
+```
+butbutbut : match.jsonl est enregistre au format 2, et cette version de
+butbutbut ne lit que le format 1 : mets butbutbut a jour (butbutbut --update).
+```
+
+Une ligne illisible - la derniere d'une session tuee au milieu - est comptee et
+ignoree, et le reste se rejoue. Une cle inconnue l'est aussi : c'est ce qui
+permet d'ajouter un champ demain sans changer le numero de format.
+
+Comme chaque ligne se suffit, un enregistrement se decoupe avec les outils du
+systeme. Garder l'en-tete et les vingt releves autour du but :
+
+```bash
+(head -1 match.jsonl; sed -n '120,140p' match.jsonl) > le-but.jsonl
+butbutbut --replay le-but.jsonl --speed 10
+```
+
+### Ce qu'un rejeu ne touche pas
+
+Un rejeu **ne pollue ni `--today`, ni `--status`, ni le daemon en cours**. Le
+journal, le fichier d'etat et le fichier pid sont detournes d'un bloc vers un
+sous-dossier `replay/` du dossier de donnees, le temps du rejeu :
+
+```
+~/.local/share/butbutbut/replay/butbutbut.log      <- le journal du rejeu
+```
+
+Le detournement se prend a la racine, dans `paths()`, plutot que dans chaque
+fonction : tout ce qui passe par la est isole, y compris le code ecrit demain.
+Consequences pratiques : un match d'il y a trois semaines rejoue ce matin
+n'apparait pas dans `butbutbut --today`, `--status` continue de decrire le vrai
+daemon, et **on peut rejouer un match pendant que le daemon tourne** - le rejeu
+ne reclame pas le fichier pid de l'instance unique.
+
+Ce qui n'est *pas* detourne : le son et le cache d'ecussons. Ce sont des caches
+partages, et les isoler obligerait chaque rejeu a retelecharger tous les
+ecussons - alors qu'un rejeu est justement cense se passer de reseau. C'est
+d'ailleurs le seul acces reseau qu'un rejeu peut encore declencher, quand un
+ecusson manque au cache ; `--no-logos` le ferme aussi.
+
+### Ce que ca pese
+
+Un tableau de bord ESPN fait **60 a 200 ko de JSON** selon le nombre de matchs a
+l'affiche. A 25 s par releve, deux heures de multiplex font environ 290 releves,
+soit **20 a 60 Mo par competition**. Une soiree complete enregistree sur les
+cinq grands championnats depasserait tranquillement les 100 Mo : `--record` sert
+a garder *un* match, et `--leagues l1` n'est pas une precaution de style.
+
+Deux choses ramenent ca a une taille raisonnable :
+
+- **une reponse identique a la precedente n'est pas reecrite.** La ligne se
+  resume a son horodatage et au marqueur `repeat` : une soixantaine d'octets au
+  lieu de deux cent mille. L'heure du releve, elle, est gardee - c'est elle qui
+  porte la cadence, et la perdre changerait le rythme du rejeu. Pendant un match
+  en cours ca ne gagne rien (l'horloge du match bouge a chaque releve, donc la
+  reponse aussi), mais un championnat au repos - l'essentiel d'une soiree - se
+  resume alors a une ligne toutes les cinq minutes ;
+- **gzip**, quand le nom du fichier finit par `.gz`. Compression a l'ecriture,
+  decompression a la lecture, sans rien demander. Du JSON d'API se comprime
+  autour de vingt fois : les 40 Mo d'un match tiennent dans 2 Mo, et le fichier
+  reste lisible avec `zcat`.
+
+```bash
+butbutbut --record match.jsonl.gz --leagues l1
+butbutbut --replay match.jsonl.gz --speed 60
+```
+
+A la lecture, l'enregistrement est charge en memoire d'un bloc : c'est assume,
+un rejeu est un outil de mise au point, il tourne devant quelqu'un qui regarde
+son ecran.
+
+### Fabriquer une capture ou un GIF
+
+1. **Enregistrer** un match, une seule competition, pendant qu'il se joue :
+
+   ```bash
+   butbutbut --record match.jsonl.gz --leagues l1 --red-cards
+   ```
+
+2. **Reperer le passage** interessant. Le fichier est du texte, `grep -c` compte
+   les releves et `sed -n` en decoupe une tranche (voir plus haut). Un but tient
+   en trois ou quatre releves.
+
+3. **Rejouer** en gros, au centre de l'ecran, et assez vite pour que
+   l'enregistreur d'ecran n'ait pas a tourner dix minutes :
+
+   ```bash
+   butbutbut --replay le-but.jsonl.gz --speed 30 --scale 1.6 \
+             --position center --red-cards
+   ```
+
+4. **Capturer** avec l'outil du systeme : `Win`+`Alt`+`R` (Xbox Game Bar) ou
+   [ScreenToGif](https://www.screentogif.com/) sous Windows,
+   `Cmd`+`Shift`+`5` sous macOS, [Peek](https://github.com/phw/peek) ou
+   `ffmpeg -f x11grab` sous Linux.
+
+Le rejeu suit la cadence que le watcher calcule, comme en direct : un
+enregistrement fait avec `--interval 25` se rejoue au meme rythme. Rejoue avec
+des cadences differentes de celles de l'enregistrement, il ne saute jamais un
+releve, mais il peut mettre un peu plus longtemps que le match d'origine -
+`--interval` et `--idle-interval` le resserrent.
+
+---
+
 ## Savoir si la surveillance tourne vraiment
 
 Un daemon vivant mais bloque ressemble a un daemon qui marche : le fichier pid
@@ -946,13 +1145,15 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**573 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**627 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
 est une fonction pure : son invariant est teste sur toutes les paires d'un jeu
 de couleurs reelles - ce qui sort est toujours lisible, ou c'est la couleur de
-la competition.
+la competition. L'enregistrement, lui, est verifie par un aller-retour complet :
+un match joue en direct contre une source simulee, mis en boite, puis rejoue -
+et les deux doivent rendre exactement la meme suite d'evenements.
 
 ---
 

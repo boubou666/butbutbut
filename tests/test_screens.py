@@ -1,6 +1,14 @@
 import unittest
 
-from butbutbut import screens
+from butbutbut import i18n, screens
+
+
+def setUpModule():
+    # Ce module affirme des formulations francaises. Sans cet
+    # epinglage il ne passait que par la grace de l'ordre des modules :
+    # un voisin qui lance cli.main() remet la langue a celle de la
+    # machine, et la suite echouait sur une machine anglaise.
+    i18n.use("fr")
 
 
 class TestPlacement(unittest.TestCase):

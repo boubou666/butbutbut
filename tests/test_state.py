@@ -5,9 +5,17 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from butbutbut import espn, leagues, state, watcher
+from butbutbut import espn, i18n, leagues, state, watcher
 
 from helpers import bump, event, goal_detail, opener_for, payload
+
+def setUpModule():
+    # Ce module affirme des formulations francaises. Sans cet
+    # epinglage il ne passait que par la grace de l'ordre des modules :
+    # un voisin qui lance cli.main() remet la langue a celle de la
+    # machine, et la suite echouait sur une machine anglaise.
+    i18n.use("fr")
+
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 

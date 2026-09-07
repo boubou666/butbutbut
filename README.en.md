@@ -104,6 +104,8 @@ butbutbut --list              # the competitions you can watch
 butbutbut --list-teams        # the teams in the competitions you follow
 butbutbut --status            # daemon, last poll, matches in play, sound, screens
 butbutbut --today             # the goals reported today
+butbutbut --record m.jsonl    # watch, and box up the raw polls as well
+butbutbut --replay m.jsonl    # replay a recording, cards and sounds included
 butbutbut --stop              # stop the daemon
 butbutbut --check-update      # is there a newer version?
 butbutbut --update            # fetch, reinstall, restart the daemon
@@ -761,6 +763,198 @@ kept exactly when it was of no use.
 
 ---
 
+## Recording a real match, and replaying it
+
+`butbutbut --test` shows made-up cards: pretty, but frozen. The real sequence -
+kick-off, goal, red card, half-time, a goal ruled out by VAR, full-time - only
+happens on a Saturday night. `--record` puts it in a box, `--replay` takes it
+back out as many times as you like.
+
+```bash
+butbutbut --record match.jsonl --leagues l1    # while the match is on
+butbutbut --replay match.jsonl                 # later, in real time
+butbutbut --replay match.jsonl --speed 60      # an hour of football in a minute
+```
+
+It does three things at once:
+
+- **it sorts out the display** without waiting for the next Saturday: the card
+  that overflows, the missing crest, the unreadable colour all get fixed by
+  replaying the same match ten times in a row;
+- **it reproduces a bug**: "the card overflows on that match here" becomes a
+  file of a few megabytes you attach to the ticket, and the person on the other
+  end sees exactly the same thing;
+- **it makes the screenshots and GIFs** in this README, with real names, real
+  scores and a real sequence.
+
+### `--record`: sitting between the program and the source
+
+`--record` changes nothing about the watch: the daemon runs normally, shows its
+cards, plays its sound and writes its log. It **also** writes every raw ESPN
+response to disk, with its timestamp and the competition code. All the usual
+options still apply:
+
+```bash
+butbutbut --record psg-om.jsonl --leagues l1 --teams psg,om --red-cards
+```
+
+There is a good reason to pass `--leagues`: see below, what it weighs.
+
+### `--replay`: the same evening, with no network
+
+The replay does not read the file looking for goals. It **replaces the source**
+and lets the rest of the program do its job: comparing scores, the silent first
+poll, the scorer picked from the plays, the polling rate that adapts, the cards,
+the sound, the log lines - it all goes through the same paths as a real Saturday
+night. That is the only way a replay proves anything: a replay that took a
+shortcut would only ever test itself.
+
+`--speed` divides the gaps between two polls. `--speed 1` (the default) replays
+in real time, `--speed 60` fits an hour of football into a minute. The
+competitions replayed are **the ones in the file**, not the ones in `--leagues`:
+a Ligue 1 recording replays as Ligue 1, whatever you type.
+
+```
+2026-09-07 21:04:11  rejeu de match.jsonl - 288 releve(s) - Ligue 1 - 1 h 52 - enregistre le 2026-09-06 20:41:03 - x60
+2026-09-07 21:04:13  COUP D'ENVOI [Ligue 1] Angers 0 - 0 Stade Rennais (3')
+2026-09-07 21:04:22  BUT [Ligue 1] Angers 1 - 0 Stade Rennais pour Angers - But de B. Saka (12')
+2026-09-07 21:05:06  FIN DU MATCH [Ligue 1] Angers 1 - 0 Stade Rennais - Angers : B. Saka 12' (FT)
+```
+
+(The log stays in French whatever the language of the cards - see
+[Card language](#card-language).)
+
+Red cards and the pre-match announcement stay opt-in on replay just as they are
+live: `--replay match.jsonl --red-cards` brings them out even if the recording
+was made without.
+
+### The file format
+
+**JSON Lines**: one line = one complete JSON object. Two properties follow, and
+they are exactly the ones we were after - it reads with the naked eye, and a
+session killed mid-match leaves a file where only the last line is rubbish.
+
+The first line is a header, the following ones are the polls:
+
+```json
+{"kind":"butbutbut-record","format":1,"version":"1.5.0","recorded_at":1757270481.4,"recorded_text":"2026-09-06 20:41:21","leagues":["fra.1"]}
+{"at":1757270481.6,"slug":"fra.1","payload":{"events":[...]}}
+{"at":1757270506.7,"slug":"fra.1","repeat":true}
+```
+
+| key | what it is |
+| --- | --- |
+| `format` | the number of the **format**, not of the program |
+| `at` | the time of the poll: it is the gap between two `at` that `--speed` divides |
+| `slug` | the ESPN code of the competition (one file can carry several) |
+| `payload` | the ESPN response, as it came, with nothing removed |
+| `repeat` | response identical to the previous one for that competition (see below) |
+
+**An older file stays replayable**, which is what `format` is for: a reader
+accepts any number lower than or equal to its own. A file written by a future
+version says plainly why it will not play, instead of going off the rails:
+
+```
+butbutbut : match.jsonl est enregistre au format 2, et cette version de
+butbutbut ne lit que le format 1 : mets butbutbut a jour (butbutbut --update).
+```
+
+An unreadable line - the last one of a session killed halfway - is counted and
+ignored, and the rest replays. So is an unknown key: that is what allows a field
+to be added tomorrow without changing the format number.
+
+Since every line stands on its own, a recording can be cut with the tools of the
+system. Keeping the header and the twenty polls around the goal:
+
+```bash
+(head -1 match.jsonl; sed -n '120,140p' match.jsonl) > the-goal.jsonl
+butbutbut --replay the-goal.jsonl --speed 10
+```
+
+### What a replay does not touch
+
+A replay **pollutes neither `--today`, nor `--status`, nor the running daemon**.
+The log, the state file and the pid file are redirected in one go to a `replay/`
+subfolder of the data directory, for the duration of the replay:
+
+```
+~/.local/share/butbutbut/replay/butbutbut.log      <- the replay's log
+```
+
+The redirection happens at the root, in `paths()`, rather than in every
+function: everything that goes through it is isolated, including the code
+written tomorrow. In practice: a match from three weeks ago replayed this
+morning does not show up in `butbutbut --today`, `--status` keeps describing the
+real daemon, and **a match can be replayed while the daemon is running** - the
+replay does not claim the single-instance pid file.
+
+What is *not* redirected: the sound and the crest cache. Those are shared
+caches, and isolating them would force every replay to download every crest
+again - when a replay is precisely meant to do without the network. That is in
+fact the only network access a replay can still trigger, when a crest is missing
+from the cache; `--no-logos` closes that one too.
+
+### What it weighs
+
+An ESPN scoreboard is **60 to 200 kB of JSON**, depending on how many matches
+are on. At 25 s per poll, two hours of a full round make about 290 polls, so
+**20 to 60 MB per competition**. A whole evening recorded across the big five
+would comfortably pass 100 MB: `--record` is there to keep *one* match, and
+`--leagues l1` is not a stylistic precaution.
+
+Two things bring that back to a sane size:
+
+- **a response identical to the previous one is not written again.** The line
+  boils down to its timestamp and the `repeat` marker: sixty-odd bytes instead
+  of two hundred thousand. The time of the poll is kept - it is what carries the
+  polling rate, and losing it would change the rhythm of the replay. During a
+  live match it gains nothing (the match clock moves on every poll, so the
+  response does too), but a competition at rest - which is most of an evening -
+  comes down to one line every five minutes;
+- **gzip**, when the file name ends in `.gz`. Compressed on write, decompressed
+  on read, without being asked. API JSON compresses about twenty times over: the
+  40 MB of a match fit in 2 MB, and the file is still readable with `zcat`.
+
+```bash
+butbutbut --record match.jsonl.gz --leagues l1
+butbutbut --replay match.jsonl.gz --speed 60
+```
+
+On reading, the recording is loaded into memory in one go: that is on purpose, a
+replay is a development tool, it runs in front of someone watching their screen.
+
+### Making a screenshot or a GIF
+
+1. **Record** a match, one single competition, while it is being played:
+
+   ```bash
+   butbutbut --record match.jsonl.gz --leagues l1 --red-cards
+   ```
+
+2. **Find the interesting passage.** The file is text, `grep -c` counts the
+   polls and `sed -n` slices a range out (see above). A goal fits in three or
+   four polls.
+
+3. **Replay** it big, in the middle of the screen, and fast enough that the
+   screen recorder does not have to run for ten minutes:
+
+   ```bash
+   butbutbut --replay the-goal.jsonl.gz --speed 30 --scale 1.6 \
+             --position center --red-cards
+   ```
+
+4. **Capture** with the tool of the system: `Win`+`Alt`+`R` (Xbox Game Bar) or
+   [ScreenToGif](https://www.screentogif.com/) on Windows, `Cmd`+`Shift`+`5` on
+   macOS, [Peek](https://github.com/phw/peek) or `ffmpeg -f x11grab` on Linux.
+
+The replay follows the polling rate the watcher computes, just like live: a
+recording made with `--interval 25` replays at the same rhythm. Replayed with
+rates other than the ones it was recorded with, it never skips a poll, but it
+may take a little longer than the original match - `--interval` and
+`--idle-interval` tighten it up.
+
+---
+
 ## Knowing whether the watch is really running
 
 A daemon that is alive but stuck looks just like a daemon that works: the pid
@@ -948,13 +1142,15 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**573 tests**, with no network and no screen: the source is simulated by an
+**627 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
 for its part, is a pure function: its invariant is tested over every pair from
 a set of real colours - what comes out is always readable, or it is the
-competition's colour.
+competition's colour. Recording, for its part, is checked by a full round trip:
+a match played live against a simulated source, boxed up, then replayed - and
+the two must produce exactly the same sequence of events.
 
 ---
 

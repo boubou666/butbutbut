@@ -9,6 +9,67 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Enregistrer un vrai match, et le rejouer.** `butbutbut --record
+  match.jsonl --leagues l1` surveille normalement et met en plus chaque reponse
+  brute de la source sur le disque ; `butbutbut --replay match.jsonl` la
+  ressort, cartes et sons compris, sans reseau, en respectant les ecarts de
+  temps entre releves. `--speed 60` fait passer une heure de match en une
+  minute. De quoi mettre au point l'affichage sans attendre un samedi soir,
+  reproduire un bug ("chez moi la carte deborde sur ce match-la") et fabriquer
+  les captures du README - `--test` ne montrait que des cartes figees.
+- Le format du fichier est du **JSON Lines** documente : un en-tete portant un
+  numero de format, puis une ligne par releve avec son horodatage et le code de
+  la competition. Une ligne illisible - la derniere d'une session tuee en plein
+  match - est comptee et ignoree, le reste se rejoue. Un fichier ecrit par une
+  version future dit clairement pourquoi il ne passe pas, au lieu de partir de
+  travers.
+- Un nom de fichier en `.gz` est compresse a l'ecriture et decompresse a la
+  lecture, des deux cotes : du JSON d'API se comprime autour de vingt fois, et
+  une soiree de Ligue 1 pese sinon des dizaines de mega-octets.
+
+### Change
+
+- Le rejeu ne court-circuite pas la surveillance : il remplace la **source**
+  (l'`opener` injectable de `espn.fetch`) et laisse le watcher, la detection des
+  buts, les cartes, le son et le journal faire exactement ce qu'ils font un
+  samedi soir. Un rejeu qui prendrait un raccourci ne testerait que lui-meme.
+  C'est ce que verifie le test central : un match joue en direct contre une
+  source simulee, enregistre, puis rejoue, doit rendre la meme suite
+  d'evenements, a la ligne de journal pres.
+- Le journal, le fichier d'etat et le fichier pid d'un rejeu sont detournes d'un
+  bloc vers un sous-dossier `replay/` du dossier de donnees. Un match d'il y a
+  trois semaines rejoue ce matin n'a rien a faire dans `--today`, et un rejeu ne
+  reclame pas le fichier pid de l'instance unique : on peut donc rejouer un
+  match pendant que le vrai daemon tourne. Le detournement se prend a la racine,
+  dans `paths()`, pour qu'aucun appelant ne puisse l'oublier.
+- Une reponse identique a la precedente n'est plus reecrite : la ligne se resume
+  a son horodatage et a un marqueur `repeat`. L'heure du releve est gardee -
+  c'est elle qui porte la cadence, et la perdre changerait le rythme du rejeu.
+
+### Corrige
+
+- La derniere carte pouvait ne jamais s'afficher : un but depose dans la file
+  juste apres que la boucle d'affichage l'a trouvee vide, et juste avant que le
+  fil de surveillance s'arrete, partait avec la fenetre. Invisible au quotidien
+  (le daemon s'arrete quand on le lui demande, pas au dernier but), mais un
+  rejeu s'arrete de lui-meme sur le dernier releve : le "FIN DU MATCH" manquait
+  une fois sur cinq.
+
+### Interne
+
+- `espn.download()` sort du corps de `espn.fetch()` : il n'y a plus qu'un seul
+  endroit ou le reseau est touche, et c'est ce que l'enregistrement enrobe.
+- Le `Watcher` accepte une horloge monotone injectable, a cote de l'horloge
+  murale qu'il avait deja. C'est ce qui permet a un rejeu d'accelerer le temps
+  sans qu'une seule ligne des deux boucles de surveillance ne change : elles
+  continuent d'appeler `tick()` et `plan_wait()`, et l'attente qu'on leur passe
+  avance l'horloge de l'enregistrement.
+- 573 -> **627 tests**.
+
+
+
+### Ajoute
+
 - **Le hockey sur glace et le rugby a XV**, a la demande. Le tableau de bord
   d'ESPN a la meme forme pour tous les sports, seul le premier segment de
   l'URL change : `soccer/fra.1`, `hockey/nhl`, `rugby/180659`. Dix

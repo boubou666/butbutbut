@@ -10,11 +10,12 @@ import signal
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, i18n,
-               journal, leagues, screens, sound, state, teams, watcher)
+               journal, leagues, replay, screens, sound, state, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -39,9 +40,16 @@ def data_dir() -> Path:
     return Path(base) / "butbutbut"
 
 
+# Les chemins detournes le temps d'un rejeu. Vide en temps normal : voir
+# sandbox_paths(), juste en dessous.
+_REDIRECTED = {}
+
+REPLAY_DIRNAME = "replay"
+
+
 def paths() -> dict:
     root = data_dir()
-    return {
+    found = {
         "data": root,
         "sound": root / "sound",
         "logos": root / "logos",
@@ -51,6 +59,49 @@ def paths() -> dict:
         "config": root / config.FILENAME,
         "state": root / "butbutbut.json",
     }
+    found.update(_REDIRECTED)
+    return found
+
+
+@contextmanager
+def sandbox_paths(root):
+    """Detourne le journal, l'etat et le pid vers `root`, le temps d'un bloc.
+
+    C'est l'isolation du rejeu, et elle se prend ici plutot qu'a chaque appel.
+    Un rejeu traverse expres les memes chemins qu'un vrai samedi soir : il
+    ecrit donc un journal, publie un fichier d'etat et poserait un fichier pid.
+    Or un match d'il y a trois semaines rejoue ce matin n'a rien a faire dans
+    `--today`, un etat de rejeu ferait croire a `--status` que le daemon suit
+    des matchs qui sont finis depuis longtemps, et le fichier pid ferait
+    croire au vrai daemon qu'une instance tourne deja - ou l'inverse.
+
+    Detourner les trois d'un bloc, a la racine, evite de trainer un chemin en
+    parametre dans dix fonctions et surtout d'en oublier une : tout ce qui
+    passe par paths() est isole, y compris le code qu'on ecrira demain.
+
+    Ce qui n'est PAS detourne : le son et le cache d'ecussons. Ce sont des
+    caches partages, en lecture pour l'essentiel, et les redetourner
+    obligerait chaque rejeu a retelecharger tous les ecussons - alors qu'un
+    rejeu est justement cense se passer de reseau.
+    """
+    global _REDIRECTED
+
+    root = Path(root)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    previous = _REDIRECTED
+    _REDIRECTED = {
+        "log": root / "butbutbut.log",
+        "pid": root / "butbutbut.pid",
+        "state": root / "butbutbut.json",
+    }
+    try:
+        yield paths()
+    finally:
+        _REDIRECTED = previous
 
 
 def log(message: str, quiet: bool = False) -> None:
@@ -271,15 +322,34 @@ def do_daemon(args) -> int:
         except Exception:
             pass
 
+    recorder = None
+    if args.record:
+        try:
+            recorder = replay.Recorder(
+                args.record, leagues=selection,
+                on_log=lambda message: log(message, quiet=args.quiet)).start()
+        except Exception as exc:
+            # Un chemin impossible se dit maintenant, pas dans trois heures
+            # quand on ira chercher le fichier.
+            log("enregistrement impossible ({}) : {}".format(args.record, exc),
+                quiet=args.quiet)
+            release_pid_file()
+            return 2
+
     guard = watcher.Watcher(
         selection,
         interval=args.interval,
         idle_interval=args.idle_interval,
+        opener=recorder.opener if recorder is not None else None,
         on_log=lambda message: log(message, quiet=args.quiet),
         teams=chosen_teams,
         red_cards=args.red_cards,
         before_kickoff=args.before_kickoff * 60.0,
     )
+
+    if recorder is not None:
+        log("enregistrement des releves bruts -> {}".format(recorder.path),
+            quiet=args.quiet)
 
     log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s au repos"
         .format(os.getpid(), leagues.describe(selection), args.interval,
@@ -331,6 +401,9 @@ def do_daemon(args) -> int:
         stopping.set()
         if stack is not None:
             stack.close()
+        if recorder is not None:
+            recorder.close()
+            log(recorder.summary(), quiet=args.quiet)
         crest.join(2.0)
         sound.stop_all()
         release_pid_file()
@@ -411,11 +484,130 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, crest=None) -> Non
             except Exception as exc:
                 log("echec de l'affichage : {}".format(exc), quiet=args.quiet)
 
-        if stopping.is_set():
+        # `and pending.empty()` : un but depose dans la file juste apres que la
+        # boucle ci-dessus l'a trouvee vide, et juste avant que le fil de
+        # surveillance s'arrete, se perdait sinon. Le fil ne depose plus rien
+        # une fois `stopping` leve, donc la file est bien vide pour de bon.
+        if stopping.is_set() and pending.empty():
             stack.stop()
 
     stack.every(overlay.PUMP_MS, drain)
     stack.run()
+
+
+def do_replay(args) -> int:
+    """Rejoue un enregistrement : memes cartes, meme son, meme journal.
+
+    Tout ce qui suit est le do_daemon() d'un soir de match, a trois choses
+    pres, et chacune est le sujet meme de la commande :
+
+      - la source est un fichier au lieu du reseau (l'`opener` du Player) ;
+      - le temps avance a `--speed` fois la vitesse reelle (la `Pace`, qui
+        tient lieu d'evenement d'arret aux boucles de surveillance) ;
+      - le journal, l'etat et le pid vont dans un bac a sable (sandbox_paths).
+
+    Le watcher, la detection des buts, les cartes, le son et les lignes de
+    journal, eux, sont exactement ceux du direct. C'est voulu : un rejeu qui
+    prendrait un raccourci ne prouverait rien.
+    """
+    from . import overlay
+
+    try:
+        recording = replay.Recording.load(args.replay)
+    except replay.RecordingError as exc:
+        print("butbutbut : " + str(exc), file=sys.stderr)
+        return 2
+
+    selection = recording.leagues()
+    if not selection:
+        print("butbutbut : {} ne nomme aucune competition reconnaissable."
+              .format(args.replay), file=sys.stderr)
+        return 2
+
+    player = replay.Player(recording)
+
+    with sandbox_paths(data_dir() / REPLAY_DIRNAME) as p:
+        # La derniere carte a droit au meme temps d'antenne que les autres :
+        # sans ce sursis, elle s'effacerait a l'instant ou elle s'affiche.
+        pace = replay.Pace(player, speed=args.speed,
+                           linger=resolve_sound(args)[1])
+
+        def request_stop(_signum, _frame):
+            pace.set()
+
+        # Rendus a la fin, contrairement au daemon : celui-la ne rend jamais
+        # la main, un rejeu si, et il laisserait un Ctrl-C casse derriere lui.
+        restore = {}
+        for name in ("SIGTERM", "SIGINT"):
+            try:
+                number = getattr(signal, name)
+                restore[number] = signal.signal(number, request_stop)
+            except Exception:
+                pass
+
+        log("rejeu de {} - {} - x{:g}".format(
+            recording.path, recording.describe(), args.speed), quiet=args.quiet)
+        log("journal, etat et pid du rejeu isoles dans {}".format(
+            p["log"].parent), quiet=args.quiet)
+
+        guard = watcher.Watcher(
+            selection,
+            interval=args.interval,
+            idle_interval=args.idle_interval,
+            opener=player.opener,
+            monotonic=player.monotonic,
+            clock=player.wall,
+            on_log=lambda message: log(message, quiet=args.quiet),
+            teams=team_filter(args),
+            red_cards=args.red_cards,
+            before_kickoff=args.before_kickoff * 60.0,
+        )
+        # Meme premier passage muet que le daemon, et sur les memes releves :
+        # c'est ce qui fait que le rejeu produit la meme suite d'evenements.
+        guard.prime(pause=0.0, now=player.monotonic())
+
+        reporter = state.Reporter(p["state"], leagues=selection,
+                                  interval=args.interval,
+                                  idle_interval=args.idle_interval)
+        reporter.update(guard.all_matches())
+
+        stack = None
+        if not args.no_overlay:
+            try:
+                stack = overlay.Stack(
+                    screen=args.screen, position=args.position,
+                    opacity=args.opacity, scale=args.scale,
+                    retry_fullscreen=args.retry_fullscreen,
+                    on_log=lambda message: log(message, quiet=args.quiet)).open()
+            except overlay.TkinterMissing as exc:
+                log(str(exc), quiet=args.quiet)
+                log("pas de carte : on rejoue au son et au journal",
+                    quiet=args.quiet)
+
+        crest = crest_cache(args)
+        try:
+            if stack is None:
+                _watch_headless(guard, args, pace, reporter)
+            else:
+                _watch_with_cards(guard, args, pace, stack, reporter, crest)
+        except KeyboardInterrupt:
+            log("rejeu interrompu.", quiet=args.quiet)
+        finally:
+            pace.set()
+            if stack is not None:
+                stack.close()
+            crest.join(2.0)
+            sound.stop_all()
+            state.clear(p["state"])
+            for number, handler in restore.items():
+                try:
+                    signal.signal(number, handler)
+                except Exception:
+                    pass
+            log("rejeu termine : {} releve(s) servi(s) sur {}, {} parcourues."
+                .format(player.served, len(recording.records),
+                        replay.human_time(player.elapsed)), quiet=args.quiet)
+    return 0
 
 
 def _startup_summary(guard) -> str:
@@ -817,6 +1009,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("avec --update ou --check-update : viser la pointe "
                              "de la branche principale au lieu de la derniere release"))
 
+    parser.add_argument("--record", default=None, metavar=tr("FICHIER"),
+                        help=tr("surveille normalement, et ecrit en plus chaque "
+                             "reponse brute de la source dans FICHIER (JSON "
+                             "Lines ; un nom en .gz est compresse). C'est ce "
+                             "que --replay rejoue."))
+    parser.add_argument("--replay", default=None, metavar=tr("FICHIER"),
+                        help=tr("rejoue un enregistrement : memes cartes, meme "
+                             "son, meme journal, sans reseau. Ni le journal ni "
+                             "l'etat du vrai daemon ne sont touches."))
+    parser.add_argument("--speed", type=float, default=replay.DEFAULT_SPEED,
+                        metavar=tr("N"),
+                        help=tr("avec --replay : divise les ecarts de temps par "
+                             "N (defaut 1 ; 60 = une heure de match en une "
+                             "minute)"))
+
     parser.add_argument("--config", default=None, metavar=tr("CHEMIN"),
                         help=tr("fichier de configuration a lire (defaut : {} dans "
                              "le dossier de donnees, voir 'butbutbut --paths')"
@@ -945,6 +1152,15 @@ def main(argv=None) -> int:
               "le plein ecran n'y est pas detectable ailleurs.", file=sys.stderr)
         args.retry_fullscreen = 0.0
     args.before_kickoff = max(0, args.before_kickoff)
+    if args.record and args.replay:
+        print("butbutbut : --record enregistre le direct, --replay rejoue un "
+              "enregistrement : les deux ensemble n'ont pas de sens.",
+              file=sys.stderr)
+        return 2
+    if args.speed <= 0:
+        print("butbutbut : --speed attend un nombre strictement positif "
+              "(1 = temps reel, 60 = soixante fois plus vite).", file=sys.stderr)
+        return 2
     if args.position.strip().lower() not in screens.CORNERS:
         print(tr("butbutbut : position inconnue : {} (voir --help)", args.position),
               file=sys.stderr)
@@ -974,7 +1190,9 @@ def main(argv=None) -> int:
         return do_list(args)
     if args.list_teams:
         return do_list_teams(args)
-    if args.teams or args.exclude_teams:
+    # La verification des equipes interroge la source : un rejeu, qui est
+    # justement cense se passer de reseau, s'en passe aussi.
+    if (args.teams or args.exclude_teams) and not args.replay:
         failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
         if failed:
             return failed
@@ -997,6 +1215,8 @@ def main(argv=None) -> int:
         return do_scores(args)
     if args.test:
         return do_test(args)
+    if args.replay:
+        return do_replay(args)
 
     try:
         return do_daemon(args)
