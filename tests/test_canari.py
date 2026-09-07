@@ -65,6 +65,32 @@ def played(match_id="1"):
                  red_card_detail("A" + match_id)]))
 
 
+def shootout_board(winner=True):
+    """Un match de coupe decide aux tirs au but, comme la source le publie.
+
+    Un tir au but porte `scoringPlay`, exactement comme un but, et seul le
+    drapeau `shootout` l'en distingue - alors que le score du match, lui, ne
+    bouge pas. Le canari doit donc les compter a part : sans ca il rougirait a
+    chaque soiree de coupe, pour un comportement voulu.
+    """
+    def kick(team_id, player, index):
+        one = goal_detail(team_id, "91'", player, penalty=True, index=index)
+        one["shootout"] = True
+        return one
+
+    raw = board(event(
+        home_score=1, away_score=1, state="post", detail="FT-Pens",
+        clock="96'", status_name="STATUS_FINAL_PEN",
+        details=[goal_detail("H1", "79'", "K. Nakamura"),
+                 goal_detail("A1", "90'+5'", "B. Dieng", index=1),
+                 kick("H1", "Z. Ferhat", 2),
+                 kick("A1", "J. Ito", 3)]))
+    if winner:
+        for competitor in raw["events"][0]["competitions"][0]["competitors"]:
+            competitor["winner"] = competitor["homeAway"] == "away"
+    return raw
+
+
 def catalogue(count=3):
     """L'autre endpoint : la liste des equipes, qui valide --teams."""
     return {"sports": [{"leagues": [{"teams": [
@@ -197,6 +223,29 @@ class TestWrongTypes(unittest.TestCase):
         self.assertEqual(code, 1, report)
         self.assertIn("TYPE", report)
         self.assertIn("detail.ownGoal", report)
+
+
+class TestShootout(unittest.TestCase):
+    """Une soiree de coupe : deux buts, deux tirs au but, et rien de rouge."""
+
+    def test_a_cup_night_is_green_and_counts_the_kicks_apart(self):
+        code, report = canary(live=shootout_board())
+        self.assertEqual(code, 0, report)
+        self.assertIn("2 but(s)", report)
+        self.assertIn("2 tir(s) au but", report)
+
+    def test_an_ordinary_night_says_nothing_about_penalties(self):
+        # Une mention "0 tir(s) au but" sur toutes les lignes du rapport ferait
+        # du bruit tous les jours pour un fait de quelques soirs par an.
+        _code, report = canary(live=played())
+        self.assertNotIn("tir(s) au but", report)
+
+    def test_a_shootout_that_names_no_winner_is_caught(self):
+        # Le drapeau `winner` est la seule chose de la reponse qui dise qui se
+        # qualifie sur un 1-1. Le perdre, c'est perdre la carte.
+        code, report = canary(live=shootout_board(winner=False))
+        self.assertEqual(code, 1, report)
+        self.assertIn("sans drapeau winner", report)
 
 
 class TestNothingToCheck(unittest.TestCase):

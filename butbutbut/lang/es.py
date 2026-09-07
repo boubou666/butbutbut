@@ -29,6 +29,7 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "tirs au but": "tanda de penaltis",
     # ---------------------------------------------------------- --status ----
     "actif (pid {})": "activo (pid {})",
     "arrete": "detenido",

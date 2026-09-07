@@ -21,6 +21,7 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    'tirs au but': 'Elfmeterschiessen',
     'Exemples :': 'Beispiele:',
     "\n{} match(s), '>' = en cours.": "\n{} Spiel(e), '>' = live.",
     "'?' = sans spoiler : {} match(s) masque(s). Le journal, lui, a tout : "

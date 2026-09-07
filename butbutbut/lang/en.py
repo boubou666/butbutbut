@@ -22,6 +22,7 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "tirs au but": "penalty shootout",
     # ------------------------------------------------------------ --status --
     "actif (pid {})": "running (pid {})",
     "arrete": "stopped",

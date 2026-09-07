@@ -21,6 +21,7 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    'tirs au but': 'calci di rigore',
     'Exemples :':
         'Esempi:',
     "\n{} match(s), '>' = en cours.":
