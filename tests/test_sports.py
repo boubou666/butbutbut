@@ -5,12 +5,14 @@ catalogue sans que le football perde quoi que ce soit. Chaque bloc a donc son
 pendant "et le football, lui, ne bouge pas".
 """
 
+import json
 import unittest
 
 from butbutbut import cli, espn, i18n, journal, leagues, overlay, sports, watcher
 
-from helpers import (bump, event, goal_detail, hockey_event, opener_for,
-                     payload, rugby_detail)
+from helpers import (bump, event, goal_detail, hockey_event, hockey_noise,
+                     hockey_play, hockey_summary, opener_for, payload,
+                     rugby_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 NHL = leagues.BY_SLUG["nhl"]
@@ -390,6 +392,240 @@ class TestHockeyPayload(unittest.TestCase):
         source["payload"] = bump(source["payload"], "home")
         events = guard.refresh(NHL)
         self.assertEqual([e.kind for e in events], [watcher.GOAL])
+
+
+class HockeySource:
+    """La source du hockey, avec ses deux portes.
+
+    Le tableau de bord d'un cote, le resume d'un match de l'autre : c'est tout
+    l'objet de ce chantier, et un opener a une seule reponse ne saurait pas
+    dire lequel des deux a ete demande, ni combien de fois. `urls` garde tout,
+    parce que la question "combien de resumes pour un but ?" est la moitie de
+    ce qu'on verifie ici.
+    """
+
+    def __init__(self, board, summary=None, broken=False):
+        self.board = board
+        self.summary = hockey_summary() if summary is None else summary
+        self.broken = broken
+        self.urls = []
+
+    def __call__(self, url, _timeout=None):
+        self.urls.append(url)
+        if "/summary" in url:
+            if self.broken:
+                raise OSError("le resume ne repond pas")
+            return json.dumps(self.summary).encode("utf-8")
+        return json.dumps(self.board).encode("utf-8")
+
+    @property
+    def summaries(self):
+        return [url for url in self.urls if "/summary" in url]
+
+
+class TestTheHockeyScorers(unittest.TestCase):
+    """Le buteur du hockey vient du resume, et il coute une requete par but."""
+
+    def guard(self, source, **kwargs):
+        keeper = watcher.Watcher([NHL], opener=source, **kwargs)
+        keeper.prime()
+        return keeper
+
+    def test_a_hockey_goal_finally_has_a_name(self):
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_noise(),
+                                             hockey_play(team_id="H1")))
+        keeper = self.guard(source)
+        source.board = bump(source.board, "home")
+        goal = keeper.refresh(NHL)[0]
+
+        self.assertEqual(goal.kind, watcher.GOAL)
+        self.assertEqual(goal.play.scorer, "M. Sasson")
+        self.assertEqual(goal.detail_line(), "But de M. Sasson")
+        # La periode voyage avec l'horloge : l'en-tete de la carte porte
+        # "P1 0:29" et non les "12:07" du tableau de bord.
+        self.assertEqual(goal.minute, "P1 0:29")
+
+    def test_the_assists_take_a_line_of_their_own(self):
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="H1")))
+        keeper = self.guard(source)
+        source.board = bump(source.board, "home")
+        goal = keeper.refresh(NHL)[0]
+
+        self.assertEqual(goal.extra_lines(), ["Passes : F. Hronek, Z. Buium"])
+        self.assertIn("Passes : F. Hronek, Z. Buium", goal.log_line())
+
+    def test_a_goal_without_assists_has_no_extra_line(self):
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="H1",
+                                                         assists=())))
+        keeper = self.guard(source)
+        source.board = bump(source.board, "home")
+        self.assertEqual(keeper.refresh(NHL)[0].extra_lines(), [])
+
+    def test_nothing_is_asked_before_a_goal(self):
+        """Le resume pese 450 ko : il ne se paye pas a chaque tour de boucle."""
+        source = HockeySource(payload(hockey_event()))
+        keeper = self.guard(source)
+        keeper.refresh(NHL)
+        keeper.refresh(NHL)
+        self.assertEqual(source.summaries, [])
+
+    def test_one_summary_for_one_poll_even_when_both_sides_score(self):
+        source = HockeySource(
+            payload(hockey_event()),
+            hockey_summary(hockey_play(team_id="H1"),
+                           hockey_play(team_id="A1", index=1,
+                                       scorer="C. Makar", assists=())))
+        keeper = self.guard(source)
+        source.board = bump(bump(source.board, "home"), "away")
+        goals = keeper.refresh(NHL)
+
+        self.assertEqual([goal.play.scorer for goal in goals],
+                         ["M. Sasson", "C. Makar"])
+        self.assertEqual(len(source.summaries), 1)
+
+    def test_the_summary_names_the_match_it_is_about(self):
+        source = HockeySource(payload(hockey_event(match_id="42")),
+                              hockey_summary(hockey_play(team_id="H42")))
+        keeper = self.guard(source)
+        source.board = bump(source.board, "home")
+        keeper.refresh(NHL)
+        self.assertEqual(source.summaries,
+                         ["https://site.api.espn.com/apis/site/v2/sports/"
+                          "hockey/nhl/summary?event=42"])
+
+    def test_football_never_pays_for_a_summary(self):
+        """Le football a deja ses buteurs dans le tableau de bord."""
+        source = HockeySource(payload(event(details=[goal_detail("A1")])))
+        keeper = watcher.Watcher([LIGUE1], opener=source)
+        keeper.prime()
+        source.board = bump(payload(event(details=[goal_detail("A1")])), "away")
+        goal = keeper.refresh(LIGUE1)[0]
+
+        self.assertEqual(goal.play.scorer, "C. Arcus")
+        self.assertEqual(source.summaries, [])
+        self.assertFalse(sports.SOCCER.summary_plays)
+        self.assertFalse(sports.RUGBY.summary_plays)
+        self.assertTrue(sports.HOCKEY.summary_plays)
+
+
+class TestWhenTheSummaryLetsUsDown(unittest.TestCase):
+    """Une panne ne coute qu'un nom : la carte sort comme avant, le journal note."""
+
+    def goal_after(self, source, **kwargs):
+        keeper = watcher.Watcher([NHL], opener=source, **kwargs)
+        keeper.prime()
+        source.board = bump(source.board, "home")
+        return keeper.refresh(NHL)[0]
+
+    def test_an_unreachable_summary_costs_a_name_and_nothing_else(self):
+        logs = []
+        source = HockeySource(payload(hockey_event()), broken=True)
+        goal = self.goal_after(source, on_log=logs.append)
+
+        self.assertEqual(goal.kind, watcher.GOAL)
+        self.assertIsNone(goal.play)
+        self.assertEqual(goal.detail_line(), "Minute 12:07")
+        self.assertTrue(any("resume injoignable" in line for line in logs), logs)
+
+    def test_an_unreadable_summary_is_the_same_story(self):
+        logs = []
+        source = HockeySource(payload(hockey_event()))
+        source.summary = "ceci n'est pas du json"
+
+        keeper = watcher.Watcher([NHL], opener=source, on_log=logs.append)
+        keeper.prime()
+        source.board = bump(source.board, "home")
+        goal = keeper.refresh(NHL)[0]
+
+        self.assertIsNone(goal.play)
+        self.assertTrue(any("resume injoignable" in line for line in logs), logs)
+
+    def test_a_summary_without_plays_says_so_in_the_log(self):
+        logs = []
+        source = HockeySource(payload(hockey_event()), hockey_summary())
+        goal = self.goal_after(source, on_log=logs.append)
+
+        self.assertIsNone(goal.play)
+        self.assertTrue(any("resume sans action" in line for line in logs), logs)
+
+    def test_a_goal_without_participants_stays_nameless(self):
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="H1",
+                                                         scorer="",
+                                                         assists=())))
+        goal = self.goal_after(source)
+        self.assertIsNotNone(goal.play)
+        self.assertEqual(goal.play.scorer, "")
+        # Pas de buteur nomme : la carte retombe sur "But", pas sur "But de ".
+        self.assertEqual(goal.detail_line(), "But")
+
+    def test_a_goal_from_a_team_that_matches_neither_side(self):
+        logs = []
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="INCONNU")))
+        goal = self.goal_after(source, on_log=logs.append)
+
+        self.assertIsNone(goal.play)
+        self.assertEqual(goal.detail_line(), "Minute 12:07")
+        self.assertTrue(any("sans buteur identifiable" in line for line in logs),
+                        logs)
+
+    def test_the_previous_scorer_never_lands_on_the_next_card(self):
+        """La regle qui justifie tout le reste : pas de nom plutot qu'un faux."""
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="H1")))
+        keeper = watcher.Watcher([NHL], opener=source)
+        keeper.prime()
+
+        source.board = bump(source.board, "home")
+        self.assertEqual(keeper.refresh(NHL)[0].play.scorer, "M. Sasson")
+
+        # Le 2-0 tombe, et cette fois le resume ne repond pas. La liste d'avant
+        # est toujours en memoire : elle ne doit servir a rien ici.
+        source.broken = True
+        source.board = bump(source.board, "home")
+        second = keeper.refresh(NHL)[0]
+        self.assertIsNone(second.play)
+
+
+class TestTheEndOfAHockeyMatch(unittest.TestCase):
+    """La carte de fin aligne les buteurs sans redemander quoi que ce soit."""
+
+    def test_the_scorers_are_still_there_at_the_final_horn(self):
+        source = HockeySource(payload(hockey_event()),
+                              hockey_summary(hockey_play(team_id="H1")))
+        keeper = watcher.Watcher([NHL], opener=source)
+        keeper.prime()
+        source.board = bump(source.board, "home")
+        keeper.refresh(NHL)
+        source.board = payload(hockey_event(
+            home_score=1, state="post", status_name="STATUS_FINAL",
+            detail="Final", period=3))
+        end = keeper.refresh(NHL)[0]
+
+        self.assertEqual(end.kind, watcher.FULLTIME)
+        self.assertEqual(end.extra_lines(),
+                         ["Boston Bruins : M. Sasson P1 0:29"])
+        # Et rien n'a ete redemande : la fin de match ne fait marquer personne.
+        self.assertEqual(len(source.summaries), 1)
+
+    def test_a_list_that_does_not_explain_the_score_is_not_shown(self):
+        """Mieux vaut une carte muette qu'une carte qui ment par omission."""
+        source = HockeySource(payload(hockey_event(home_score=1)),
+                              hockey_summary(hockey_play(team_id="H1")))
+        keeper = watcher.Watcher([NHL], opener=source)
+        keeper.prime()
+        # Le 2-0 arrive alors que le resume est muet : la liste reste a un but.
+        source.broken = True
+        source.board = bump(source.board, "home")
+        keeper.refresh(NHL)
+        source.board = payload(hockey_event(
+            home_score=2, state="post", status_name="STATUS_FINAL",
+            detail="Final", period=3))
+        self.assertEqual(keeper.refresh(NHL)[0].extra_lines(), [])
 
 
 # ------------------------------------------------------------------- rugby ---

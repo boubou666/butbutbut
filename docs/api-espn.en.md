@@ -536,9 +536,11 @@ https://site.api.espn.com/apis/site/v2/sports/<sport>/<competition>/summary?even
 
 One request per match, and a heavy response: `boxscore`, `rosters`, `leaders`,
 `odds`, `videos`, `news`, `standings`, `commentary`... 430 kB for a football
-match, 450 kB for an NHL one. butbutbut never calls it - a client following 36
-competitions cannot afford that per match per round. But it is worth knowing
-what is inside, because it holds **what the scoreboard does not give**.
+match, 450 kB for an NHL one. A client following 36 competitions cannot afford
+that per match per round - so butbutbut calls it **only after a hockey goal,
+and only for the match concerned**, a few times an evening. It is the one place
+where it opens this door, and it does so because inside is **what the
+scoreboard does not give**.
 
 In football, `keyEvents[]` (28 entries on the surveyed match) repeats the
 scoreboard plays and adds the milestones - kick-off, half-time, substitutions
@@ -561,8 +563,20 @@ one surveyed match, 302 plays of which 14 goals, each like this:
 ```
 
 So: "hockey has no scorer" is true **of the scoreboard**, and false of the
-source as a whole. What is missing is not the data, it is a network budget.
-See section 12.
+source as a whole. What was missing was not the data, it was a network budget;
+it fits in one request per goal. See section 12.
+
+Three things to know before reading `plays[]`:
+
+- **the role lives in `participants[].type`**, not in the order of the array. A
+  goal names up to three players, and the first of the list is not necessarily
+  the scorer;
+- **the clock restarts at zero every period.** `clock.displayValue` alone
+  places nothing: it needs `period.number` with it. `period.displayValue` is in
+  English ("1st", "OT") and cannot be put on a card as is;
+- **the shootout is not there.** The winning goal is in the match score with no
+  play to match it: a reader counting published goals will find one fewer than
+  the scoreboard.
 
 ---
 
@@ -664,6 +678,15 @@ watches.
 | `details[].athletesInvolved[0].shortName` | `_detail_common` | the scorer |
 | `leagues[0].name` / `abbreviation` | `espn.parse` | the name of a competition opened on the fly |
 | `children[].standings.entries[].stats[]` | `_stats_of` | the table |
+| `plays[].type.id` / `text` | `summary_goals` | recognising a hockey goal |
+| `plays[].team.id` | `summary_goals` | which side scored |
+| `plays[].clock.displayValue` / `period.number` | `_summary_minute` | when |
+| `plays[].participants[].type` | `_summary_participants` | scorer or assister |
+| `plays[].participants[].athlete.shortName` | `_summary_participants` | **the name** |
+
+The last five lines do not come from the scoreboard but from a match summary
+(section 7), and are read only for hockey, only after a goal, and only for the
+match that has just conceded one.
 
 And above all, what it does **not** read: the score is never derived from the
 plays. A score that goes up is a goal, even if `details` has not caught up -
@@ -686,7 +709,8 @@ The ones that have already cost something, or that would.
    is not a competition that does not exist.
 5. **`score` is a string.**
 6. **Colours have no hash sign** and are sometimes empty.
-7. **`details` does not exist in hockey** and has **no flags at all** in
+7. **`details` does not exist in hockey** - its scorers live in the match
+   summary, under `plays[]` - and has **no flags at all** in
    rugby.
 8. **`athletesInvolved` can be empty**: a goal with no published scorer is
    normal for a few seconds.
@@ -715,11 +739,27 @@ bytes** and not by the `Content-Encoding` header, because a proxy that
 decompresses on the way does not always think to remove the header - and
 because a clear answer then goes down the same path with no special case.
 
-**Hockey scorers.** They exist, in `/summary?event=<id>`, under
-`plays[].participants[].type == "scorer"`. The cost is the problem: 450 kB per
-match. A workable lead would be to call it **only after a goal is detected**
-and **only for that match** - a few times an evening, not every round of the
-loop. The hockey card would gain its scorer's name, and even the assists.
+**Hockey scorers - done.** They live in `/summary?event=<id>`, under
+`plays[].participants[].type == "scorer"`, and the cost was the problem: 450 kB
+per match. The rule adopted is the one this paragraph proposed - the summary is
+called **only after a goal is detected** and **only for that match**, six or
+seven times per match and evening, never every round of the loop. The hockey
+card now carries its scorer and its assists.
+
+Two trade-offs were settled along the way, and they are worth recording here:
+
+- **the card does wait, but not for long.** The summary is the only request in
+  the program that slips between a detected goal and the card announcing it, so
+  it gets its own ceiling: 1.5 s instead of the 8 s of a scoreboard. Past that,
+  the card goes out with no name. The background thread of `crests.py` did not
+  fit: a crest arriving late serves the next card, whereas the name of the 1-0
+  scorer will only ever dress the 1-0 card;
+- **the name is picked by rank, not by freshness.** The summary is read at the
+  moment of the goal, and we take the nth goal of the team that has just
+  reached n - and only if the summary counts exactly as many as the scoreboard.
+  A summary one poll behind, or a shootout whose winning goal is published
+  nowhere, then yields a card with no name rather than a card showing the
+  previous scorer.
 
 **The image combiner - done.** `combiner/i?img=...&h=64&w=64` divides a
 crest's weight by seven, where `crests.py` used to download it at 500x500 to
@@ -809,6 +849,11 @@ in `/summary?event=<id>` under `plays[]`, with these types:
 | 518 / 519 | Period Start / Period End |
 | 1401 / 1402 | Takeaway / Giveaway |
 | 31, 49, 55... | the penalties, one per offence |
+
+**Only 505 is read**, and it is read twice: by its number, and by its "Goal"
+label as a fallback - the same precaution as in rugby, where the numbers have
+already moved. The other 288 plays of a match are not dropped to save effort,
+they dress no card: a blocked shot makes no noise.
 
 ---
 

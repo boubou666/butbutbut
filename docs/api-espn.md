@@ -545,10 +545,11 @@ https://site.api.espn.com/apis/site/v2/sports/<sport>/<competition>/summary?even
 
 Une requete par match, et une reponse lourde : `boxscore`, `rosters`,
 `leaders`, `odds`, `videos`, `news`, `standings`, `commentary`... 430 ko pour
-un match de football, 450 ko pour un match de NHL. butbutbut ne l'appelle
-jamais - un client qui suit 36 competitions ne peut pas se payer ca par match
-et par tour. Mais il faut savoir ce qu'il y a dedans, parce qu'il y a **ce que
-le tableau de bord ne donne pas**.
+un match de football, 450 ko pour un match de NHL. Un client qui suit 36
+competitions ne peut pas se payer ca par match et par tour - butbutbut ne
+l'appelle donc **qu'apres un but de hockey, et que pour le match concerne**,
+soit quelques fois par soiree. C'est le seul endroit ou il pousse cette porte,
+et c'est parce qu'il y a dedans **ce que le tableau de bord ne donne pas**.
 
 Au football, `keyEvents[]` (28 entrees sur le match releve) reprend les actions
 du tableau de bord et y ajoute les temps forts - coup d'envoi, mi-temps,
@@ -571,8 +572,20 @@ un match releve, 302 actions dont 14 buts, chacun ainsi :
 ```
 
 Donc : "le hockey n'a pas de buteur" est vrai **du tableau de bord**, et faux
-de la source entiere. Ce qui manque n'est pas la donnee, c'est un budget
-reseau. Voir la section 12.
+de la source entiere. Ce qui manquait n'etait pas la donnee, c'etait un budget
+reseau ; il tient dans une requete par but. Voir la section 12.
+
+Trois choses a savoir avant de lire `plays[]` :
+
+- **le role est dans `participants[].type`**, pas dans l'ordre du tableau. Un
+  but nomme jusqu'a trois joueurs, et le premier de la liste n'est pas
+  necessairement le buteur ;
+- **l'horloge repart a zero a chaque tiers-temps.** `clock.displayValue` seul
+  ne situe rien : il faut `period.number` avec. `period.displayValue`, lui, est
+  en anglais ("1st", "OT") et ne se pose donc pas tel quel sur une carte ;
+- **la fusillade n'y est pas.** Le but vainqueur figure au score du match sans
+  qu'aucune action ne lui corresponde : un lecteur qui compte les buts publies
+  en trouvera un de moins que le tableau de bord.
 
 ---
 
@@ -675,6 +688,15 @@ voici, avec l'endroit qui les lit - c'est aussi la liste que surveille
 | `details[].athletesInvolved[0].shortName` | `_detail_common` | le buteur |
 | `leagues[0].name` / `abbreviation` | `espn.parse` | le nom d'une competition ouverte a la volee |
 | `children[].standings.entries[].stats[]` | `_stats_of` | le classement |
+| `plays[].type.id` / `text` | `summary_goals` | reconnaitre un but au hockey |
+| `plays[].team.id` | `summary_goals` | de quel camp vient le but |
+| `plays[].clock.displayValue` / `period.number` | `_summary_minute` | quand |
+| `plays[].participants[].type` | `_summary_participants` | buteur ou passeur |
+| `plays[].participants[].athlete.shortName` | `_summary_participants` | **le nom** |
+
+Les cinq dernieres lignes ne viennent pas du tableau de bord mais du resume
+d'un match (section 7), et ne sont lues que pour le hockey, qu'apres un but, et
+que pour le match qui vient de l'encaisser.
 
 Et surtout, ce qu'il **ne** lit pas : le score n'est jamais deduit des actions.
 Un score qui monte est un but, meme si `details` n'a pas encore rattrape -
@@ -697,7 +719,8 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
    403 n'est pas une competition qui n'existe pas.
 5. **`score` est une chaine.**
 6. **Les couleurs n'ont pas de diese** et sont parfois vides.
-7. **`details` n'existe pas au hockey** et n'a **aucun drapeau** au rugby.
+7. **`details` n'existe pas au hockey** - les buteurs y vivent dans le resume
+   du match, sous `plays[]` - et n'a **aucun drapeau** au rugby.
 8. **`athletesInvolved` peut etre vide** : un but sans buteur publie est normal
    pendant quelques secondes.
 9. **La date arrive parfois sans les secondes** (`2026-09-06T18:45Z`), ce qui
@@ -727,12 +750,27 @@ compresse a ses **deux premiers octets** et non a l'en-tete
 toujours a retirer l'en-tete - et parce qu'une reponse en clair traverse alors
 le meme chemin sans cas particulier.
 
-**Les buteurs du hockey.** Ils existent, dans `/summary?event=<id>`, sous
-`plays[].participants[].type == "scorer"`. Le cout est le probleme : 450 ko par
-match. Une piste tenable serait de ne l'appeler **qu'apres un but detecte** et
-**que pour le match concerne** - c'est-a-dire quelques fois par soiree, pas a
-chaque tour de boucle. La carte hockey gagnerait son nom de buteur, et meme ses
-passeurs.
+**Les buteurs du hockey - fait.** Ils vivent dans `/summary?event=<id>`, sous
+`plays[].participants[].type == "scorer"`, et le cout etait le probleme : 450
+ko par match. La regle retenue est celle qu'annoncait ce paragraphe - on
+n'appelle le resume **qu'apres un but detecte** et **que pour le match
+concerne**, soit six a sept fois par match et par soiree, jamais a chaque tour
+de boucle. La carte de hockey a donc son buteur et ses passeurs.
+
+Deux arbitrages ont ete tranches en chemin, et ils valent d'etre notes ici :
+
+- **la carte attend, mais pas longtemps.** Le resume est la seule requete du
+  programme qui se glisse entre un but detecte et la carte qui l'annonce : elle
+  a donc son propre plafond, 1,5 s au lieu des 8 s d'un tableau de bord. Passe
+  ce delai, la carte sort sans nom. Le fil de fond de `crests.py` ne convenait
+  pas : un ecusson arrive en retard sert la carte suivante, le nom du buteur du
+  1-0 n'habillera jamais que la carte du 1-0 ;
+- **le nom se choisit par le rang, pas par la fraicheur.** Le resume est lu au
+  moment du but, et l'on y prend le n-ieme but de l'equipe qui vient de passer
+  a n - et seulement si le resume en compte exactement autant que le tableau de
+  bord. Un resume en retard d'un releve, ou une fusillade dont le but vainqueur
+  n'est publie nulle part, donnent alors une carte sans nom plutot qu'une carte
+  qui affiche le buteur precedent.
 
 **Le combineur d'images - fait.** `combiner/i?img=...&h=64&w=64` divise par
 sept le poids d'un ecusson, que `crests.py` telechargeait en 500x500 pour
@@ -822,6 +860,11 @@ dans `/summary?event=<id>` sous `plays[]`, avec ces types :
 | 518 / 519 | Period Start / Period End |
 | 1401 / 1402 | Takeaway / Giveaway |
 | 31, 49, 55... | les penalites, une par infraction |
+
+**Seul le 505 est lu**, et il l'est deux fois : par son numero, et par son
+libelle "Goal" en secours - la meme precaution qu'au rugby, ou les numeros ont
+deja bouge. Les 288 autres actions d'un match ne sont pas ignorees par
+economie, elles n'habillent aucune carte : un tir bloque ne fait pas de bruit.
 
 ---
 

@@ -7,6 +7,58 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **La carte de hockey a enfin un buteur.** Le tableau de bord d'ESPN ne
+  publie aucun tableau d'actions pour ce sport - `details` est absent sur les
+  798 matchs termines releves - mais le resume d'un match, lui, porte les
+  buteurs et jusqu'a deux passeurs sous `plays[].participants[]`. Ce qui
+  manquait n'etait donc pas la donnee, c'etait un budget reseau : la reponse
+  pese **450 ko**, impossible a demander a chaque tour pour un client qui suit
+  36 competitions. Elle n'est donc demandee **qu'apres un but detecte** et
+  **que pour le match concerne** - six a sept fois par match, jamais toutes les
+  vingt-cinq secondes - et une seule fois par releve, meme quand les deux camps
+  marquent dans le meme.
+- **Le buteur se choisit par le rang, jamais par la fraicheur.** On prend le
+  n-ieme but de l'equipe qui vient de passer a n, et seulement si le resume en
+  compte exactement autant que le tableau de bord. Un resume en retard d'un
+  releve, une fusillade dont le but vainqueur n'est publie nulle part, une
+  equipe que le resume ne nomme pas : les trois donnent une carte sans nom,
+  c'est-a-dire la carte d'avant. Un nom faux, lui, ne se rattrape pas.
+- **Les passeurs prennent une ligne a eux** sur la carte de but, dans les cinq
+  langues, plutot que la fin de celle du buteur : ils sont deux, et la ligne du
+  but doit rester celle qu'on lit en premier. Et la carte de fin de match
+  aligne les buteurs des deux camps, comme au football - mais seulement si la
+  liste explique exactement le score, une liste a trous mentant par omission.
+- **Un sport sait maintenant ou sont ses buteurs** (`Sport.summary_plays`).
+  Le football et le rugby ont les leurs dans le tableau de bord et ne paient
+  pas cette requete ; le hockey est le seul des trois a la declarer, et c'est
+  ce drapeau qui l'autorise, jamais un tableau d'actions trouve vide.
+
+### Modifie
+
+- **Le canari suit la NHL, et ses cles de resume.** `hockey:nhl` rejoint les
+  competitions interrogees par defaut : sans ca, le jour ou `participants`
+  serait renomme, la carte de hockey redeviendrait muette sans que rien ne
+  casse. Le programme de la visite depend desormais du sport - `details` n'est
+  plus reclame a un sport qui n'en publie jamais, ce qui aurait allume le rouge
+  tous les matins - et le rattrapage sur quatre mois se declenche, pour lui,
+  sur l'absence de match avec but plutot que sur l'absence de but publie. Un
+  seul resume par competition et par passage.
+- **Un resume enregistre a sa propre cle** : `hockey:nhl@401809123` et non
+  `hockey:nhl`, sans quoi les 450 ko de `plays[]` iraient s'ajouter a la file
+  du tableau de bord et `--replay` servirait un resume a qui demandait des
+  scores. Un enregistrement fait avant cette version n'en porte aucun : le
+  rejeu degrade alors comme une panne reseau - carte sans buteur, une ligne au
+  journal - et rien ne s'arrete.
+- 1353 -> **1402 tests** : un match de hockey avec buts et passeurs, un resume
+  injoignable, illisible, vide ou sans role de participant, un but dont
+  l'equipe ne correspond a aucun camp, le buteur precedent qui ne doit jamais
+  atterrir sur la carte suivante, le football qui n'appelle aucun resume, une
+  seule requete pour deux buts du meme releve, la carte de fin de match qui se
+  tait quand la liste ne colle pas au score, les deux cles de rejeu qui ne se
+  confondent pas, et le canari sur `plays[]`.
+
 ### Modifie
 
 - **Les ecussons sont telecharges a la taille ou ils s'affichent : sept fois
