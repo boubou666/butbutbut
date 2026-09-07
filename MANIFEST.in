@@ -4,4 +4,8 @@
 # tests/helpers.py : les tests du sdist ne demarraient meme pas.
 recursive-include tests *.py
 
+# tests/test_canari.py charge tools/canari.py par son chemin : sans lui, la
+# suite du sdist ne demarrerait pas non plus.
+recursive-include tools *.py
+
 include CHANGELOG.md

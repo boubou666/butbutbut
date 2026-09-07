@@ -32,7 +32,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk
 
       - name: compilation
-        run: python -m compileall -q butbutbut tests
+        run: python -m compileall -q butbutbut tests tools
 
       - name: tests
         shell: bash
