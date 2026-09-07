@@ -963,6 +963,32 @@ class OneShot:
         return self.next_delay()
 
 
+class SlowReporter:
+    """Un rapporteur d'etat qui prend son temps, et le dit pendant qu'il ecrit.
+
+    L'ecriture du fichier d'etat est le seul geste du fil de surveillance qui
+    dure : c'est celui qu'on abandonnait en cours de route. En vrai il tient
+    quelques millisecondes, assez pour que la course ne se voie qu'une fois
+    sur deux et seulement sous Windows. On l'etire ici pour qu'elle soit
+    certaine a chaque passage.
+    """
+
+    def __init__(self, real, delay=0.3):
+        self.real = real
+        self.delay = delay
+        self.updates = 0
+        self.writing = False
+
+    def update(self, *args, **kwargs):
+        self.updates += 1
+        self.writing = True
+        try:
+            time.sleep(self.delay)
+            return self.real.update(*args, **kwargs)
+        finally:
+            self.writing = False
+
+
 class FakeStack:
     """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
 
@@ -1065,6 +1091,30 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         self.assertEqual(data["goals_today"], 1)
         self.assertEqual(data["matches"][0]["home"], "Angers")
         self.assertEqual(len(stack.cards), 1)
+
+    def test_the_watch_thread_is_awaited_before_the_loop_returns(self):
+        """On ne rend pas la main pendant que le fil ecrit encore l'etat.
+
+        Le fil de surveillance est le seul a appeler reporter.update(). La
+        boucle rendait la main sans l'attendre : ce qui suit - l'effacement de
+        l'etat, la fin du processus - passait alors par-dessus une ecriture en
+        cours. Ca se voyait sous Windows a deux endroits, tous deux au hasard :
+        un fichier d'etat relu vide, et un dossier temporaire qu'on ne pouvait
+        plus effacer parce qu'il restait ouvert.
+        """
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        reporter = SlowReporter(self.reporter())
+        cli._watch_with_cards(guard, self.args, stopping, stack, reporter,
+                              pinned.Pin(""))
+
+        self.assertFalse(reporter.writing, "le fil ecrivait encore")
+        # Et ce qu'il a ecrit est complet, pas un fichier a moitie pose.
+        data = state.read(self.paths["state"])
+        self.assertIsNotNone(data)
+        self.assertEqual(data["goals_today"], 1)
 
     def test_without_pin_nothing_is_pinned_anywhere(self):
         stopping = threading.Event()
