@@ -1961,6 +1961,20 @@ On a Tuesday evening with no Bundesliga, the Bundesliga is polled every five
 minutes. If the network drops, the wait doubles on every failure (capped at
 5 min) and the recovery is noted in the log.
 
+And the polls are **compressed**. The source can serve gzip, but it has to be
+asked: nobody does it for you, `urllib` advertises nothing on its own. The
+Ligue 1 scoreboard drops from 33,832 to 4,145 bytes, and a full round of
+`--leagues all` from **1,355 kB to 148 kB** - nine times less. Over a
+two-hour evening following all 36 competitions, 400 MB become 44 MB: enough to
+leave the program running on a phone hotspot without thinking about it.
+Nothing to install, `gzip` is in the standard library, and an uncompressed
+answer still goes through untouched.
+
+It is the only saving available, and not for want of looking for the other
+one: the source sends **no `ETag` and no `Last-Modified`**, so there is
+nothing to put in a conditional request that would have skipped the unchanged
+polls.
+
 ### The canary
 
 That source is documented nowhere, and nobody will warn us the day
@@ -2898,7 +2912,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1298 tests**, with no network and no screen: the source is simulated by an
+**1306 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

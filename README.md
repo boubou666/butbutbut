@@ -1969,6 +1969,21 @@ Un mardi soir sans Bundesliga, la Bundesliga est interrogee toutes les cinq
 minutes. En cas de coupure reseau, l'attente double a chaque echec (plafond
 5 min) et la reprise est notee dans le journal.
 
+Et les releves sont **compresses**. La source sait servir du gzip, encore
+faut-il le demander : personne ne le fait a votre place, `urllib` n'annonce
+rien tout seul. Le tableau de bord de la Ligue 1 tombe de 33 832 a 4 145
+octets, et un tour complet de `--leagues all` de **1 355 ko a 148 ko** - neuf
+fois moins. Sur une soiree de deux heures a suivre les 36 competitions, c'est
+400 Mo qui deviennent 44 Mo : de quoi laisser le programme tourner sur un
+partage de connexion sans y penser. Rien a installer, `gzip` est dans la
+bibliotheque standard, et une reponse non compressee continue de passer telle
+quelle.
+
+C'est la seule economie disponible, et ce n'est pas faute d'avoir cherche
+l'autre : la source n'envoie **ni `ETag` ni `Last-Modified`**, il n'y a donc
+rien a poser dans une requete conditionnelle qui aurait evite les releves
+inchanges.
+
 ### Le canari
 
 Cette source n'est documentee nulle part, et personne ne nous previendra le
@@ -2910,7 +2925,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1298 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1306 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
