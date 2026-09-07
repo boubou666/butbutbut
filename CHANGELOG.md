@@ -23,17 +23,19 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   `requires-python` (`>=3.8`), les badges, les prerequis et les deux
   installeurs, eux, disaient deja la meme chose - le plancher n'avait pas
   bouge, c'est le plafond qui avait glisse sans que rien ne le dise.
-- **Un test confronte les neuf endroits qui parlent de versions de Python.**
+- **Un test confronte les seize endroits qui parlent de versions de Python.**
   C'est la vraie lecon du chantier : la matrice n'avait pas menti d'un coup,
   elle avait vieilli, et rien ne pouvait le signaler puisque chacun de ces
   fichiers est seul chez lui. Le test verifie que le plancher est le meme
   partout (`requires-python`, les deux badges, les deux listes de prerequis,
-  la comparaison et le message de chaque installeur), que la CI l'essaye
+  la comparaison et le message de chaque installeur, et les en-tetes de
+  `recipes/` - ceux-la decouverts et non listes, pour que la recette ecrite
+  demain soit tenue elle aussi), que la CI l'essaye
   vraiment, et que la version la plus haute des classifiers est bien celle que
   la matrice va jusqu'a essayer. L'inverse n'est volontairement pas exige : le
   paquet annonce 3.10 et 3.11 sans les essayer, un pari assume - ce qui casse
   d'une version a l'autre casse rarement au milieu seul.
-- 1222 -> **1226 tests**.
+- 1222 -> **1227 tests**.
 
 ## [1.9.0] - 2026-09-07
 

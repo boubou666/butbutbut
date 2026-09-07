@@ -2653,7 +2653,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1226 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1227 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -2680,13 +2680,17 @@ passe que sous Linux, parce qu'on lui demande de prouver que le code se lit
 encore en 3.8, pas que les trois systemes divergent a cette version-la plutot
 qu'aux autres.
 
-Ce plancher, `3.8`, est ecrit a neuf endroits : `requires-python`, les deux
-badges, les deux listes de prerequis, et les quatre garde-fous des installeurs
-- la comparaison qui refuse, et la phrase qui l'explique. Le plafond, lui,
-n'est ecrit nulle part : il se deduit des classifiers du paquet et de la
-matrice. Un test du depot les confronte tous, parce que c'est exactement ainsi
-que la 3.14 avait pu manquer - rien ne reliait ces fichiers entre eux, et tout
-restait vert.
+Ce plancher, `3.8`, est ecrit a seize endroits. Neuf se nomment un par un :
+`requires-python`, les deux badges, les deux listes de prerequis, et les quatre
+garde-fous des installeurs - la comparaison qui refuse, et la phrase qui
+l'explique. Les sept autres sont les en-tetes de `recipes/`, et ceux-la ne se
+nomment pas : ils se **decouvrent**, sans quoi la recette ecrite demain
+echapperait au controle - ce qui est precisement le defaut qu'on repare ici.
+
+Le plafond, lui, n'est ecrit nulle part : il se deduit des classifiers du
+paquet et de la matrice. Un test du depot les confronte tous, parce que c'est
+exactement ainsi que la 3.14 avait pu manquer - rien ne reliait ces fichiers
+entre eux, et tout restait vert.
 
 ---
 

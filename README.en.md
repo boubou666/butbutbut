@@ -2643,7 +2643,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1226 tests**, with no network and no screen: the source is simulated by an
+**1227 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
@@ -2670,12 +2670,17 @@ on Linux, because what it is asked to prove is that the code still reads in
 3.8, not that the three systems diverge at that version rather than the
 others.
 
-That floor, `3.8`, is written in nine places: `requires-python`, both badges,
-both requirement lists, and the installers' four guards - the comparison that
-refuses, and the sentence that explains it. The ceiling is written nowhere: it
-is deduced from the package classifiers and from the matrix. A test in the
-repository confronts them all, because that is exactly how 3.14 came to be
-missed - nothing tied those files together, and everything stayed green.
+That floor, `3.8`, is written in sixteen places. Nine are named one by one:
+`requires-python`, both badges, both requirement lists, and the installers'
+four guards - the comparison that refuses, and the sentence that explains it.
+The other seven are the headers under `recipes/`, and those are not named: they
+are **discovered**, otherwise tomorrow's recipe would slip past the check -
+which is precisely the flaw being repaired here.
+
+The ceiling is written nowhere: it is deduced from the package classifiers and
+from the matrix. A test in the repository confronts them all, because that is
+exactly how 3.14 came to be missed - nothing tied those files together, and
+everything stayed green.
 
 ---
 

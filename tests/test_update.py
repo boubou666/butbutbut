@@ -573,7 +573,7 @@ class TestLesTroisNumerosSeSuivent(unittest.TestCase):
 
 
 class TestLIntervalleDePythonEstLeMemePartout(unittest.TestCase):
-    """L'intervalle de versions supportees est ecrit a neuf endroits.
+    """L'intervalle de versions supportees est ecrit partout, et jamais relie.
 
     Le plancher est dit en toutes lettres : `requires-python`, le badge et les
     prerequis des deux README, et les deux installeurs qui refusent un
@@ -600,8 +600,28 @@ class TestLIntervalleDePythonEstLeMemePartout(unittest.TestCase):
         ("install.ps1", r"Python 3\.(\d+)\+ est introuvable"),
     )
 
+    # Les recettes de `recipes/` annoncent le meme plancher dans leur en-tete,
+    # et elles ne sont PAS listees ci-dessus : elles se decouvrent. Une liste
+    # ecrite a la main aurait exactement le defaut que cette classe denonce -
+    # elle vieillirait a la premiere recette ajoutee, et resterait verte
+    # pendant que le nouveau fichier annoncerait un plancher perime.
+    RECETTES = re.compile(r"Python 3\.(\d+)\+")
+
     def texte(self, chemin):
         return (RACINE / chemin).read_text(encoding="utf-8")
+
+    def recettes(self):
+        """(chemin, plancher) pour chaque mention trouvee sous recipes/."""
+        trouves = []
+        dossier = RACINE / "recipes"
+        for fichier in sorted(dossier.rglob("*")):
+            if not fichier.is_file() or fichier.suffix not in (".py", ".md",
+                                                               ".sh", ".ps1"):
+                continue
+            texte = fichier.read_text(encoding="utf-8")
+            for marque in self.RECETTES.finditer(texte):
+                trouves.append((fichier.name, (3, int(marque.group(1)))))
+        return trouves
 
     def couple(self, version):
         """"3.14" -> (3, 14) : se compare comme un numero, pas comme un mot.
@@ -636,6 +656,24 @@ class TestLIntervalleDePythonEstLeMemePartout(unittest.TestCase):
             self.assertIsNotNone(marque, "{} : {}".format(chemin, motif))
             trouves["{} ({})".format(chemin, motif)] = (3, int(marque.group(1)))
         self.assertEqual(len(set(trouves.values())), 1, trouves)
+
+    def test_les_recettes_annoncent_le_meme_plancher(self):
+        """Sept fichiers de plus le disent, et rien ne les regardait.
+
+        C'est le trou exact que cette classe denonce ailleurs : le plancher
+        monte a 3.9, les neuf endroits ci-dessus suivent, le test reste vert -
+        et `recipes/` continue d'annoncer 3.8 a qui vient copier une recette.
+        Ils se decouvrent plutot que de se lister, pour que la recette ecrite
+        demain soit tenue elle aussi.
+        """
+        plancher = re.search(r'^requires-python = ">=3\.(\d+)"',
+                             self.texte("pyproject.toml"), re.M)
+        self.assertIsNotNone(plancher)
+        attendu = (3, int(plancher.group(1)))
+        trouves = self.recettes()
+        self.assertTrue(trouves, "aucune recette ne dit son plancher")
+        for nom, dit in trouves:
+            self.assertEqual(dit, attendu, nom)
 
     def test_la_ci_essaye_le_plancher_annonce(self):
         """Promettre un plancher sans jamais l'essayer, c'est le perdre."""
