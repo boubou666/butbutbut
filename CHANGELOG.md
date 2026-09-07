@@ -7,6 +7,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.7.0] - 2026-09-07
+
 ### Ajoute
 
 - **Un canari qui previent quand la source change** (`python tools/canari.py`).
@@ -30,8 +32,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - 21 tests hors reseau pour le canari lui-meme (`tests/test_canari.py`) : une
   charge utile complete, les memes amputees d'une cle ou porteuses d'une
   valeur du mauvais type, et une sans le moindre match.
-
-
 
 ### Ajoute
 
@@ -62,8 +62,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - Rien au programme donne une phrase qui redit ce qui a ete cherche, ou, et sur
   combien de temps, plutot qu'un tableau vide - c'est aussi la que se voit une
   faute de frappe dans le nom d'equipe.
-
-
 
 ### Ajoute
 
@@ -112,7 +110,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   bon but, au bon buteur, et annulation orpheline), journal vide ou absent,
   lignes qu'aucune version ne sait lire, classement, largeur des lignes.
 
-
 ### Ajoute
 
 - **Un crochet a chaque but** : `--on-goal "commande"` lance la commande de son
@@ -149,8 +146,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   d'avant match, eux, ne declenchent rien.
 - 502 -> **523 tests**.
 
-
-
 ### Ajoute
 
 - **Des sons par contexte, decides par le nom du fichier.** Le dossier `sound`
@@ -177,8 +172,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   reconnaissable se comporte donc exactement comme avant.
 - Le son est desormais choisi **par but** et non par releve : deux buts du meme
   tour peuvent venir de deux equipes, donc de deux fichiers.
-
-
 
 ### Ajoute
 
@@ -219,8 +212,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 - 701 -> **743 tests**.
 
-
-
 ### Ajoute
 
 - **`--catch-up` : rattraper ce qui s'est passe pendant la veille.** Au reveil,
@@ -260,8 +251,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   plus ancienne, pas la plus recente : c'est elle qui dit tout ce qu'on a
   manque.
 
-
-
 ### Ajoute
 
 - **La carte epinglee** : `butbutbut --pin om`. Tant qu'un match de l'equipe
@@ -296,8 +285,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - **Elle ne fait aucun bruit**, et aucune equipe n'y passe en couleur de club :
   le son reste la marque du but, et la couleur veut dire « elle vient de
   marquer », jamais « elle mene ».
-
-
 
 ### Ajoute
 
@@ -358,8 +345,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   avance l'horloge de l'enregistrement.
 - 573 -> **627 tests**.
 
-
-
 ### Ajoute
 
 - **Le hockey sur glace et le rugby a XV**, a la demande. Le tableau de bord
@@ -408,8 +393,17 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   que leur en-tete de journal (`BUT CONTRE SON CAMP`, `BUT SUR PENALTY`)
   faisait passer a travers le filet depuis toujours.
 
+### Interne
+
+- **Le numero de version s'ecrit a trois endroits, et ils avaient diverge** :
+  le programme annoncait 1.6.0, le paquet se serait construit en 1.5.0, et le
+  PKGBUILD d'Arch aussi. Rien ne le signalait. Trois tests les confrontent
+  desormais a `butbutbut/__init__.py`, qui fait foi, et un quatrieme refuse une
+  version sans son entree de CHANGELOG.
 
 ## [1.6.0] - 2026-09-07
+
+*Jamais taguee : ses changements sont partis avec la 1.7.0.*
 
 ### Ajoute
 
@@ -750,8 +744,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.6.0...HEAD
-[1.6.0]: https://github.com/boubou666/butbutbut/compare/v1.5.0...v1.6.0
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/boubou666/butbutbut/compare/v1.5.0...v1.7.0
 [1.5.0]: https://github.com/boubou666/butbutbut/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/boubou666/butbutbut/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/boubou666/butbutbut/compare/v1.2.0...v1.3.0

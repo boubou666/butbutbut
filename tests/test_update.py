@@ -8,6 +8,7 @@ rejouees et les refus. Le telechargement reel est remplace la ou il apparait.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,9 @@ from pathlib import Path
 from unittest import mock
 
 from butbutbut import cli, update
+
+# La racine du depot : tests/ en est le voisin direct.
+RACINE = Path(__file__).resolve().parent.parent
 
 
 class UpdateTestCase(unittest.TestCase):
@@ -530,6 +534,42 @@ class InstallationSysteme(UpdateTestCase):
                        "/home/x/.local/share/butbutbut/app/butbutbut/update.py"):
             with mock.patch.object(update, "__file__", chemin):
                 self.assertIsNone(update.managed_elsewhere(), chemin)
+
+
+class TestLesTroisNumerosSeSuivent(unittest.TestCase):
+    """Le numero de version est ecrit a trois endroits : ils doivent s'accorder.
+
+    Ecrit apres les avoir trouves separes - le programme annoncait 1.6.0, le
+    paquet se serait construit en 1.5.0, et le PKGBUILD d'Arch aussi. Rien ne
+    le signalait : chacun est juste tout seul, et faux avec les deux autres.
+    `butbutbut/__init__.py` fait foi, c'est lui que le programme lit.
+    """
+
+    def numero(self, chemin, motif):
+        texte = (RACINE / chemin).read_text(encoding="utf-8")
+        trouve = re.search(motif, texte, re.M)
+        self.assertIsNotNone(trouve, chemin)
+        return trouve.group(1)
+
+    def test_pyproject_suit_le_paquet(self):
+        from butbutbut import __version__
+
+        self.assertEqual(
+            self.numero("pyproject.toml", r'^version = "([^"]+)"'),
+            __version__)
+
+    def test_le_pkgbuild_suit_le_paquet(self):
+        from butbutbut import __version__
+
+        self.assertEqual(self.numero("packaging/PKGBUILD", r"^pkgver=(.+)$"),
+                         __version__)
+
+    def test_le_changelog_ouvre_la_version_courante(self):
+        """Une version publiee sans son entree de CHANGELOG n'existe pas."""
+        from butbutbut import __version__
+
+        texte = (RACINE / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn("## [{}] - ".format(__version__), texte)
 
 
 if __name__ == "__main__":
