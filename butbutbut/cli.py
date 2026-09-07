@@ -746,13 +746,17 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
 def do_replay(args) -> int:
     """Rejoue un enregistrement : memes cartes, meme son, meme journal.
 
-    Tout ce qui suit est le do_daemon() d'un soir de match, a trois choses
-    pres, et chacune est le sujet meme de la commande :
+    Tout ce qui suit est le do_daemon() d'un soir de match, a quatre choses
+    pres - les trois premieres sont le sujet meme de la commande :
 
       - la source est un fichier au lieu du reseau (l'`opener` du Player) ;
       - le temps avance a `--speed` fois la vitesse reelle (la `Pace`, qui
         tient lieu d'evenement d'arret aux boucles de surveillance) ;
-      - le journal, l'etat et le pid vont dans un bac a sable (sandbox_paths).
+      - le journal, l'etat et le pid vont dans un bac a sable (sandbox_paths) ;
+      - aucun `hush` n'est passe aux boucles de surveillance : `--quiet-hours`
+        et `--quiet-while-presenting` restent sans effet en rejeu. Un rejeu est
+        une commande qu'on vient de taper ; la taire parce qu'il est 3 h
+        ressemblerait a une panne.
 
     Le watcher, la detection des buts, les cartes, le son et les lignes de
     journal, eux, sont exactement ceux du direct. C'est voulu : un rejeu qui
