@@ -1114,8 +1114,12 @@ def group_by_day(matches) -> list:
 
 
 def _day_title(day, today) -> str:
-    """"mardi 08/09", et le mot du jour quand il y en a un."""
-    line = "{} {:%d/%m}".format(WEEKDAYS[day.weekday()], day)
+    """"mardi 08/09", et le mot du jour quand il y en a un.
+
+    Le calendrier ecrit les jours en toutes lettres, la ou le recapitulatif du
+    journal les abrege : on lit une affiche, on parcourt un releve.
+    """
+    line = "{} {:%d/%m}".format(WEEKDAYS_FULL[day.weekday()], day)
     elapsed = (day - today).days
     if elapsed == 0:
         return line + " (aujourd'hui)"
