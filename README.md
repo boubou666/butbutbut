@@ -1516,17 +1516,67 @@ la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
 touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
 pareil partout.
 
-L'aide, `--status`, `--scores`, `--screens`, `--list` et `--today` suivent, y
-compris les valeurs qu'ils affichent - `il y a 12 s` devient `vor 12 s`, pas
-seulement l'etiquette devant.
+**Toutes** les commandes suivent, y compris les valeurs qu'elles affichent -
+`il y a 12 s` devient `vor 12 s`, pas seulement l'etiquette devant : l'aide,
+`--status`, `--scores`, `--next`, `--table`, `--screens`, `--list`,
+`--list-teams`, `--today`, `--week`, `--month`, `--since`, `--top-scorers`,
+`--stats`, `--export` et `--test-hook`.
 
-**Ce qui reste en francais** : le journal, et **par choix**. `--today` le
-relit, et un fichier ecrit avant un changement de langue resterait sinon a
-moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!` pendant
-que le journal note `BUT`.
+Les colonnes tiennent dans les cinq langues, et c'est cette contrainte-la qui
+decide de la traduction d'une etiquette de `--status` : le deux-points tombe au
+meme caractere partout, quitte a abreger (`rattrapage` devient `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+Les en-tetes du classement de `--table` suivent la meme regle, et pour la meme
+raison qu'elles etaient un probleme : `G`, `N`, `P` sont les initiales de
+gagne, nul et perdu, et ne veulent rien dire pour qui lit la page en anglais.
+Elles deviennent `W D L`, `G E P`, `V N P`, `S U N` - chacune tenant dans une
+colonne de six signes, ce qu'un test verifie langue par langue plutot que de
+s'en remettre a l'oeil.
+
+**Ce qui reste en francais** :
+
+- **le journal, et par choix.** `--today` le relit, et un fichier ecrit avant
+  un changement de langue resterait sinon a moitie illisible pour le
+  relecteur. Une carte peut donc afficher `TOR!` pendant que le journal note
+  `BUT` - et une ligne citee par `--today` reste dans la langue ou elle a ete
+  ecrite ;
+- **les dates.** Les jours de la semaine (`lundi`, `mar.`), `(aujourd'hui)` et
+  `(demain)`, le compte a rebours de `--next` (`dans 3 h`) sont ecrits en dur
+  dans `cli.py` et ne passent pas par le catalogue ;
+- **les valeurs de `--status` qui vont aussi au journal.** Trois familles, et
+  une seule raison pour les trois : la meme phrase sert a l'ecran ET a une
+  ligne de journal, qui reste francaise. Les lignes `silence` et `voix`
+  (`silence.describe()`, `speech.describe()`), la ligne `equipes`
+  (`teams.Filter.describe()`, que le daemon note aussi au demarrage), et le
+  detail d'un son nomme qu'on ne peut pas jouer (`sound.unusable()`, que le
+  journal reprend quand un fichier disparait en cours de soiree). Les
+  etiquettes, elles, sont traduites ;
+- **le fichier de configuration commente** qu'ecrit `--write-config`, et les
+  six messages qui refusent un argument impossible : les quatre du demarrage
+  (`--speed 0`, `--record` avec `--replay`, `--retry-fullscreen` et
+  `--quiet-while-presenting` hors de Windows) et les deux du rejeu (un
+  enregistrement illisible, un enregistrement qui ne nomme aucune competition
+  reconnaissable) ;
+- **le nom des sports dans une phrase a trou.** `tout le {} (N competitions)`
+  recoit le nom du sport, que `sports.py` garde en francais pour le journal :
+  la traduire ferait une phrase a moitie traduite. Les titres du catalogue,
+  eux, sont traduits (`Ice hockey (on request)`, `Eishockey (auf Wunsch)`).
 
 Une phrase qu'un catalogue ne porte pas retombe sur le francais plutot que de
-disparaitre : une traduction incomplete laisse le programme utilisable.
+disparaitre : une traduction incomplete laisse le programme utilisable. C'est
+ce qui a permis a sept commandes d'etre livrees en francais dans les cinq
+langues sans que rien ne casse - et sans que personne ne le voie. Un test
+compare maintenant, langue par langue, les phrases que le code donne a traduire
+a celles que les catalogues portent : ce qui reste en francais y est nomme une
+par une, avec sa raison.
+
+Ce garde-fou a une portee exacte, et elle vaut la peine d'etre dite : il ne
+voit que ce qui **passe par `tr()`**. Une phrase ecrite en dur, qui n'est
+jamais donnee a traduire, lui est invisible - c'est le cas des trois familles
+ci-dessus et des jours de la semaine. Il empeche la dette de revenir par la
+porte qu'elle avait empruntee sept fois ; il ne remplace pas de regarder
+l'ecran dans les cinq langues.
 
 L'ordre de decision, du plus fort au plus faible :
 
@@ -2739,7 +2789,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1257 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1269 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -2751,6 +2801,32 @@ et les deux doivent rendre exactement la meme suite d'evenements.
 
 Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
 suite : c'est [le canari](#le-canari), `python tools/canari.py`.
+
+### Ou elle tourne
+
+L'[integration continue](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
+la rejoue sur Linux, Windows et macOS, en **Python 3.9, 3.12, 3.13 et 3.14**,
+plus la **3.8** sous Linux seul. Ce sont les deux bouts qui comptent : la 3.8
+tient le plancher annonce dans les prerequis, et la 3.14 est celle sur laquelle
+le depot s'ecrit tous les jours - longtemps la seule a n'avoir jamais ete
+essayee, ce qui est exactement la mauvaise a oublier. Les versions du milieu
+(3.10, 3.11) sont tenues sans etre essayees : c'est un pari assume, ce qui
+casse d'une version a l'autre casse rarement au milieu seul. Et le plancher ne
+passe que sous Linux, parce qu'on lui demande de prouver que le code se lit
+encore en 3.8, pas que les trois systemes divergent a cette version-la plutot
+qu'aux autres.
+
+Ce plancher, `3.8`, est ecrit a seize endroits. Neuf se nomment un par un :
+`requires-python`, les deux badges, les deux listes de prerequis, et les quatre
+garde-fous des installeurs - la comparaison qui refuse, et la phrase qui
+l'explique. Les sept autres sont les en-tetes de `recipes/`, et ceux-la ne se
+nomment pas : ils se **decouvrent**, sans quoi la recette ecrite demain
+echapperait au controle - ce qui est precisement le defaut qu'on repare ici.
+
+Le plafond, lui, n'est ecrit nulle part : il se deduit des classifiers du
+paquet et de la matrice. Un test du depot les confronte tous, parce que c'est
+exactement ainsi que la 3.14 avait pu manquer - rien ne reliait ces fichiers
+entre eux, et tout restait vert.
 
 ---
 

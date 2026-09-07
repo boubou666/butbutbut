@@ -123,12 +123,12 @@ SHOOTOUT_HOCKEY = ("FINAL/SO",)
 # gagne. Une cle qu'on ne trouve pas donne un tiret, jamais une erreur.
 
 TABLE_SOCCER = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("N", ("ties", "gamesdrawn")),
-    ("P", ("losses", "gameslost")),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_drawn", ("ties", "gamesdrawn")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 # Le hockey n'a pas de match nul : un match se decide toujours, en prolongation
@@ -136,12 +136,12 @@ TABLE_SOCCER = (
 # prolongation, qui rapportent un point la ou une defaite seche n'en rapporte
 # aucun - sans elle, le total de points de la ligne ne se retrouve pas.
 TABLE_HOCKEY = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("P", ("losses", "gameslost")),
-    ("DP", ("otlosses", "overtimelosses")),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_otl", ("otlosses", "overtimelosses")),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 # Le rugby ajoute les points de bonus : quatre essais ou une defaite de moins
@@ -149,13 +149,13 @@ TABLE_HOCKEY = (
 # devant une autre a nombre de victoires egal. Un classement de rugby sans la
 # colonne "Bon" ne s'explique pas.
 TABLE_RUGBY = (
-    ("J", ("gamesplayed",)),
-    ("G", ("wins", "gameswon")),
-    ("N", ("ties", "gamesdrawn")),
-    ("P", ("losses", "gameslost")),
-    ("Bon", ("bonuspoints",)),
-    ("Diff", ("pointdifferential", "pointsdifference")),
-    ("Pts", ("points",)),
+    ("table_played", ("gamesplayed",)),
+    ("table_won", ("wins", "gameswon")),
+    ("table_drawn", ("ties", "gamesdrawn")),
+    ("table_lost", ("losses", "gameslost")),
+    ("table_bonus", ("bonuspoints",)),
+    ("table_diff", ("pointdifferential", "pointsdifference")),
+    ("table_points", ("points",)),
 )
 
 

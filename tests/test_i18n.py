@@ -5,6 +5,7 @@ from unittest import mock
 import io
 import contextlib
 import pathlib
+import string
 
 from butbutbut import (cli, espn, i18n, journal, lang, leagues, overlay,
                        watcher)
@@ -12,6 +13,119 @@ from butbutbut import (cli, espn, i18n, journal, lang, leagues, overlay,
 from helpers import bump, event, goal_detail, opener_for, payload
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
+
+# Ce que les catalogues laissent volontairement en francais.
+#
+# La liste est ecrite a la main, et c'est le but : une phrase nouvelle passee
+# a tr() et oubliee des traducteurs fait echouer le test tant que personne ne
+# l'a soit traduite, soit inscrite ici en connaissance de cause. Sept
+# commandes ont ete livrees avec la meme note - "la prose n'est pas encore
+# dans les catalogues" - avant que quelqu'un ne compte : 132 phrases.
+#
+# Ici, aucune des quatre langues n'a rien a y changer :
+#   - les gabarits purement typographiques ("{:6} {}", "  {:<30} {:<24} {}"),
+#     ou il n'y a pas un mot ;
+#   - le nom du programme, seul ou suivi d'un trou ;
+#   - "tout le {} ({} competitions)", dont le trou recoit le nom du sport, que
+#     sports.py garde en francais pour le journal : la traduire ferait une
+#     phrase a moitie traduite.
+PARTOUT_EN_FRANCAIS = frozenset({
+    '\n{}',
+    '\n{}{}',
+    '      {:<22} {}',
+    '  ({})',
+    '  {:<16} -> {}{}',
+    '  {:<30} {:<24} {}',
+    '  {}',
+    '  {} {:<30} {}',
+    '  {} {:>22} {} - {} {:<22} {}',
+    'N',
+    'butbutbut : {}',
+    'butbutbut {}',
+    'tout le {} ({} competitions)',
+    '{:6} {}',
+    '{:<16} {}',
+    '{}:',
+})
+
+# Et ce que chaque langue laisse en francais pour la seule raison qu'elle
+# l'ecrit pareil : une entree y recopierait sa cle, ce que le test suivant
+# refuse a juste titre.
+EN_FRANCAIS = {
+    "en": frozenset({
+        '  config      : {}{}',
+        '  daemon      : {}',
+        '  silence     : {}',
+        '  sports      : {}',
+        'CODE',
+        'DATE',
+        'MINUTES',
+        'butbutbut : demo - [{}] {} - {}',
+        'butbutbut : export {} {}',
+    }),
+    "es": frozenset({
+        '  (principal)',
+        '  config      : {}{}',
+        '  daemon      : {}',
+        'butbutbut : demo - [{}] {} - {}',
+        '{}  ({} en cache)',
+    }),
+    "it": frozenset({
+        '  config      : {}{}',
+        '  daemon      : {}',
+        '  {}  {:<16} {}x{} a +{}+{}{}',
+        'butbutbut : demo - [{}] {} - {}',
+    }),
+    "de": frozenset({
+        'CODE',
+        'LISTE',
+    }),
+}
+
+
+def _trous(texte):
+    """Les trous a valeur d'une phrase : (nom, conversion, gabarit), en ordre.
+
+    string.Formatter est l'analyseur de str.format lui-meme : une expression
+    reguliere se ferait avoir par un "{{" litteral, lui non.
+    """
+    return [(nom, conversion, gabarit)
+            for _, nom, gabarit, conversion in string.Formatter().parse(texte)
+            if nom is not None]
+
+
+class _Valeur:
+    """Une valeur qui se laisse formater par n'importe quel gabarit.
+
+    Ni un entier ni une date ne conviennent : le catalogue melange {:02d},
+    {:.1f} et {:%d/%m/%Y}, et chacun refuse les gabarits des autres. Le test
+    qui l'emploie ne juge pas les gabarits - _trous s'en charge - mais la
+    structure de la phrase : accolades appariees, champs nommes.
+    """
+
+    def __format__(self, gabarit):
+        return ""
+
+
+COLONNE = len("  buts du jour")   # 14 : deux espaces, douze d'etiquette
+
+
+def _colonne(texte):
+    """L'index du premier ':', le saut de ligne de tete mis a part."""
+    return texte.lstrip("\n").find(":")
+
+
+def _est_etiquette(francais):
+    """`francais` est-il une etiquette de la colonne de --status ?
+
+    La colonne de --status (et celle de --test-hook, dessinee pareil) tient
+    parce que le deux-points tombe toujours au meme caractere. Une phrase qui
+    commence par deux espaces et porte son ':' la est une etiquette ; celles
+    qui commencent par une parenthese - "  (jamais : aucune equipe suivie)" -
+    sont des valeurs de la colonne de droite, libres de leur longueur.
+    """
+    nu = francais.lstrip("\n")
+    return nu.startswith("  ") and _colonne(nu) == COLONNE
 
 
 class TestCatalogues(unittest.TestCase):
@@ -409,35 +523,100 @@ class TestLaProseDeLaLigneDeCommande(unittest.TestCase):
                              "cles mortes dans le catalogue {}".format(code))
 
     def test_les_trous_a_valeur_sont_preserves(self):
-        """Une traduction qui perd une accolade perd sa donnee."""
-        import re
+        """Une traduction qui perd une accolade perd sa donnee.
 
-        trous = re.compile(r"\{[^}]*\}")
+        Compter les trous ne suffit pas : {:.1f} rendu {:.0f} arrondit un
+        rapport de but a l'unite, {} et {!r} n'ecrivent pas la meme chose, et
+        deux trous echanges reversent les valeurs l'une dans l'autre. On
+        compare donc la liste ordonnee (nom, conversion, gabarit).
+        """
         for code, catalogue in lang.CATALOGUES.items():
             for francais, traduit in catalogue.items():
-                self.assertEqual(len(trous.findall(traduit)),
-                                 len(trous.findall(francais)),
+                self.assertEqual(_trous(traduit), _trous(francais),
                                  "{} : {!r}".format(code, francais))
+
+    def test_chaque_traduction_se_formate(self):
+        """Une accolade laissee ouverte ne se voit qu'a l'execution.
+
+        tr() rattrape l'exception et retombe sur le francais, donc rien ne
+        casse - mais la phrase sort dans la mauvaise langue, sans que personne
+        ne l'apprenne. Ici, on la formate pour de bon.
+        """
+        for code, catalogue in lang.CATALOGUES.items():
+            for francais, traduit in catalogue.items():
+                trous = _trous(francais)
+                nommes = {nom: _Valeur() for nom, _, _ in trous
+                          if nom and not nom.isdigit()}
+                try:
+                    traduit.format(*([_Valeur()] * len(trous)), **nommes)
+                except Exception as souci:
+                    self.fail("{} : {!r} ne se formate pas ({})".format(
+                        code, francais, souci))
 
     def test_les_colonnes_de_status_restent_alignees(self):
         """Les etiquettes de --status forment une colonne : elle doit tenir.
 
-        Le gabarit entier est traduit, alignement compris. Une traduction plus
-        longue que le francais decalerait sa ligne, et --status deviendrait
-        illisible dans cette langue.
+        Le gabarit entier est traduit, alignement compris : une traduction
+        plus longue que le francais decalerait sa ligne, et --status
+        deviendrait illisible dans cette langue.
+
+        Le repere est l'index du ':', pas celui de ' : ' : une etiquette qui
+        remplit ses douze caracteres colle son deux-points ("buts du jour:",
+        "recuperacion:"), et la colonne tient quand meme.
         """
-        gabarits = [p for p in self.phrases()
-                    if p.startswith("  ") and " : " in p[:20]]
-        self.assertGreater(len(gabarits), 8)
+        gabarits = [p for p in self.phrases() if _est_etiquette(p)]
+        self.assertGreater(len(gabarits), 30)
 
         for code, catalogue in lang.CATALOGUES.items():
             for francais in gabarits:
                 traduit = catalogue.get(francais)
                 if traduit is None:
                     continue
-                self.assertEqual(traduit.index(" : "), francais.index(" : "),
+                self.assertEqual(_colonne(traduit), COLONNE,
                                  "{} : la colonne bouge sur {!r}".format(
                                      code, francais))
+
+    def test_aucune_traduction_ne_recopie_le_francais(self):
+        """Une entree qui rend sa cle ne sert a rien, et se fait passer pour
+        du travail fait : sans entree, tr() rend deja le francais.
+        """
+        for code, catalogue in lang.CATALOGUES.items():
+            recopiees = sorted(f for f, t in catalogue.items() if f == t)
+            self.assertEqual(recopiees, [],
+                             "{} : entrees inutiles".format(code))
+
+    def test_les_blancs_de_bord_sont_preserves(self):
+        """Un espace de tete ou de queue n'est pas de la mise en forme perdue.
+
+        Ces phrases-la se collent a la precedente (" sur {} au programme",
+        "\\n  Connexion   : ") : l'espace fait partie du texte, et le perdre
+        soude deux mots.
+        """
+        for code, catalogue in lang.CATALOGUES.items():
+            for francais, traduit in catalogue.items():
+                for bord, prendre in (("tete", lambda s: s[:1]),
+                                      ("queue", lambda s: s[-1:])):
+                    self.assertEqual(prendre(traduit).isspace(),
+                                     prendre(francais).isspace(),
+                                     "{} : blanc de {} perdu sur {!r}".format(
+                                         code, bord, francais))
+
+    def test_ce_qui_reste_en_francais_est_declare(self):
+        """Le garde-fou contre la dette qui revient.
+
+        Sept commandes ont ete livrees avec la meme note - "la prose n'est pas
+        encore dans les catalogues" - et personne n'a compte avant la
+        huitieme. Desormais une phrase nouvelle passee a tr() casse ce test
+        tant qu'elle n'est ni traduite dans les quatre langues, ni inscrite en
+        haut de ce fichier avec la raison de l'y laisser.
+        """
+        connues = set(self.phrases())
+        for code, catalogue in sorted(lang.CATALOGUES.items()):
+            reste = sorted(connues - set(catalogue))
+            attendu = sorted(PARTOUT_EN_FRANCAIS | EN_FRANCAIS[code])
+            self.assertEqual(reste, attendu,
+                             "{} : la liste des phrases laissees en francais "
+                             "ne dit plus la verite".format(code))
 
 
 if __name__ == "__main__":
