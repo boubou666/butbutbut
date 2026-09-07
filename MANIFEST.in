@@ -8,4 +8,10 @@ recursive-include tests *.py
 # suite du sdist ne demarrerait pas non plus.
 recursive-include tools *.py
 
+# Les recettes de --on-goal. Elles voyagent avec les sources, et pas dans le
+# paquet installe : butbutbut ne les lance jamais lui-meme, c'est l'utilisateur
+# qui le fait, et un wheel n'a pas a embarquer du code que le programme
+# n'execute pas. tests/test_recipes.py les lit ici, par leur chemin.
+recursive-include recipes *.py *.sh *.md
+
 include CHANGELOG.md

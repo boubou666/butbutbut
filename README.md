@@ -1336,6 +1336,36 @@ butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/mes-buts.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sons/klaxon.mp3'
 ```
 
+**Des recettes qui marchent deja.** Une porte de sortie ne sert a rien si
+personne ne sait ce qu'il y a derriere : personne n'ecrira son webhook Discord
+a partir d'un `notify-send`. Le dossier
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) contient
+donc huit commandes completes, a copier et a tailler - un webhook Discord, un
+webhook Slack, un evenement Home Assistant a qui l'automatisation de la maison
+repond, une ampoule WiZ qui vire au vert le temps du but puis retrouve
+exactement l'etat qu'elle avait, un compteur de buts en JSON qui suit meme les
+annulations de la VAR, une vraie notification du systeme qui reste dans le
+centre de notifications, un bandeau texte pour OBS ou une barre d'etat, et un
+gabarit shell pour ne reagir qu'aux buts qu'on veut.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependance la aussi : rien que la bibliotheque standard de Python, ou le
+shell de la machine. Pas de `curl` suppose present, pas de `jq`. Un secret -
+URL de webhook, jeton - se lit dans une variable d'environnement et ne passe
+**jamais** par la ligne de commande, qui se lit dans `ps` et que
+`butbutbut --status` reaffiche. Le mode d'emploi, les reglages de chacune et ou
+poser le secret selon le systeme sont dans
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md).
+
+Ces recettes voyagent avec le code source, et pas dans le paquet installe par
+`pipx` : butbutbut ne les lance jamais lui-meme, c'est toi qui le fais. Un test
+du depot compare les variables `BUT_*` qu'elles lisent a celles que le crochet
+publie vraiment - une recette ne peut pas pourrir en silence en promettant un
+detail qui n'existe pas.
+
 **Ce que le crochet promet :**
 
 - **Les donnees passent par l'environnement, jamais par la commande.** Un nom
@@ -1606,7 +1636,15 @@ Il interroge la source pour de vrai, puis verifie que chaque cle lue par
 `butbutbut/espn.py` est encore la, et du bon type. Il va meme repasser la
 reponse a `espn.parse()`, le code que le daemon execute : des cles presentes
 qui ne produisent plus ni match, ni but, ni buteur seraient une derive tout
-aussi grave. Le rapport donne une ligne par cle :
+aussi grave.
+
+Une cle peut aussi rester en place et **changer de forme**, ce qui ne se voit
+nulle part ailleurs. Le canari relit donc la minute des buts avec le lecteur du
+journal, celui dont sort l'histogramme de `--stats` : une horloge que plus
+personne ne sait lire vaut une ligne rouge. Le football seul est tenu a cette
+regle - `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+
+Le rapport donne une ligne par cle :
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2334,7 +2372,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1069 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1145 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

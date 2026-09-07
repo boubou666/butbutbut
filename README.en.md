@@ -1335,6 +1335,36 @@ butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/my-goals.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sounds/airhorn.mp3'
 ```
 
+**Recipes that already work.** A way out is of no use if nobody knows what lies
+behind it: nobody will write their Discord webhook starting from a
+`notify-send`. So the
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) folder
+holds eight complete commands, to copy and to trim — a Discord webhook, a Slack
+webhook, a Home Assistant event your home automation answers, a WiZ bulb that
+turns green for the length of the goal then goes back to exactly the state it
+was in, a JSON goal counter that follows VAR cancellations too, a real system
+notification that stays in the notification centre, a text banner for OBS or a
+status bar, and a shell template to react only to the goals you care about.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependencies there as well: nothing but the Python standard library, or
+the machine's shell. No `curl` assumed to be there, no `jq`. A secret — webhook
+URL, token — is read from an environment variable and **never** travels through
+the command line, which shows up in `ps` and which `butbutbut --status` prints
+back. The instructions, each recipe's settings and where to put the secret on
+each system are in
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md)
+(in French, like the rest of that folder).
+
+Those recipes travel with the source code, and not inside the package `pipx`
+installs: butbutbut never runs them itself, you do. A test in the repository
+compares the `BUT_*` variables they read with the ones the hook really
+publishes — a recipe cannot rot silently by promising a detail that does not
+exist.
+
 **What the hook promises:**
 
 - **The data travels through the environment, never through the command.** A
@@ -1601,7 +1631,15 @@ It queries the source for real, then checks that every key read by
 `butbutbut/espn.py` is still there, and of the right type. It even hands the
 reply back to `espn.parse()`, the very code the daemon runs: keys that are
 present but no longer yield a match, a goal or a scorer would be just as
-serious a drift. The report gives one line per key:
+serious a drift.
+
+A key can also stay in place and **change shape**, which shows up nowhere else.
+So the canary re-reads goal minutes with the log's own reader, the one behind
+the `--stats` histogram: a clock nobody can read any more earns a red line.
+Football alone is held to that rule - `12:34`, an ice hockey clock, is not a
+minute of play.
+
+The report gives one line per key:
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2328,7 +2366,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1069 tests**, with no network and no screen: the source is simulated by an
+**1145 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

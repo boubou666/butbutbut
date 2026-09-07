@@ -28,6 +28,11 @@ CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs ligne
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
+# Ce qu'on accorde au fil de surveillance pour finir sa phrase quand on s'en
+# va. Plus que le delai d'un releve reseau (espn.DEFAULT_TIMEOUT) serait faire
+# attendre l'arret pour un fil qu'on va de toute facon abandonner ; moins ne
+# laisserait meme pas le temps d'ecrire le fichier d'etat.
+WATCH_JOIN = 5.0
 
 # Les recapitulatifs du journal (--today, --week, --month, --since).
 WEEK_DAYS = 7                  # --week : aujourd'hui et les six jours d'avant
@@ -789,7 +794,24 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
             stack.stop()
 
     stack.every(overlay.PUMP_MS, drain)
-    stack.run()
+    try:
+        stack.run()
+    finally:
+        # La boucle tkinter rendue, le fil de surveillance peut etre en plein
+        # reporter.update(), c'est-a-dire en train d'ecrire le fichier d'etat.
+        # Rendre la main sans l'attendre laisse la suite - l'effacement de cet
+        # etat, la fin du processus - passer par-dessus une ecriture en cours,
+        # et un fil demon n'y change rien : il est tue net, au milieu de sa
+        # phrase. On leve donc `stopping` (sa longue attente se reveille la) et
+        # on lui laisse le temps de sortir de lui-meme.
+        stopping.set()
+        thread.join(WATCH_JOIN)
+        if thread.is_alive():
+            # Il tient un releve reseau qui ne repond pas. On ne retient pas
+            # l'arret pour lui - c'est un fil demon, le processus s'en va -
+            # mais on le dit, parce qu'un etat a moitie ecrit se lira ailleurs.
+            log("le fil de surveillance n'a pas rendu la main en {:.0f}s"
+                .format(WATCH_JOIN), quiet=args.quiet)
 
 
 def do_replay(args) -> int:
@@ -2568,7 +2590,39 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def utf8_output() -> None:
+    """Met la sortie standard en UTF-8, ou l'empeche au moins de casser.
+
+    Sous Windows, une sortie redirigee - '> matchs.txt', un pipe, le journal
+    d'un service - n'herite pas de l'UTF-8 de la console mais de la page de
+    code ANSI, qui ne connait qu'un caractere sur mille. Un buteur nomme
+    Zielinski, avec le vrai 'n' polonais, suffit alors a terminer la commande
+    sur une UnicodeEncodeError au lieu du score. Tous les fichiers du projet
+    sont deja ecrits en UTF-8 : la sortie fait desormais pareil.
+
+    Une console reste sur sa page de code, elle : c'est elle qui saura ou non
+    dessiner le caractere, et on ne gagne rien a lui envoyer autre chose. Elle
+    herite seulement du remplacement, parce qu'un accent approximatif vaut
+    mieux qu'une trace d'appels a la place des resultats.
+    """
+    for flux in (sys.stdout, sys.stderr):
+        try:
+            if flux.isatty():
+                flux.reconfigure(errors="replace")
+            else:
+                flux.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # Sortie capturee par un test, deja fermee, ou detournee vers autre
+            # chose qu'un flux texte : il n'y a rien a reconfigurer, et rien de
+            # grave non plus.
+            pass
+
+
 def main(argv=None) -> int:
+    # Avant le moindre print : un message d'erreur aussi a le droit de
+    # contenir le nom d'un club.
+    utf8_output()
+
     chosen = config.path_from(argv, paths()["config"])
 
     # La langue en tout premier : les aides d'argparse sont traduites a la

@@ -52,7 +52,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from butbutbut import __version__, crests, espn, leagues, sports  # noqa: E402
+from butbutbut import (__version__, crests, espn, journal, leagues,  # noqa: E402
+                       sports)
 
 SCOREBOARD_URL = espn.SCOREBOARD_URL
 TEAMS_URL = espn.TEAMS_URL
@@ -471,6 +472,21 @@ def cross_check(payload, slug, tally, ledger):
 
     if matches and not any(match.home and match.away for match in matches):
         problems.append("aucun match ne porte le nom de ses deux equipes")
+
+    # La minute n'est pas qu'un ornement : c'est elle qui fait l'histogramme de
+    # --stats. Une cle peut rester en place et changer de FORME - c'est arrive,
+    # la source ecrivait 90'+9' quand le lecteur n'acceptait que 90+3', et les
+    # buts des arrets de jeu ont cesse de compter sans que rien ne rougisse.
+    # Le football seul : l'horloge d'un match de hockey (12:34) n'est pas une
+    # minute de jeu et n'a pas a se lire comme telle.
+    if league.sport is sports.SOCCER:
+        written = [play.minute for match in matches for play in match.plays
+                   if play.minute]
+        if written and not any(journal.minute_of(one) for one in written):
+            problems.append(
+                "aucune des {} minute(s) de but n'est lisible (ex. {}) : la "
+                "forme de l'horloge a change".format(
+                    len(written), ", ".join(sorted(set(written))[:3])))
 
     return problems
 

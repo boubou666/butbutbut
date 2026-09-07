@@ -7,6 +7,106 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **La boucle a cartes rendait la main pendant que son fil ecrivait encore.**
+  Le fil de surveillance est le seul a appeler `reporter.update()`, donc le
+  seul a ecrire le fichier d'etat ; il etait lance et jamais attendu. Ce qui
+  suit le retour de la boucle - l'effacement de cet etat, la fin du processus -
+  passait donc par-dessus une ecriture en cours, et le fait qu'il s'agisse d'un
+  fil demon n'arrangeait rien : un demon est tue net, au milieu de sa phrase.
+  La boucle leve maintenant `stopping` et attend le fil (`WATCH_JOIN`, cinq
+  secondes) avant de rendre la main. S'il tient un releve reseau qui ne repond
+  pas, on ne retient pas l'arret pour lui - mais on le note au journal, parce
+  qu'un etat a moitie ecrit se lira ailleurs.
+- **C'est ce qui rendait `TestBothWatchLoopsFeedTheState` instable**, une fois
+  sur deux et seulement sous Windows, sur des commits qui ne la touchaient pas.
+  Deux visages du meme defaut : un fichier d'etat relu vide
+  (`'NoneType' object is not subscriptable`) et un dossier temporaire qu'on ne
+  pouvait plus effacer parce qu'il restait ouvert (`WinError 145`). Le nouveau
+  test etire l'ecriture pour que la course soit certaine a chaque passage
+  plutot qu'une fois sur deux : sans l'attente il echoue, avec elle il passe.
+- **Un but dans les arrets de jeu ne comptait nulle part.** La source ecrit la
+  minute `90'+9'` - apostrophe des les deux cotes du plus - la ou le lecteur du
+  journal n'acceptait que `90+3'`, la forme qu'on ecrit a la main et que les
+  captures de test portaient depuis toujours. Les deux se ressemblent assez
+  pour que personne ne les confronte, et le resultat est le pire genre de
+  panne : rien ne casse, `--stats` compte simplement ces buts parmi les minutes
+  illisibles. Sur une vraie journee de Premier League, seize formes de temps
+  additionnel sur soixante et un matchs partaient ainsi a la poubelle, et le
+  compteur des arrets de jeu affichait zero depuis le premier jour. Les deux
+  formes sont desormais lues.
+- **Le canari surveille maintenant la FORME de l'horloge**, et pas seulement la
+  presence de sa cle. C'est ce qui manquait pour attraper le defaut ci-dessus :
+  il relit les minutes qu'il vient de telecharger avec le lecteur du journal
+  (`journal.minute_of`, rendue publique pour lui), et une horloge que plus
+  personne ne sait lire vaut une ligne rouge. Le football seul y est tenu :
+  `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+- 1029 -> **1033 tests** : les deux formes de temps additionnel, une apostrophe
+  de trop qui doit rester illisible, l'horloge qui change de forme vue par le
+  canari, et celle du hockey qui ne doit pas le faire crier au loup.
+- **Un nom polonais ne termine plus la commande sur une trace d'appels.**
+  Sous Windows, une sortie redirigee - `butbutbut --scores > matchs.txt`, un
+  pipe, le journal d'un service - n'herite pas de l'UTF-8 de la console mais de
+  la page de code ANSI, qui ne connait qu'une fraction des caracteres. Un
+  buteur nomme Zielinski, avec le vrai `n` polonais, suffisait a faire tomber
+  la commande sur une `UnicodeEncodeError` au lieu du score, alors que le meme
+  nom s'affichait sans probleme dans le terminal. La sortie standard et la
+  sortie d'erreur passent maintenant en UTF-8 des qu'elles ne sont pas un
+  terminal (`cli.utf8_output`), comme tous les fichiers ecrits par le projet.
+  Une console, elle, garde sa page de code - c'est elle qui sait ce qu'elle
+  peut dessiner - et herite seulement du remplacement : un accent approximatif
+  vaut mieux qu'une trace d'appels a la place des resultats.
+
+### Ajoute
+
+- **Un dossier `recipes/` pour `--on-goal`.** Le crochet donne tout le detail
+  du but dans des variables `BUT_*` depuis la 1.7.0, et n'avait qu'un exemple :
+  une ligne `notify-send`. Personne n'ecrit son webhook Discord a partir de ca.
+  Huit recettes completes s'y trouvent desormais, a copier et a tailler :
+  webhook Discord (`discord_webhook.py`), webhook Slack (`slack_webhook.py`),
+  evenement Home Assistant a qui l'automatisation de la maison repond
+  (`home_assistant.py`), ampoule WiZ qui vire au vert le temps du but
+  (`ampoule_wiz.py`), compteur de buts en JSON (`compteur.py`), notification du
+  systeme sur les trois plateformes (`notification_bureau.py`), bandeau texte
+  pour OBS ou une barre d'etat (`obs_texte.py`), et un gabarit shell pour ne
+  reagir qu'a certains buts (`filtre.sh`).
+- **Zero dependance jusque dans les recettes** : bibliotheque standard de
+  Python 3.8+, ou shell POSIX. Aucune ne suppose `curl` present, aucune ne
+  demande `jq`. Les webhooks passent par `urllib`, l'ampoule par une trame UDP,
+  la notification Windows par le PowerShell deja installe.
+- **Un secret ne va ni dans le depot ni dans la ligne de commande** : chaque
+  recette qui en demande un le lit dans une variable d'environnement
+  (`BUTBUTBUT_DISCORD_WEBHOOK`, `BUTBUTBUT_HA_TOKEN`...). Une ligne de commande
+  se lit dans `ps` et `butbutbut --status` la reaffiche. `recipes/README.md`
+  dit ou poser la variable pour que le service de demarrage la voie, sur les
+  trois systemes.
+- Les deux recettes qui attendent (l'ampoule, le bandeau) sont bornees a 25
+  secondes, sous le delai de 30 du crochet, et un test le verifie contre
+  `hook.DEFAULT_TIMEOUT` : une recette qui deborderait serait tuee en plein
+  travail, l'ampoule restant verte jusqu'au matin.
+- 66 tests de plus, dont celui qui empechera ce dossier de pourrir : **chaque
+  nom `BUT_` ecrit dans `recipes/` est compare a ce que `hook.py` publie
+  vraiment**. Les autres verifient qu'une recette compile et se charge sans
+  configuration, qu'elle est listee dans `recipes/README.md`, que chaque
+  reglage `BUTBUTBUT_*` y est documente, qu'un echec tient en une ligne courte
+  (le journal n'en garde qu'une, tronquee a 120 signes), qu'une reussite se
+  tait, et que l'ampoule retrouve exactement l'etat qu'elle avait. Rien ne
+  parle au reseau : les recettes sont chargees comme des modules et leurs
+  fonctions pures sont eprouvees a part.
+- `MANIFEST.in` emporte `recipes/` dans l'archive des sources, et le paquet
+  installe ne l'emporte pas : butbutbut ne lance jamais ces fichiers lui-meme.
+  Un test du depot tient les deux moities de cette phrase.
+
+### Note
+
+- `recipes/README.md` n'existe qu'en francais, comme les commentaires du
+  depot ; les deux README principaux y renvoient depuis leur section
+  `--on-goal`.
+- `ampoule_wiz.py` est la seule recette qu'on ne peut pas eprouver de bout en
+  bout sans le materiel : les tests couvrent le dialogue (ce qui part, ce qui
+  revient, le verrou entre deux buts), pas une vraie ampoule au bout du fil.
+
 ### Ajoute
 
 - **`butbutbut --speak` : le but dit a voix haute.** Tout le reste du programme
