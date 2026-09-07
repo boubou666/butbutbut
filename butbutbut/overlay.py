@@ -25,6 +25,15 @@ fenetre a elle, et `Stack` les empile depuis le coin (la derniere arrivee est
 collee au coin, les precedentes remontent). Quand l'une s'efface, les autres
 reprennent sa place.
 
+Une carte fait exception : la **carte epinglee** (`--pin om`, voir pinned.py).
+Elle ne s'efface pas, elle suit un match du coup d'envoi au coup de sifflet
+final. Elle est **ancree au coin**, et la pile des fugaces demarre juste apres
+elle. Deux raisons a ce choix : la pile ne peut pas la pousser dehors, puisque
+le plafond de cinq cartes ne compte que les fugaces ; et elle ne peut pas
+masquer un but, puisque toutes les places sont calculees ensemble, la sienne
+d'abord. Elle perd le coin, qui est la meilleure place, mais elle est la en
+permanence : c'est a l'oeil de savoir ou la chercher, pas au but d'attendre.
+
 Multiplateforme, comme doot :
   - Windows : fond reellement transparent (-transparentcolor), fenetres
     "click-through" qui ne volent jamais le focus (styles etendus Win32) ;
@@ -287,6 +296,67 @@ class Card:
             away_logo=_crest(crest, espn.logo_url(away[1], sport)),
         )
 
+    @classmethod
+    def pinned(cls, match, ended=False, crest=None):
+        """La carte epinglee d'un match, refaite a chaque releve.
+
+        Elle part d'un `espn.Match` et non d'un evenement : elle ne raconte pas
+        ce qui vient d'arriver, elle montre ou en est le match. D'ou une carte
+        sans troisieme ligne - le score et la minute suffisent - et sans aucune
+        equipe en couleur : partout ailleurs la couleur d'un club veut dire
+        "c'est elle qui vient de marquer", la reutiliser pour dire "c'est elle
+        qui mene" serait un contresens a l'echelle d'une soiree.
+
+        Le ton est celui des temps forts (titre gris), qui est aussi la marque
+        des cartes muettes : rien ici ne declenche de son.
+        """
+        league = match.league
+        return cls(
+            title=i18n.text("title_fulltime" if ended else "title_pinned"),
+            league=league.label,
+            minute=match.clock or match.detail or "",
+            home=match.home,
+            away=match.away,
+            home_score=match.home_score,
+            away_score=match.away_score,
+            side=None,
+            detail=[],
+            accent=league.accent,
+            title_color=MUTED,
+            home_logo=_crest(crest, match.home_logo),
+            away_logo=_crest(crest, match.away_logo),
+        )
+
+    @classmethod
+    def demo_pinned(cls, league=None, crest=None):
+        """Une carte epinglee d'exemple, pour `butbutbut --test --pin`.
+
+        Sans elle, personne ne pourrait regler la taille, le coin ni l'ecran
+        d'une carte qu'on n'obtient autrement qu'en attendant un vrai match.
+        """
+        from . import espn
+        from .leagues import LEAGUES
+
+        league = league or LEAGUES[0]
+        sample = DEMO.get(league.slug, DEMO["fra.1"])
+        home, away = sample["home"], sample["away"]
+
+        return cls(
+            title=i18n.text("title_pinned"),
+            league=league.label,
+            minute=sample["minute"],
+            home=home[0],
+            away=away[0],
+            home_score=sample["score"][0],
+            away_score=sample["score"][1],
+            side=None,
+            detail=[],
+            accent=league.accent,
+            title_color=MUTED,
+            home_logo=_crest(crest, espn.logo_url(home[1])),
+            away_logo=_crest(crest, espn.logo_url(away[1])),
+        )
+
     def text_line(self) -> str:
         return "{} {} - {} {}".format(self.home, self.home_score,
                                       self.away_score, self.away)
@@ -392,6 +462,25 @@ def stack_positions(monitor, sizes, position="bottom-right", gap=STACK_GAP):
         places.append((x, y))
         offset += height + gap
     return places
+
+
+def layout_stack(monitor, pinned_size, sizes, position="bottom-right",
+                 gap=STACK_GAP):
+    """Ou poser la carte epinglee et chacune des cartes fugaces.
+
+    Rend ((x, y) de l'epinglee ou None, [(x, y)] des fugaces). L'epinglee est
+    simplement la premiere de la pile : elle prend le coin, les fugaces
+    commencent apres elle. Une seule fonction pour les deux, sinon les deux
+    calculs finiraient par diverger et une carte de but se poserait sur elle.
+
+    `pinned_size` : (largeur, hauteur), ou None quand rien n'est epingle - et
+    dans ce cas les fugaces retrouvent exactement les places d'avant.
+    """
+    sizes = list(sizes)
+    if pinned_size is None:
+        return None, stack_positions(monitor, sizes, position, gap)
+    places = stack_positions(monitor, [tuple(pinned_size)] + sizes, position, gap)
+    return places[0], places[1:]
 
 
 def _rounded(canvas, x0, y0, x1, y1, radius, **options):
@@ -622,15 +711,23 @@ def _draw(canvas, card: Card, fonts, box, background, images=None):
 
 # ------------------------------------------------------------------ pile -----
 
-class _Toast:
-    """Une carte a l'ecran : sa fenetre, sa place dans la pile, sa duree."""
+class _Panel:
+    """Une carte a l'ecran : sa fenetre, son canvas, sa taille.
 
-    def __init__(self, stack, card: Card, duration: float):
+    Le contenu passe par `_render`, appelable plusieurs fois sur la meme
+    fenetre : c'est ce qui permet a la carte epinglee de changer de score sans
+    disparaitre puis revenir. Une fenetre recreee a chaque releve clignoterait,
+    reprendrait le dessus des autres et coincerait les ecussons.
+    """
+
+    def __init__(self, stack, card: Card):
         tk = stack.tk
         self.stack = stack
-        self.card = card
-        self.duration = max(1.0, float(duration))
-        self.closing = False
+        self.card = None
+        self.box = None
+        self.width = 0
+        self.height = 0
+        self.images = {}
 
         self.window = tk.Toplevel(stack.root)
         self.window.withdraw()
@@ -641,19 +738,28 @@ class _Toast:
             except Exception:
                 pass
 
-        background = _setup_transparency(self.window)
-        self.box = _layout(card, stack.fonts)
+        self.background = _setup_transparency(self.window)
+        self.canvas = tk.Canvas(self.window, bg=self.background,
+                                highlightthickness=0, bd=0)
+        self.canvas.pack(fill="both", expand=True)
+        self._render(card)
+
+    def _render(self, card: Card) -> None:
+        """(Re)mesure et (re)dessine la carte dans la fenetre deja ouverte."""
+        self.card = card
+        self.box = _layout(card, self.stack.fonts)
         self.width = self.box["width"]
         self.height = self.box["height"]
 
         # Les images vivent aussi longtemps que la carte : sans cette
         # reference, tkinter les ramasse et les ecussons disparaissent.
-        self.images = load_logos(tk, card, self.box, master=self.window)
+        self.images = load_logos(self.stack.tk, card, self.box,
+                                 master=self.window)
 
-        canvas = tk.Canvas(self.window, width=self.width, height=self.height,
-                           bg=background, highlightthickness=0, bd=0)
-        canvas.pack(fill="both", expand=True)
-        _draw(canvas, card, stack.fonts, self.box, background, self.images)
+        self.canvas.delete("all")
+        self.canvas.configure(width=self.width, height=self.height)
+        _draw(self.canvas, card, self.stack.fonts, self.box, self.background,
+              self.images)
 
     def move(self, x: int, y: int) -> None:
         try:
@@ -661,30 +767,15 @@ class _Toast:
         except Exception:
             pass
 
-    def start(self) -> None:
+    def reveal(self) -> None:
+        """Fait apparaitre la fenetre, en fondu, et la laisse la."""
         try:
             self.window.deiconify()
         except Exception:
             return
         _make_click_through(self.window)
-
-        hold_ms = max(200, int((self.duration - FADE_IN - FADE_OUT) * 1000))
         self._fade(self.stack.opacity, FADE_STEPS,
-                   max(10, int(FADE_IN * 1000 / FADE_STEPS)),
-                   lambda: self._after(hold_ms, self.close))
-        # Filet de securite : si le gestionnaire de fenetres avale les
-        # animations, la carte disparait quand meme.
-        self._after(int(self.duration * 1000) + 3000, self.destroy)
-
-    def close(self) -> None:
-        if self.closing:
-            return
-        self.closing = True
-        self._fade(0.0, FADE_STEPS, max(10, int(FADE_OUT * 1000 / FADE_STEPS)),
-                   self.destroy)
-
-    def destroy(self) -> None:
-        self.stack._remove(self)
+                   max(10, int(FADE_IN * 1000 / FADE_STEPS)), lambda: None)
 
     # -- interne
 
@@ -716,12 +807,73 @@ class _Toast:
         self._after(step, lambda: self._fade(target, remaining - 1, step, done))
 
 
+class _Toast(_Panel):
+    """Une carte fugace : elle s'efface toute seule au bout de sa duree."""
+
+    def __init__(self, stack, card: Card, duration: float):
+        _Panel.__init__(self, stack, card)
+        self.duration = max(1.0, float(duration))
+        self.closing = False
+
+    def start(self) -> None:
+        try:
+            self.window.deiconify()
+        except Exception:
+            return
+        _make_click_through(self.window)
+
+        hold_ms = max(200, int((self.duration - FADE_IN - FADE_OUT) * 1000))
+        self._fade(self.stack.opacity, FADE_STEPS,
+                   max(10, int(FADE_IN * 1000 / FADE_STEPS)),
+                   lambda: self._after(hold_ms, self.close))
+        # Filet de securite : si le gestionnaire de fenetres avale les
+        # animations, la carte disparait quand meme.
+        self._after(int(self.duration * 1000) + 3000, self.destroy)
+
+    def close(self) -> None:
+        if self.closing:
+            return
+        self.closing = True
+        self._fade(0.0, FADE_STEPS, max(10, int(FADE_OUT * 1000 / FADE_STEPS)),
+                   self.destroy)
+
+    def destroy(self) -> None:
+        self.stack._remove(self)
+
+
+class _Pinned(_Panel):
+    """La carte epinglee : elle apparait une fois, et se contente de changer.
+
+    Pas de duree, pas de fondu de sortie : c'est la pile qui la retire, quand
+    le match qu'elle suit a fini de vivre (voir pinned.py).
+    """
+
+    def start(self) -> None:
+        self.reveal()
+
+    def update(self, card: Card) -> None:
+        """Nouveau score, nouvelle minute : on redessine, la fenetre reste."""
+        self._render(card)
+
+    def destroy(self) -> None:
+        try:
+            self.window.destroy()
+        except Exception:
+            pass
+
+
 class Stack:
     """La pile de cartes : une racine tkinter, N fenetres empilees dans un coin.
 
     La derniere carte arrivee est collee au coin, les precedentes remontent
     (ou descendent, si le coin choisi est en haut). Quand une carte s'efface,
     les autres reprennent sa place.
+
+    La carte epinglee, elle, est tenue a part : elle occupe le coin en
+    permanence et la pile des fugaces commence apres elle. Elle n'entre pas
+    dans le compte de `max_visible` - cinq buts d'affilee ne doivent pas
+    pousser dehors un tableau de bord qu'on a demande expres - et `len(stack)`
+    ne compte que les fugaces.
     """
 
     def __init__(self, screen=None, position="bottom-right", opacity=1.0,
@@ -741,6 +893,7 @@ class Stack:
         self.root = None
         self.fonts = None
         self._toasts = []      # du plus recent (au coin) au plus ancien
+        self._pinned = None    # la carte epinglee, ou None : elle tient le coin
         self._pending = 0      # cartes programmees mais pas encore affichees
         self._monitor = None
 
@@ -770,6 +923,7 @@ class Stack:
             except Exception:
                 pass
         self._toasts = []
+        self.unpin()
         if self.root is not None:
             try:
                 self.root.destroy()
@@ -922,6 +1076,38 @@ class Stack:
 
         self.root.after(max(0, int(delay_ms)), fire)
 
+    # ---------------------------------------------------- carte epinglee ----
+
+    def pin(self, card: Card) -> None:
+        """Pose la carte epinglee, ou met a jour celle qui est deja la.
+
+        Appelee a chaque releve tant que le match dure : la premiere fois elle
+        ouvre la fenetre, ensuite elle ne fait que redessiner dedans. La pile
+        est repositionnee dans les deux cas, la carte pouvant changer de taille
+        (un score a deux chiffres, une minute plus longue).
+        """
+        self.open()
+        if self._pinned is None:
+            self._pinned = _Pinned(self, card)
+            self._reposition()
+            self._pinned.start()
+            return
+        self._pinned.update(card)
+        self._reposition()
+
+    def unpin(self) -> None:
+        """Retire la carte epinglee, s'il y en a une. La pile se retasse."""
+        if self._pinned is None:
+            return
+        pinned, self._pinned = self._pinned, None
+        pinned.destroy()
+        self._reposition()
+
+    @property
+    def pinned(self):
+        """La carte epinglee affichee, ou None. Sert aux tests et au journal."""
+        return self._pinned.card if self._pinned is not None else None
+
     def _remove(self, toast) -> None:
         try:
             toast.window.destroy()
@@ -932,11 +1118,20 @@ class Stack:
         self._reposition()
 
     def _reposition(self) -> None:
-        """Recalcule la place de chaque carte depuis le coin choisi."""
+        """Recalcule la place de chaque carte depuis le coin choisi.
+
+        L'epinglee et les fugaces sont calculees d'un seul coup : c'est la
+        garantie qu'une carte de but ne se pose jamais dessus.
+        """
         monitor = self._monitor or self.refresh_monitor()
         sizes = [(toast.width, toast.height) for toast in self._toasts]
-        for toast, (x, y) in zip(self._toasts,
-                                 stack_positions(monitor, sizes, self.position)):
+        anchor, places = layout_stack(
+            monitor,
+            (self._pinned.width, self._pinned.height) if self._pinned else None,
+            sizes, self.position)
+        if anchor is not None:
+            self._pinned.move(*anchor)
+        for toast, (x, y) in zip(self._toasts, places):
             toast.move(x, y)
 
     def __len__(self):
@@ -947,11 +1142,16 @@ class Stack:
 
 def show(cards, duration: float = 6.0, sound_path=None, screen=None,
          position="bottom-right", opacity: float = 1.0, scale: float = 1.0,
-         stagger: float = 0.9, retry_fullscreen: float = 0.0, on_log=None) -> None:
+         stagger: float = 0.9, retry_fullscreen: float = 0.0, on_log=None,
+         pinned=None) -> None:
     """Affiche une ou plusieurs cartes, et rend la main quand tout est efface.
 
     Bloquant : pratique pour `--test`. Le daemon, lui, garde une Stack ouverte
     et pousse ses cartes au fil des buts.
+
+    `pinned` : une carte epinglee a poser au coin le temps de la demonstration.
+    Elle ne retient pas la main - `run_until_idle` ne compte que les fugaces -
+    et s'en va avec la pile : sinon `--test --pin` ne rendrait jamais la main.
     """
     if isinstance(cards, Card):
         cards = [cards]
@@ -960,6 +1160,8 @@ def show(cards, duration: float = 6.0, sound_path=None, screen=None,
                   retry_fullscreen=retry_fullscreen, on_log=on_log)
     stack.open()
     try:
+        if pinned is not None:
+            stack.pin(pinned)
         for index, card in enumerate(cards):
             stack.push_later(int(index * stagger * 1000), card, duration)
         handle = sound.play_async(sound_path) if sound_path else None

@@ -119,6 +119,12 @@ OPTIONS = (
     Option("exclude_teams", _text,
            "Ne rien signaler des matchs de ces equipes.",
            "psg", fallback="aucune"),
+    Option("pin", _text,
+           "Garder a l'ecran une carte qui suit les matchs de cette equipe : "
+           "elle apparait au coup d'envoi, se met a jour a chaque releve et "
+           "s'en va quelques minutes apres la fin. Une seule equipe, et une "
+           "seule carte epinglee.",
+           "om", fallback="aucune"),
     Option("position", _corner,
            "Coin ou les cartes s'empilent : {}.".format(
                ", ".join(screens.CORNERS)),

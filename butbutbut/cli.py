@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, i18n,
-               journal, leagues, replay, screens, sound, state, teams, watcher)
+               journal, leagues, pinned, replay, screens, sound, state, teams,
+               watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -231,13 +232,26 @@ def team_filter(args):
     return chosen if chosen.active else None
 
 
+def checked_filter(args):
+    """Les mots d'equipe a confronter au catalogue : ceux du filtre, et --pin.
+
+    `--pin` n'est pas un filtre - il ne cache aucun but, il ajoute une carte -
+    mais il nomme une equipe exactement de la meme facon, et une faute de
+    frappe y merite le meme refus : un `--pin marseile` silencieux, ce serait
+    une carte epinglee qui n'arrive jamais, sans qu'on sache pourquoi.
+    """
+    wanted = [token for token in (args.teams, getattr(args, "pin", None)) if token]
+    chosen = teams.Filter(",".join(wanted), args.exclude_teams)
+    return chosen if chosen.active else None
+
+
 def check_teams(args, selection) -> int:
-    """Confronte --teams / --exclude-teams au catalogue des competitions.
+    """Confronte --teams / --exclude-teams / --pin au catalogue des competitions.
 
     Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
     le dire tout de suite que de laisser le daemon rester muet pour toujours.
     """
-    chosen = team_filter(args)
+    chosen = checked_filter(args)
     if chosen is None:
         return 0
 
@@ -350,6 +364,9 @@ def do_daemon(args) -> int:
     if recorder is not None:
         log("enregistrement des releves bruts -> {}".format(recorder.path),
             quiet=args.quiet)
+    # La carte epinglee vit a cote de la surveillance : le watcher raconte ce
+    # qui vient d'arriver, elle montre ou en est un match. Inactive sans --pin.
+    pin = pinned.Pin(args.pin, on_log=lambda message: log(message, quiet=args.quiet))
 
     log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s au repos"
         .format(os.getpid(), leagues.describe(selection), args.interval,
@@ -361,6 +378,9 @@ def do_daemon(args) -> int:
     if args.before_kickoff:
         log("annonce du coup d'envoi {} min avant".format(args.before_kickoff),
             quiet=args.quiet)
+    if pin.active:
+        log("carte epinglee sur {} : elle reste a l'ecran tant qu'un match est "
+            "en cours".format(args.pin), quiet=args.quiet)
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -370,8 +390,13 @@ def do_daemon(args) -> int:
     # foulee du demarrage annoncerait un daemon sans aucune activite.
     reporter = state.Reporter(paths()["state"], leagues=selection,
                               interval=args.interval,
-                              idle_interval=args.idle_interval)
-    reporter.update(guard.all_matches())
+                              idle_interval=args.idle_interval, pin=args.pin)
+    # Un match deja en cours au demarrage est epingle tout de suite : attendre
+    # le coup d'envoi suivant priverait de carte celui qui lance le daemon a la
+    # mi-temps, c'est-a-dire justement quand il en a envie.
+    follow = pin.update(guard.all_matches())
+    reporter.update(guard.all_matches(),
+                    pinned=follow.match if follow is not None else None)
 
     stack = None
     if not args.no_overlay:
@@ -392,9 +417,9 @@ def do_daemon(args) -> int:
 
     try:
         if stack is None:
-            _watch_headless(guard, args, stopping, reporter)
+            _watch_headless(guard, args, stopping, reporter, pin)
         else:
-            _watch_with_cards(guard, args, stopping, stack, reporter, crest)
+            _watch_with_cards(guard, args, stopping, stack, reporter, pin, crest)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -414,12 +439,19 @@ def do_daemon(args) -> int:
     return 0
 
 
-def _watch_headless(guard, args, stopping, reporter) -> None:
-    """Sans carte : un seul fil, le son et le journal."""
+def _watch_headless(guard, args, stopping, reporter, pin) -> None:
+    """Sans carte : un seul fil, le son et le journal.
+
+    L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
+    c'est lui qui alimente la ligne "epinglee" de `--status`, et il n'y a
+    aucune raison qu'elle mente parce qu'on a coupe les cartes.
+    """
     while not stopping.is_set():
         media = None
         events = guard.tick()
-        reporter.update(guard.all_matches(), events)
+        follow = pin.update(guard.all_matches())
+        reporter.update(guard.all_matches(), events,
+                        pinned=follow.match if follow is not None else None)
         for event in events:
             log(event.log_line(), quiet=args.quiet)
             if not event.goal:
@@ -433,22 +465,32 @@ def _watch_headless(guard, args, stopping, reporter) -> None:
         stopping.wait(guard.plan_wait())
 
 
-def _watch_with_cards(guard, args, stopping, stack, reporter, crest=None) -> None:
+def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
+                      crest=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
     ne fait que du reseau et du journal, puis depose ses buts dans une file que
     la boucle tkinter vide toutes les PUMP_MS millisecondes.
+
+    La carte epinglee suit le meme chemin, dans sa propre file : le verdict de
+    chaque releve y est depose, et seul le DERNIER est applique. Un releve en
+    retard ne doit pas repeindre un score perime par-dessus le bon.
     """
     from . import overlay
 
     pending = queue.Queue()
+    pinning = queue.Queue()
 
     def poll():
         while not stopping.is_set():
             try:
                 events = guard.tick()
-                reporter.update(guard.all_matches(), events)
+                follow = pin.update(guard.all_matches())
+                reporter.update(guard.all_matches(), events,
+                                pinned=follow.match if follow is not None else None)
+                if pin.active:
+                    pinning.put(follow)
                 for event in events:
                     log(event.log_line(), quiet=args.quiet)
                     pending.put(event)
@@ -459,7 +501,34 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, crest=None) -> Non
     thread = threading.Thread(target=poll, name="butbutbut-watch", daemon=True)
     thread.start()
 
+    def drain_pin():
+        """Le dernier verdict d'epinglage, s'il en est arrive un."""
+        follow = None
+        fresh = False
+        while True:
+            try:
+                follow = pinning.get_nowait()
+                fresh = True
+            except queue.Empty:
+                break
+        if not fresh:
+            return
+        try:
+            if follow is None:
+                stack.unpin()
+            else:
+                stack.pin(overlay.Card.pinned(follow.match, ended=follow.ended,
+                                              crest=crest))
+        except Exception as exc:
+            # Une carte qui reste des heures a l'ecran finira par tomber sur un
+            # ecran debranche ou un gestionnaire de fenetres de mauvaise humeur.
+            log("echec de la carte epinglee : {}".format(exc), quiet=args.quiet)
+
     def drain():
+        # L'epinglee d'abord : sa taille decide de la place des fugaces, donc
+        # un but arrive dans le meme tour se pose du premier coup au bon
+        # endroit, au lieu d'etre deplace juste apres.
+        drain_pin()
         media = None
         while True:
             try:
@@ -585,11 +654,15 @@ def do_replay(args) -> int:
                     quiet=args.quiet)
 
         crest = crest_cache(args)
+        # Le rejeu emprunte les memes chemins que le direct, carte epinglee
+        # comprise : c'est justement la qu'on la regle sans attendre un match.
+        pin = pinned.Pin(args.pin,
+                         on_log=lambda message: log(message, quiet=args.quiet))
         try:
             if stack is None:
-                _watch_headless(guard, args, pace, reporter)
+                _watch_headless(guard, args, pace, reporter, pin)
             else:
-                _watch_with_cards(guard, args, pace, stack, reporter, crest)
+                _watch_with_cards(guard, args, pace, stack, reporter, pin, crest)
         except KeyboardInterrupt:
             log("rejeu interrompu.", quiet=args.quiet)
         finally:
@@ -637,9 +710,18 @@ def do_test(args) -> int:
     cards = [overlay.Card.demo(selection[i % len(selection)], crest)
              for i in range(count)]
 
+    # Avec --pin, la demo montre aussi la carte epinglee : c'est la seule facon
+    # d'en regler la taille, le coin et l'ecran sans attendre un vrai match.
+    # L'equipe demandee n'y change rien - la demo n'a pas de reseau, elle
+    # affiche le match d'exemple du championnat.
+    anchor = overlay.Card.demo_pinned(selection[0], crest) if args.pin else None
+
     for card in cards:
-        print(tr("butbutbut : demo - [{}] {} - {}", 
+        print(tr("butbutbut : demo - [{}] {} - {}",
             card.league, card.text_line(), card.detail))
+    if anchor is not None:
+        print(tr("butbutbut : demo epinglee - [{}] {}",
+                 anchor.league, anchor.text_line()))
 
     path, duration = resolve_sound(args)
 
@@ -654,6 +736,7 @@ def do_test(args) -> int:
                      screen=args.screen, position=args.position,
                      opacity=args.opacity, scale=args.scale,
                      retry_fullscreen=args.retry_fullscreen,
+                     pinned=anchor,
                      on_log=lambda message: print(tr("butbutbut : {}", message)))
     except overlay.TkinterMissing as exc:
         print(str(exc), file=sys.stderr)
@@ -768,6 +851,26 @@ def _print_activity(pid) -> None:
     print(tr("  buts du jour: {}  (le detail : butbutbut --today)", goals))
 
 
+def pin_summary(token) -> str:
+    """La ligne "epinglee" de --status : le mot demande, et ce qu'il suit.
+
+    Le mot vient de la ligne de commande ou du fichier de configuration ; le
+    match, lui, vient du fichier d'etat, donc du daemon qui tourne vraiment.
+    Les deux peuvent diverger - daemon lance avec d'autres options, fichier
+    modifie depuis - et c'est justement ce qu'on veut voir.
+    """
+    data = state.read(paths()["state"])
+    if not data or state.is_stale(data):
+        return "{} (etat inconnu : voir la ligne releve)".format(token)
+    row = data.get("pinned")
+    if not isinstance(row, dict):
+        return "{} (aucun match en cours)".format(token)
+    return "{} -> [{}] {} {} - {} {}  {}".format(
+        token, row.get("league", "?"), row.get("home", "?"),
+        row.get("home_score", "?"), row.get("away_score", "?"),
+        row.get("away", "?"), row.get("clock", "")).rstrip()
+
+
 def _announced_cadence(data):
     key = "interval" if data.get("matches") else "idle_interval"
     return data.get(key, "?")
@@ -819,6 +922,8 @@ def do_status(args) -> int:
     chosen = team_filter(args)
     if chosen is not None:
         print(tr("  equipes     : {}", chosen.describe()))
+    if args.pin:
+        print(tr("  epinglee    : {}", pin_summary(args.pin)))
     print(tr("  langue      : {}", i18n.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
@@ -1051,6 +1156,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude-teams", default=None, metavar=tr("LISTE"),
                         dest="exclude_teams",
                         help=tr("ne rien signaler des matchs de ces equipes"))
+    parser.add_argument("--pin", default=None, metavar="EQUIPE",
+                        help=tr("garde a l'ecran une carte qui suit les matchs "
+                             "de cette equipe : elle apparait au coup d'envoi, "
+                             "se met a jour a chaque releve et s'en va "
+                             "quelques minutes apres la fin. Une seule equipe, "
+                             "et jamais de son. Ex : --pin om"))
     parser.add_argument("--list-teams", action="store_true", dest="list_teams",
                         help=tr("liste les equipes des competitions suivies"))
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL,
@@ -1161,6 +1272,18 @@ def main(argv=None) -> int:
         print("butbutbut : --speed attend un nombre strictement positif "
               "(1 = temps reel, 60 = soixante fois plus vite).", file=sys.stderr)
         return 2
+
+    # Une seule carte epinglee, donc un seul mot : une liste serait acceptee
+    # par le filtre par equipe, et donnerait silencieusement une carte pour une
+    # seule des equipes demandees. Mieux vaut le dire tout de suite. Un mot qui
+    # attrape plusieurs clubs ('real'), lui, reste permis : voir pinned.py.
+    args.pin = (args.pin or "").strip()
+    if "," in args.pin or ";" in args.pin:
+        print(tr("butbutbut : --pin ne prend qu'une equipe ({!r} en annonce "
+                 "plusieurs) : il n'y a jamais qu'une carte epinglee.",
+                 args.pin), file=sys.stderr)
+        return 2
+
     if args.position.strip().lower() not in screens.CORNERS:
         print(tr("butbutbut : position inconnue : {} (voir --help)", args.position),
               file=sys.stderr)
@@ -1190,9 +1313,7 @@ def main(argv=None) -> int:
         return do_list(args)
     if args.list_teams:
         return do_list_teams(args)
-    # La verification des equipes interroge la source : un rejeu, qui est
-    # justement cense se passer de reseau, s'en passe aussi.
-    if (args.teams or args.exclude_teams) and not args.replay:
+    if (args.teams or args.exclude_teams or args.pin) and not args.replay:
         failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
         if failed:
             return failed

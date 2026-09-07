@@ -9,6 +9,43 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **La carte epinglee** : `butbutbut --pin om`. Tant qu'un match de l'equipe
+  demandee est en cours, une carte **reste a l'ecran** et se met a jour a
+  chaque releve (le score et la minute), au lieu de n'apparaitre qu'aux buts.
+  butbutbut passe ainsi de l'alerte au tableau de bord : la carte vit sur le
+  second ecran pendant qu'on travaille.
+- La cle `pin` du fichier de configuration, et une ligne `epinglee` dans
+  `butbutbut --status` qui dit ce que le daemon suit vraiment.
+  `butbutbut --test --pin om` en montre une, sans quoi personne ne pourrait la
+  regler.
+
+### Details qui ont demande un arbitrage
+
+- **Ou elle vit** : ancree au coin choisi, la pile des cartes fugaces demarrant
+  apres elle. Cinq buts d'affilee ne peuvent donc pas la pousser dehors (le
+  plafond de cinq ne compte que les fugaces), et aucune carte de but ne peut se
+  poser dessus (toutes les places sont calculees ensemble). Elle perd le coin,
+  qui est la meilleure place : c'est le prix d'etre la en permanence.
+- **Son cycle de vie** : elle apparait au coup d'envoi, ou tout de suite si le
+  match est deja en cours au demarrage - lancer le daemon a la mi-temps doit
+  donner la carte. Elle disparait cinq minutes apres la fin du match : elle ne
+  passe pas la nuit a l'ecran. Un match qui disparait du tableau de bord est
+  traite comme un match fini, avec le meme delai : mieux vaut une carte qui
+  s'attarde qu'une carte qui clignote.
+- **Un mot pour plusieurs clubs** (`--pin real` en attrape trois) est accepte,
+  le nommage etant celui de `--teams` ; mais il n'y a **jamais qu'une carte**.
+  Elle suit le match commence en premier et n'en change pas tant qu'il dure -
+  une carte qui sauterait d'un match a l'autre serait illisible - puis passe au
+  suivant. `--pin om,psg`, en revanche, est refuse au demarrage : accepter la
+  liste reviendrait a n'en suivre silencieusement qu'une des deux.
+- **Elle ne fait aucun bruit**, et aucune equipe n'y passe en couleur de club :
+  le son reste la marque du but, et la couleur veut dire « elle vient de
+  marquer », jamais « elle mene ».
+
+
+
+### Ajoute
+
 - **Enregistrer un vrai match, et le rejouer.** `butbutbut --record
   match.jsonl --leagues l1` surveille normalement et met en plus chaque reponse
   brute de la source sur le disque ; `butbutbut --replay match.jsonl` la

@@ -161,9 +161,9 @@ class Reporter:
     """
 
     __slots__ = ("path", "leagues", "interval", "idle_interval", "started_at",
-                 "goals", "day")
+                 "goals", "day", "pin")
 
-    def __init__(self, path, leagues=(), interval=0, idle_interval=0):
+    def __init__(self, path, leagues=(), interval=0, idle_interval=0, pin=""):
         self.path = Path(path)
         self.leagues = [league.name for league in leagues]
         self.interval = interval
@@ -171,6 +171,11 @@ class Reporter:
         self.started_at = time.time()
         self.goals = 0
         self.day = today()
+        # L'equipe epinglee, telle qu'elle a ete demandee : `--status` tourne
+        # dans un autre processus et n'a que ce fichier pour savoir ce que le
+        # daemon suit vraiment - le sien peut avoir ete lance avec d'autres
+        # options, ou avant une modification du fichier de configuration.
+        self.pin = str(pin or "")
 
     def record(self, events=()) -> None:
         """Compte les buts du jour, buts annules et phases de match exclus."""
@@ -179,11 +184,16 @@ class Reporter:
                 self._roll()
                 self.goals += 1
 
-    def snapshot(self, matches=()) -> dict:
+    def snapshot(self, matches=(), pinned=None) -> dict:
         matches = list(matches)
         live = [match for match in matches if match.live]
         self._roll()
         return {
+            "pin": self.pin,
+            # Le match epingle a l'instant, ou None : il peut etre termine (la
+            # carte survit quelques minutes) et ne serait alors dans aucune des
+            # lignes ci-dessous.
+            "pinned": _match_row(pinned) if pinned is not None else None,
             "version": VERSION,
             "pid": os.getpid(),
             "updated_at": time.time(),
@@ -198,10 +208,10 @@ class Reporter:
             "matches": [_match_row(match) for match in live],
         }
 
-    def update(self, matches=(), events=()) -> bool:
+    def update(self, matches=(), events=(), pinned=None) -> bool:
         """Un releve vient de finir : compter, puis publier."""
         self.record(events)
-        return write(self.path, self.snapshot(matches))
+        return write(self.path, self.snapshot(matches, pinned=pinned))
 
     def _roll(self) -> None:
         """Minuit : le compteur du jour repart de zero.

@@ -15,7 +15,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, i18n, leagues, replay, sports, state, watcher
+from butbutbut import (cli, espn, i18n, leagues, pinned, replay, sports,
+                       state, watcher)
 
 from helpers import FakeClock, event, goal_detail, payload, red_card_detail
 
@@ -685,7 +686,7 @@ class TestTheCardLoopReplaysToo(Sandbox):
             reporter = state.Reporter(p["state"],
                                       leagues=recording.leagues())
             cli._watch_with_cards(guard, args, pace, stack, reporter,
-                                  cli.crest_cache(args))
+                                  pinned.Pin(args.pin), cli.crest_cache(args))
 
         self.assertEqual(len(stack.cards), len(live))
         self.assertTrue(stack.stopped)

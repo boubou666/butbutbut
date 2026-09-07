@@ -339,7 +339,9 @@ butbutbut --opacity 0.9
 
 Les cartes s'empilent depuis le coin choisi : la derniere arrivee est collee au
 coin, les precedentes remontent (ou descendent, depuis un coin du haut). Au-dela
-de cinq cartes visibles, la plus ancienne cede sa place.
+de cinq cartes visibles, la plus ancienne cede sa place. Une carte fait
+exception, [la carte epinglee](#la-carte-epinglee) : elle tient le coin en
+permanence, la pile commence apres elle, et elle ne compte pas dans les cinq.
 
 ### Les ecussons et les couleurs des clubs
 
@@ -471,6 +473,9 @@ exclude = seriea
 teams = om,psg
 exclude_teams = psg
 
+# La carte qui reste a l'ecran pendant le match (une seule equipe)
+pin = om
+
 # Ou et comment ca s'affiche
 position = top-right
 screen = 1
@@ -557,6 +562,80 @@ cadence des releves pour que l'heure demandee soit tenue.
 Le **filtre par equipe** s'applique a ces trois cartes comme aux buts : avec
 `--teams om`, seules les expulsions, annonces et fins de match de l'OM
 remontent.
+
+### La carte epinglee
+
+```bash
+butbutbut --pin om        # tant que l'OM joue, une carte reste a l'ecran
+```
+
+Toutes les cartes ci-dessus sont fugaces : elles arrivent sur un evenement,
+elles s'en vont quelques secondes plus tard. Celle-ci fait l'inverse. Elle se
+pose au coup d'envoi, **se met a jour a chaque releve** - le score et la
+minute - et s'en va un moment apres le coup de sifflet final. C'est ce qui fait
+passer butbutbut de l'alerte au **tableau de bord** : la carte vit sur le
+second ecran pendant qu'on travaille.
+
+```
+EN DIRECT   LIGUE 1                                              61'
+Marseille              2 - 1              Paris FC
+```
+
+Deux lignes, pas trois : elle ne raconte pas ce qui vient d'arriver, elle dit
+ou en est le match. Aucune equipe n'y passe en couleur non plus - partout
+ailleurs la couleur d'un club veut dire « c'est elle qui vient de marquer », la
+reutiliser pour dire « c'est elle qui mene » serait un contresens a l'echelle
+d'une soiree. Et elle **ne fait jamais de bruit** : le son reste la marque du
+but. Un but de l'OM sonne comme d'habitude et pose sa propre carte, a cote.
+
+**Ou elle vit.** Elle est **ancree au coin choisi**, et la pile des cartes
+fugaces demarre juste apres elle. Deux consequences voulues : cinq buts
+d'affilee ne peuvent pas la pousser dehors, puisque le plafond de cinq cartes
+ne compte que les fugaces ; et elle ne peut pas masquer une carte de but,
+puisque toutes les places sont calculees ensemble, la sienne d'abord. Elle perd
+le coin, qui est la meilleure place - c'est le prix d'etre la en permanence :
+l'oeil sait ou la chercher, un but n'a pas a attendre.
+
+**Son cycle de vie.** Elle apparait au coup d'envoi, ou tout de suite si le
+match est deja en cours au demarrage du daemon : le lancer a la mi-temps doit
+donner la carte, pas faire attendre le match suivant. Elle suit le match
+jusqu'au bout, puis reste **cinq minutes** apres la fin - le temps de voir le
+score final en revenant de la cuisine - et disparait. Elle ne passe pas la
+nuit a l'ecran. Un match qui disparait du tableau de bord (changement de
+journee, reponse tronquee) est traite comme un match fini, avec le meme delai :
+mieux vaut une carte qui s'attarde qu'une carte qui clignote.
+
+**Une seule equipe, et une seule carte.** `--pin om,psg` est refuse au
+demarrage : il n'y a jamais qu'une carte epinglee, et accepter la liste
+reviendrait a n'en suivre silencieusement qu'une des deux. Un mot qui attrape
+**plusieurs clubs** est en revanche accepte - `--pin real`, c'est Madrid, la
+Sociedad et le Betis - parce que le nommage est celui de `--teams` et qu'il
+serait absurde d'y refuser ce qu'on accepte ailleurs. Dans ce cas la carte suit
+**le match commence en premier**, et n'en change pas tant qu'il dure : une
+carte qui sauterait d'un match a l'autre a chaque releve serait illisible.
+Quand il finit, elle passe au suivant s'il en reste un en cours.
+
+Le nommage est exactement celui de `--teams` (`om`, `barca`, `manu`, les noms
+sans accents, les debuts de mots), et un mot qui ne designe aucune equipe est
+**refuse au demarrage**, comme pour `--teams` : un `--pin marseile` silencieux,
+ce serait une carte qui n'arrive jamais sans qu'on sache pourquoi.
+
+`--pin` n'est pas un filtre : il ajoute une carte, il n'en cache aucune. Pour
+n'etre alerte que de cette equipe-la, c'est `--teams` qu'il faut, et les deux se
+combinent : `butbutbut --teams om --pin om`.
+
+```bash
+butbutbut --test --pin om     # une carte epinglee de demonstration
+butbutbut --status            # la ligne "epinglee" dit ce qu'elle suit
+```
+
+```
+  epinglee    : om -> [Ligue 1] Marseille 1 - 0 Paris FC  34'
+```
+
+Le journal note l'arrivee et le depart de la carte, et rien entre les deux :
+une ligne par releve pendant quatre-vingt-dix minutes n'apprendrait rien a
+personne.
 
 ### La langue
 
@@ -1145,7 +1224,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**627 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**678 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
