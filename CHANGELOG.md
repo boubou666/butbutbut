@@ -9,6 +9,101 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **`butbutbut --stats` : ce que le journal savait deja et ne disait pas.**
+  `--today`, `--week`, `--month`, `--since` et `--top-scorers` relisent tous le
+  journal, mais tous les cinq rendent une liste - un but, une ligne. `--stats`
+  regarde les memes lignes en tas : un histogramme ASCII des buts par minute de
+  match (la bosse de fin de match se voit a l'oeil nu), la repartition par
+  competition, les soirees les plus prolifiques, le nombre de matchs, la
+  moyenne de buts par match et la part des penaltys et des csc. Tout tient dans
+  80 colonnes, sans couleur, et rien ne demande le reseau : c'etait deja dans
+  le fichier.
+- `--stats` prend les memes fenetres et les memes filtres que `--top-scorers` :
+  `--week`, `--month`, `--since`, `--teams`, `--exclude-teams`. Sans fenetre,
+  c'est tout le journal - une forme se voit sur la duree. Une seule lecture du
+  journal (`journal.goals_between`), comme toutes les autres relectures.
+- Le rattachement positionnel des buts annules par la VAR est **repris tel
+  quel** (`journal.settle`, arrive en 1.7.0) : un but efface ne compte ni dans
+  l'histogramme, ni dans sa competition, ni dans sa soiree, et les annulations
+  dont le but est tombe avant l'ouverture de la fenetre sont annoncees a part
+  plutot que deduites de quelqu'un au hasard.
+- **Une soiree n'est plus un jour de calendrier.** Le journal change de jour a
+  minuit, une soiree de football non : le but de 23h50 et celui de 00h12 sont
+  de la meme soiree, et compter par date en faisait deux demi-soirees dont
+  aucune n'a existe. Six heures du matin coupe la nuit (`journal.evening_of`).
+- L'analyseur du journal retient desormais **l'en-tete** de chaque ligne
+  (`Entry.key`) : c'est la seule chose qui dise la nature d'un but, et c'est de
+  la que sort la part des penaltys, des csc, des essais et des drops. Il sait
+  aussi lire une minute de jeu et son temps additionnel (`Entry.clock`) - un
+  but a `90+3'` reste un but de la 90e.
+- 44 tests de plus : les tranches de l'histogramme, un match a cheval sur
+  minuit, une minute qu'aucune version ne sait lire, une fenetre vide, une
+  fenetre ou la VAR a tout repris, une egalite dans le classement des soirees,
+  et une garantie que rien ne deborde des 80 colonnes.
+
+### Note
+
+- `--stats` ne compte que ce que le journal permet honnetement de compter. Un
+  0-0 n'y laisse aucune ligne : la moyenne annoncee est celle des matchs **ou
+  un but est tombe**, plus haute qu'une moyenne de saison, et le pied de sortie
+  le dit. La part des penaltys est un plancher, pas un total : quand la source
+  publie l'action trop tard, le but est ecrit `BUT` et compte comme tel.
+- La prose de `--stats` n'est pas encore dans les catalogues de traduction :
+  elle sort en francais dans les cinq langues, comme `--next` et
+  `--top-scorers`. Degradee, jamais cassee.
+
+### Ajoute
+
+- **`--quiet-hours 23:00-08:00` : ne pas deranger la nuit.** Pendant la plage,
+  aucune carte et aucun son - pas meme la carte epinglee, qui s'efface et
+  revient toute seule apres. Le but, lui, tombe dans le journal comme
+  n'importe quel autre soir, et `butbutbut --today` le retrouve au reveil :
+  on ne coupe que l'alerte, jamais la trace. L'heure est celle de la machine,
+  la plage peut enjamber minuit (le cas courant), le debut est inclus et la
+  fin exclue. `23:00-08:00`, `23h00-08h00`, `23h-8h` et `23-8` disent la meme
+  chose ; une plage illisible est refusee en nommant le format attendu, et une
+  plage qui commence ou elle finit aussi - elle veut dire « tout le temps » ou
+  « jamais » selon la personne a qui on demande.
+- **`--quiet-while-presenting` : se taire quand quelqu'un d'autre regarde
+  l'ecran.** Une carte « BUT » au milieu d'une visio partagee est le bug qu'on
+  ne decouvre qu'une fois, et devant temoins. La question est posee au systeme
+  plutot que devinee : sous Windows, `SHQueryUserNotificationState` est l'API
+  par laquelle Windows repond lui-meme a « est-ce le moment d'afficher une
+  notification ? ». Sont detectes le mode presentation, l'ecran duplique vers
+  un projecteur (Windows y allume l'assistant de concentration tout seul) et
+  le « ne pas deranger » active a la main.
+- **Ce qui n'est PAS detecte, et c'est ecrit dans le README** : un partage de
+  fenetre ou d'ecran depuis Teams, Zoom ou Meet. Windows n'expose rien qui le
+  signale, et la seule facon d'y arriver serait de guetter le nom de classe de
+  la barre flottante de chaque application de visio - une heuristique qui
+  tombe a la premiere mise a jour et se declenche de travers entre-temps.
+  Hors de Windows, rien du tout : l'option y est refusee avec un
+  avertissement, comme `--retry-fullscreen`.
+- **`butbutbut --status` dit quand butbutbut se tait, et pourquoi** : une ligne
+  `silence`, toujours affichee, qui annonce « en veille jusqu'a 08:00 » plutot
+  que de laisser croire a une panne. Le journal note les changements d'etat, et
+  eux seuls : un daemon qui repeterait « en veille » a chaque releve noierait
+  ses buts.
+- Les deux reglages ont leur cle de configuration (`quiet_hours`,
+  `quiet_while_presenting`), et 43 tests hors reseau et hors ecran
+  (`tests/test_silence.py`, plus les boucles de surveillance dans
+  `tests/test_cli.py`) : plage normale, plage qui enjambe minuit, bornes
+  exactes, formes acceptees, plage refusee, le but qui va bien au journal
+  pendant le silence, et la degradation quand la detection ne repond pas.
+
+### Modifie
+
+- Les trois « est-ce le moment ? » - l'heure, le regard des autres, le plein
+  ecran - passent desormais par un seul point de decision
+  (`butbutbut/silence.py`) au lieu d'etre eparpillees. Elles ne rendent pas le
+  meme verdict, et c'est voulu : le plein ecran laisse partir la carte quitte a
+  la repasser plus tard, alors que la nuit et la presentation la retiennent.
+- Le crochet `--on-goal` continue de partir pendant le silence, contrairement a
+  `--spoiler-free` qui le coupe : le silence protege cet ecran et ce
+  haut-parleur, pas une guirlande ni un telephone a l'autre bout de la maison.
+
+### Ajoute
+
 - **`--table` : le classement du championnat.** `--scores` disait ce qui se
   joue, `--next` ce qui arrive, `--top-scorers` ce qu'on a vu passer. Restait la
   seule question qu'un supporter pose sans regarder de match : ils sont ou, au

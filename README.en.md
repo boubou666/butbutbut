@@ -111,6 +111,7 @@ butbutbut --week              # the last 7 days
 butbutbut --month             # the last 30 days
 butbutbut --since 2026-09-01  # since that date
 butbutbut --top-scorers       # the ranking of the scorers seen going by
+butbutbut --stats             # the shapes hidden in the log
 butbutbut --record m.jsonl    # watch, and box up the raw polls as well
 butbutbut --replay m.jsonl    # replay a recording, cards and sounds included
 butbutbut --stop              # stop the daemon
@@ -416,6 +417,165 @@ Saturday:
 teams = om
 spoiler_free = om
 ```
+
+### Do not disturb
+
+There are two moments when a card lands badly, and neither depends on the match:
+**at night**, and **when someone else is looking at your screen**. A "GOAL" card
+in the middle of a shared video call is the kind of bug you only discover once,
+and in front of witnesses.
+
+```bash
+butbutbut --quiet-hours 23:00-08:00      # nothing between 11 pm and 8 am
+butbutbut --quiet-while-presenting       # nothing while presenting
+```
+
+While it is quiet, **nothing on screen and nothing through the speakers**: no
+goal, no cancelled goal, no key moment, no red card, no pre-match announcement.
+The pinned card goes away too - a dashboard lit up all night is exactly what
+people complain about - and it comes back by itself on the first poll after the
+window.
+
+**The journal keeps everything**, exactly as in spoiler-free mode. That is the
+whole contract: only the alert is cut, never the trace. The next morning,
+`butbutbut --today` tells the night like any other evening:
+
+```
+butbutbut : buts signales le 07/09/2026
+
+MLS
+    02:14:31  LA Galaxy 1 - 0 Seattle          But de R. Puig (58')
+```
+
+#### The time range
+
+`--quiet-hours 23:00-08:00` is read against **the machine's clock**, not UTC: the
+range means what it means to whoever writes it, wherever they are and whatever
+time zone the followed matches are played in. It may **wrap around midnight**,
+which is in fact the common case: nobody sleeps from 9 am to 5 pm.
+
+The **start is included, the end excluded**: at 23:00 sharp it goes quiet, at
+08:00 sharp it speaks again. A line has to be drawn somewhere, and that is how a
+timetable reads - "from 11 pm to 8 am" does not include 8 am.
+
+The four forms people actually type are accepted, and reduced to a single one:
+`23:00-08:00`, `23h00-08h00`, `23h-8h` and `23-8` all say the same thing. An
+unreadable range, on the other hand, is refused right away, naming the expected
+format:
+
+```
+$ butbutbut --quiet-hours "de 23h a 8h"
+butbutbut : plage horaire illisible : 'de 23h a 8h' (attendu HH:MM-HH:MM, par exemple 23:00-08:00)
+```
+
+A range that starts and ends at the same time (`08:00-08:00`) is refused as well:
+it means "always" or "never" depending on who you ask, and it is not butbutbut's
+place to choose for them.
+
+On the command line this is fatal (exit code 2): whoever types it is sitting in
+front of their terminal. **In the configuration file**, the same mistake is
+reported on standard error and the key is simply ignored - the daemon is often
+launched when the machine boots, with nobody there to read the error, and a
+daemon that refuses to start costs more than a lost time range.
+
+#### Screen sharing: what is detected, and what is not
+
+`--quiet-while-presenting` asks the system rather than guessing. On Windows,
+`SHQueryUserNotificationState` is precisely the API through which Windows itself
+answers "is this a good moment to show a notification?": we ask it that very
+question, and keep two of its answers.
+
+| Situation | Detected? |
+| --- | --- |
+| Windows presentation mode (projector plugged in, presentation settings) | yes |
+| Screen **duplicated** to a projector or a meeting room | yes, through the Focus Assist that Windows then turns on by itself |
+| "Do not disturb" / Focus Assist turned on by hand | yes |
+| **Window or screen share** from Teams, Zoom or Meet | **no** |
+| macOS, X11, Wayland | **no**, nothing at all |
+
+**Sharing from a conferencing app is not detectable, and it is better to say so
+than to let it be assumed.** Windows exposes nothing that reports it. The only
+way there would be to watch for the window class name of each application's
+floating toolbar (`ZPToolBarParentWnd` and friends): that heuristic breaks at
+Zoom's next update, and misfires in the meantime. Detecting nothing and writing
+it down here beats detecting sometimes, at random.
+
+In practice, the gesture that works is therefore: **turn "do not disturb" on
+before the call**. Windows already honours it for the rest of the system, and
+butbutbut follows. It is also what Windows turns on by itself when the display is
+duplicated, which is the meeting-room and projector case.
+
+Outside Windows there is nothing to follow: macOS lights an orange dot while the
+screen is being captured but tells no public API about it, sharing under Wayland
+goes through a portal that only answers the client which requested the share, and
+X11 does not even know that sharing exists. The option is refused there with a
+warning, like `--retry-fullscreen`.
+
+A detection that fails **lets the card through** - back to the behaviour from
+before the option - and the journal notes it **once**, not on every poll: a daemon
+runs for hours, and a broken detection writing a line every 25 seconds would make
+the journal unreadable on the very day you needed it.
+
+#### The hook still fires
+
+`--on-goal` keeps firing while it is quiet, unlike spoiler-free mode which cuts
+it. This is not an oversight: the silence protects **this screen** and **these
+speakers**, whereas a command that lights a garland, pushes a notification to a
+phone or writes into a spreadsheet has no reason to go quiet because the machine
+is asleep. Without that, `--quiet-hours` would amount to stopping the daemon.
+`--spoiler-free` does cut everything, and for a different reason: there, it is the
+result you do not want to know, whenever it arrives.
+
+#### `--status` says when butbutbut goes quiet, and why
+
+That is the first thing anyone checks when they suspect a breakdown, so the line
+is always there, even when nothing silences anything:
+
+```
+  silence     : plage 23:00-08:00 - en veille jusqu'a 08:00
+  silence     : plage 23:00-08:00 - rien en ce moment
+  silence     : presentation ou ecran duplique - mode presentation
+  silence     : aucun (voir --quiet-hours)
+```
+
+The journal says the same thing, and **only when it changes**:
+
+```
+2026-09-06 23:00:14  silence : en veille jusqu'a 08:00
+2026-09-07 08:00:22  fin du silence : les cartes et le son repassent
+```
+
+#### The three times butbutbut asks itself "is this the moment?"
+
+They are three shapes of a single question, and they stack - hence a single
+decision point in the code (`butbutbut/silence.py`) rather than three branches
+scattered around. They do not return the same verdict, and that is deliberate:
+
+| Question | Setting | Verdict |
+| --- | --- | --- |
+| What time is it? | `--quiet-hours` | nothing on screen, nothing through the speakers |
+| Is someone else looking at this screen? | `--quiet-while-presenting` | nothing on screen, nothing through the speakers |
+| Would the card even be visible? | `--retry-fullscreen` | the card goes out **anyway**, and may come back later |
+
+The benefit of the doubt changes with the question. Getting full-screen detection
+wrong would make you miss a goal for nothing, so the card goes out; getting it
+wrong at 2 am or in the middle of a presentation costs far more, so it stays
+quiet. And a full-screen game never counts as a presentation: nobody else is
+watching it, and going mute during a match played full-screen would mean cutting
+butbutbut out exactly when it earns its keep.
+
+**The silence only concerns the daemon.** `--test` and `--replay` show their
+cards at 3 am just as they do at noon: those are commands you have just typed,
+and silencing them would look like a breakdown.
+
+Both settings have their configuration key:
+
+```ini
+[butbutbut]
+quiet_hours = 23:00-08:00
+quiet_while_presenting = oui
+```
+
 ### The fixtures to come
 
 `--scores` says what is being played today. `--next` answers the question that
@@ -882,6 +1042,10 @@ no_overlay = non
 no_phase_cards = non
 catch_up = non
 quiet = non
+
+# Do not disturb: at night, and while presenting
+quiet_hours = 23:00-08:00
+quiet_while_presenting = non
 ```
 
 **The command line always keeps the last word**: `command line > file >
@@ -1444,6 +1608,10 @@ kept exactly when it was of no use.
 > show as before, with no extra log line, and `--retry-fullscreen` is refused
 > with a warning.
 
+This is the first of the three times butbutbut asks itself "is this the
+moment?" - the other two are what time it is and who else is watching, and they
+do not return the same verdict: see [Do not disturb](#do-not-disturb).
+
 ---
 
 ## Recording a real match, and replaying it
@@ -1845,6 +2013,114 @@ the total, never in the ranking, and the footer announces them.
 
 ---
 
+## The shapes of the log
+
+The log piles up months of goals. `--today`, `--week`, `--month`, `--since` and
+`--top-scorers` all read them back, but all five return a **list**: one goal,
+one line, in the order they fell. Yet a pile of goals has shapes no list ever
+shows. Are more goals really scored late in a match? Which competition fills
+the log? Which was the best evening of the summer? `--stats` looks at the very
+same lines, in a pile.
+
+```bash
+butbutbut --stats                     # the whole log
+butbutbut --stats --week              # over the last 7 days
+butbutbut --stats --since 2026-08-09  # since that date
+butbutbut --stats --teams om          # only the matches of OM
+```
+
+```
+butbutbut : ce que le journal raconte du dim. 09/08/2026 au lun. 07/09/2026
+
+Par minute de match
+    1-10  #######                                 6   4%
+   11-20  #####                                   4   3%
+   21-30  ##############                         12   8%
+   31-40  ######################                 18  13%
+   41-50  #########################              21  15%
+   51-60  ###################                    16  11%
+   61-70  ##############                         12   8%
+   71-80  #############################          24  17%
+   81-90  ####################################   30  21%
+
+Par competition
+  Ligue 1              ####################################   43  30%
+  Premier League       ################################       38  27%
+  LaLiga               ######################                 26  18%
+  Bundesliga           ##################                     22  15%
+  Serie A              #######                                 8   6%
+  Ligue des champions  #####                                   6   4%
+
+Les soirees les plus prolifiques
+  mer. 19/08/2026    15 but(s)
+  ven. 21/08/2026    14 but(s)
+  mer. 12/08/2026    12 but(s)
+
+Nature des buts
+  But                       113  79%
+  But contre son camp        11   8%
+  Penalty                    19  13%
+
+143 but(s) confirme(s) sur 144 signale(s), dans 6 competition(s).
+53 match(s) avec au moins un but signale, 2.7 but(s) par match.
+Un 0-0 ne laisse aucune trace dans le journal, ni dans cette moyenne.
+1 but(s) retire(s) par la VAR, deduit(s) de tout ce qui precede.
+17 but(s) dans le temps additionnel, comptes dans la tranche de leur minute.
+```
+
+**Ten-minute slices**, because that is the grain football is told in: "right
+before half-time", "in the last quarter of an hour". To the minute it would
+take ninety lines to show nothing but noise. A goal at `90+3'` stays a goal of
+the 90th and goes into the `81-90` slice: putting it elsewhere would flatten
+the very bump one comes to see. And the histogram always covers the full ninety
+minutes, even when the window holds three goals in the 12th: an empty slice is
+a shape too, and stopping at the last goal would erase it. Extra time, in turn,
+stretches the frame up to the 120th.
+
+**An evening is not a calendar day.** The log turns the page at midnight, a
+football evening does not: a 9 p.m. kick-off that goes to extra time, a South
+American fixture, an NHL game watched from Europe. The goal at 11:50 p.m. and
+the one at 12:12 a.m. belong to the same evening, and counting by date would
+make two half-evenings, neither of which existed. Six in the morning cuts the
+night. **Three evenings are named**, and any ties with the third are counted on
+one more line - `... et 17 autre(s) soiree(s) a 6 but(s).` Naming them all would
+push the rest of the output off the screen on a multiplex night; stopping at
+three without counting the others would suggest a podium that does not exist.
+
+**A goal the VAR turned down counts nowhere**, exactly as in
+[the scorers' ranking](#the-scorers-ranking): the positional matching is the
+same code, not a second one. Not in the histogram, not in the competition, not
+in the evening. Annulments whose goal fell before the window opened are
+reported separately.
+
+**The nature of a goal comes from the head of its line**, the only thing that
+carries it: `BUT SUR PENALTY`, `BUT CONTRE SON CAMP`, `ESSAI`, `PENALITE`,
+`DROP`. When the source publishes the play too late, the goal is written `BUT`
+and counts as one: that share is a floor, not an exact total. A single nature
+in the window gets no table - "143 goals out of 143 are goals" teaches nobody
+anything.
+
+**And what is missing is missing out of honesty.** The log only writes what
+moves: a 0-0 leaves no line at all, so `--stats` knows of no goalless match,
+and its average is that of the matches **where a goal fell** - mechanically
+higher than a season's, which the footer spells out. The assist, the foot, the
+distance, possession: the source does not publish them, so nobody can count
+them here. A minute the log does not write as a minute of play - an ice hockey
+clock, a phase label, a line from a version we can no longer read - stays out
+of the histogram, and the footer counts it rather than forcing it in sideways.
+
+**The arithmetic happens offline**: it is all already in the file. One caveat,
+the same one `--top-scorers` carries: naming a team first checks that name
+against the catalogue, and that check does need the network. It is deliberate -
+`--stats --teams om` returning an empty page over a typo would be worse than
+silent - and an unreachable source says so, then lets the command through.
+Without `--teams` or `--exclude-teams`, nothing leaves the machine.
+
+A missing log, an empty one, or one where no line falls inside the window says
+so in plain words, just like `--today`.
+
+---
+
 ## Log
 
 ```
@@ -1962,7 +2238,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**937 tests**, with no network and no screen: the source is simulated by an
+**1024 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

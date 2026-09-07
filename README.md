@@ -111,6 +111,7 @@ butbutbut --week              # les 7 derniers jours
 butbutbut --month             # les 30 derniers jours
 butbutbut --since 2026-09-01  # depuis cette date
 butbutbut --top-scorers       # le classement des buteurs vus passer
+butbutbut --stats             # les formes cachees dans le journal
 butbutbut --record m.jsonl    # surveille, et met les releves bruts en boite
 butbutbut --replay m.jsonl    # rejoue un enregistrement, cartes et sons compris
 butbutbut --stop              # arrete le daemon
@@ -419,6 +420,167 @@ Le reglage a sa cle de configuration, pour ne pas le retaper le samedi suivant :
 teams = om
 spoiler_free = om
 ```
+
+### Ne pas deranger
+
+Il y a deux moments ou une carte tombe mal, et aucun des deux ne depend du
+match : **la nuit**, et **quand quelqu'un d'autre regarde ton ecran**. Une carte
+« BUT » au milieu d'une visio partagee, c'est le bug qu'on ne decouvre qu'une
+fois, et devant temoins.
+
+```bash
+butbutbut --quiet-hours 23:00-08:00      # rien entre 23 h et 8 h
+butbutbut --quiet-while-presenting       # rien pendant une presentation
+```
+
+Pendant le silence, **rien a l'ecran et rien au haut-parleur** : ni but, ni but
+annule, ni temps fort, ni carton rouge, ni annonce d'avant match. La carte
+epinglee s'en va aussi - un tableau de bord allume toute la nuit est exactement
+ce dont on se plaint - et elle revient d'elle-meme au premier releve qui suit.
+
+**Le journal, lui, garde tout**, exactement comme en mode sans spoiler. C'est
+tout le contrat : on ne coupe que l'alerte, jamais la trace. Le lendemain matin,
+`butbutbut --today` raconte la nuit comme n'importe quel autre soir :
+
+```
+butbutbut : buts signales le 07/09/2026
+
+MLS
+    02:14:31  LA Galaxy 1 - 0 Seattle          But de R. Puig (58')
+```
+
+#### La plage horaire
+
+`--quiet-hours 23:00-08:00` se lit sur **l'horloge de la machine**, pas en UTC :
+la plage veut dire ce qu'elle veut dire pour celui qui l'ecrit, ou qu'il soit et
+quel que soit le fuseau des matchs suivis. Elle peut **enjamber minuit**, ce qui
+est meme le cas courant : personne ne dort de 9 h a 17 h.
+
+Le **debut est inclus, la fin exclue** : a 23:00 pile on se tait, a 08:00 pile on
+parle. Il faut trancher quelque part, et c'est ainsi qu'on lit un horaire - « de
+23 h a 8 h » ne compte pas 8 h.
+
+Les quatre formes que les gens tapent vraiment sont acceptees, et ramenees a une
+seule : `23:00-08:00`, `23h00-08h00`, `23h-8h` et `23-8` disent la meme chose.
+Une plage illisible, elle, est refusee tout de suite, en nommant le format
+attendu :
+
+```
+$ butbutbut --quiet-hours "de 23h a 8h"
+butbutbut : plage horaire illisible : 'de 23h a 8h' (attendu HH:MM-HH:MM, par exemple 23:00-08:00)
+```
+
+Une plage qui commence et finit a la meme heure (`08:00-08:00`) est refusee
+aussi : elle veut dire « tout le temps » ou « jamais » selon la personne a qui on
+demande, et ce n'est pas a butbutbut de choisir a sa place.
+
+Sur la ligne de commande, c'est fatal (code 2) : celui qui tape est devant son
+terminal. **Dans le fichier de configuration**, la meme faute est signalee sur la
+sortie d'erreur et la cle est simplement ignoree - le daemon est souvent lance au
+demarrage de la machine, sans personne pour lire l'erreur, et un daemon qui
+refuse de demarrer coute plus cher qu'une plage horaire perdue.
+
+#### Le partage d'ecran : ce qui est detecte, et ce qui ne l'est pas
+
+`--quiet-while-presenting` pose la question au systeme plutot que de la deviner.
+Sous Windows, `SHQueryUserNotificationState` est exactement l'API par laquelle
+Windows repond lui-meme a « est-ce le moment d'afficher une notification ? » : on
+lui pose donc la question telle quelle, et on retient deux de ses reponses.
+
+| Situation | Detectee ? |
+| --- | --- |
+| Mode presentation Windows (videoprojecteur branche, parametres de presentation) | oui |
+| Ecran **duplique** vers un projecteur ou une salle de reunion | oui, via l'assistant de concentration que Windows allume alors tout seul |
+| « Ne pas deranger » / assistant de concentration active a la main | oui |
+| Partage de **fenetre ou d'ecran** depuis Teams, Zoom ou Meet | **non** |
+| macOS, X11, Wayland | **non**, rien du tout |
+
+**Le partage depuis une application de visio n'est pas detectable, et il vaut
+mieux le dire que de le laisser croire.** Windows n'expose rien qui le signale.
+La seule facon d'y arriver serait de guetter le nom de classe de la barre
+flottante de chaque application (`ZPToolBarParentWnd` et compagnie) : cette
+heuristique-la tombe a la premiere mise a jour de Zoom, et se declenche de
+travers entre-temps. Ne rien detecter et l'ecrire ici vaut mieux que detecter
+parfois, au hasard.
+
+En pratique, le geste qui marche est donc : **allumer « ne pas deranger » avant
+la visio**. Windows le fait deja pour tout le reste du systeme, et butbutbut le
+suit. C'est aussi ce que Windows allume tout seul quand l'ecran est duplique, le
+cas de la salle de reunion et du videoprojecteur.
+
+Hors de Windows, il n'y a rien a suivre : macOS allume un point orange quand
+l'ecran est capture mais ne le dit a aucune API publique, le partage sous Wayland
+passe par un portail qui ne repond qu'a celui qui a demande le partage, et X11 ne
+sait meme pas qu'un partage existe. L'option y est refusee avec un avertissement,
+comme `--retry-fullscreen`.
+
+Une detection qui echoue **laisse passer la carte** - on retombe sur le
+comportement d'avant l'option - et le journal le note **une fois**, pas a chaque
+releve : un daemon tourne des heures, et une detection cassee qui ecrirait une
+ligne toutes les 25 secondes rendrait le journal illisible le jour ou on en
+aurait justement besoin.
+
+#### Le crochet, lui, part quand meme
+
+`--on-goal` continue de se declencher pendant le silence, contrairement au mode
+sans spoiler qui le coupe. Ce n'est pas un oubli : le silence protege **cet
+ecran** et **ce haut-parleur**, alors qu'une commande qui allume une guirlande,
+pousse une notification sur un telephone ou ecrit dans un tableur n'a aucune
+raison de se taire parce que la machine, elle, dort. Sans cela, `--quiet-hours`
+reviendrait a arreter le daemon. `--spoiler-free`, lui, coupe tout, et pour une
+raison differente : la, c'est le resultat qu'on ne veut pas connaitre, ou qu'il
+arrive.
+
+#### `--status` dit quand butbutbut se tait, et pourquoi
+
+C'est la premiere chose qu'on va verifier en croyant a une panne, donc la ligne
+est toujours la, meme quand rien ne fait taire :
+
+```
+  silence     : plage 23:00-08:00 - en veille jusqu'a 08:00
+  silence     : plage 23:00-08:00 - rien en ce moment
+  silence     : presentation ou ecran duplique - mode presentation
+  silence     : aucun (voir --quiet-hours)
+```
+
+Le journal dit la meme chose, et **seulement quand ca change** :
+
+```
+2026-09-06 23:00:14  silence : en veille jusqu'a 08:00
+2026-09-07 08:00:22  fin du silence : les cartes et le son repassent
+```
+
+#### Les trois fois ou butbutbut se demande « est-ce le moment ? »
+
+Ce sont trois formes d'une meme question, et elles se cumulent - d'ou un seul
+point de decision dans le code (`butbutbut/silence.py`) plutot que trois branches
+eparpillees. Elles ne rendent pas le meme verdict, et c'est voulu :
+
+| Question | Reglage | Verdict |
+| --- | --- | --- |
+| Quelle heure est-il ? | `--quiet-hours` | rien a l'ecran, rien au son |
+| Quelqu'un regarde-t-il cet ecran ? | `--quiet-while-presenting` | rien a l'ecran, rien au son |
+| La carte serait-elle seulement visible ? | `--retry-fullscreen` | la carte part **quand meme**, et peut repasser plus tard |
+
+Le sens du doute change avec la question. Se tromper sur le plein ecran ferait
+manquer un but pour rien, donc la carte passe ; se tromper a 2 h du matin ou
+pendant une presentation coute bien plus cher, donc on se tait. Et un jeu en
+plein ecran n'est jamais compte comme une presentation : personne d'autre ne le
+regarde, et rendre butbutbut muet pendant un match joue en plein ecran reviendrait
+a le couper exactement quand il sert.
+
+**Le silence ne concerne que le daemon.** `--test` et `--replay` affichent leurs
+cartes a 3 h du matin comme a midi : ce sont des commandes qu'on vient de taper,
+et les taire ressemblerait a une panne.
+
+Les deux reglages ont leur cle de configuration :
+
+```ini
+[butbutbut]
+quiet_hours = 23:00-08:00
+quiet_while_presenting = oui
+```
+
 ### Les prochains matchs
 
 `--scores` dit ce qui se joue aujourd'hui. `--next` repond a la question
@@ -879,6 +1041,10 @@ no_overlay = non
 no_phase_cards = non
 catch_up = non
 quiet = non
+
+# Ne pas deranger : la nuit, et quand on presente
+quiet_hours = 23:00-08:00
+quiet_while_presenting = non
 ```
 
 **La ligne de commande garde toujours la priorite** : `ligne de commande >
@@ -1444,6 +1610,10 @@ ete tenue exactement quand elle ne servait a rien.
 > cartes s'affichent comme avant, sans ligne de journal supplementaire, et
 > `--retry-fullscreen` y est refuse avec un avertissement.
 
+C'est la premiere des trois fois ou butbutbut se demande "est-ce le moment ?" -
+les deux autres sont l'heure qu'il est et le regard des autres, et elles n'ont
+pas le meme verdict : voir [Ne pas deranger](#ne-pas-deranger).
+
 ---
 
 ## Enregistrer un match, et le rejouer
@@ -1848,6 +2018,118 @@ dans le total, jamais dans le classement, et le pied de sortie les annonce.
 
 ---
 
+## Les formes du journal
+
+Le journal accumule des mois de buts. `--today`, `--week`, `--month`, `--since`
+et `--top-scorers` les relisent, mais tous les cinq rendent une **liste** : un
+but, une ligne, dans l'ordre ou ils sont tombes. Or un tas de buts a des formes
+qu'aucune liste ne montre. Est-ce qu'on marque vraiment plus en fin de match ?
+Quelle competition remplit le journal ? Quelle a ete la meilleure soiree de
+l'ete ? `--stats` regarde les memes lignes en tas.
+
+```bash
+butbutbut --stats                     # tout le journal
+butbutbut --stats --week              # sur les 7 derniers jours
+butbutbut --stats --since 2026-08-09  # depuis cette date
+butbutbut --stats --teams om          # seulement les matchs de l'OM
+```
+
+```
+butbutbut : ce que le journal raconte du dim. 09/08/2026 au lun. 07/09/2026
+
+Par minute de match
+    1-10  #######                                 6   4%
+   11-20  #####                                   4   3%
+   21-30  ##############                         12   8%
+   31-40  ######################                 18  13%
+   41-50  #########################              21  15%
+   51-60  ###################                    16  11%
+   61-70  ##############                         12   8%
+   71-80  #############################          24  17%
+   81-90  ####################################   30  21%
+
+Par competition
+  Ligue 1              ####################################   43  30%
+  Premier League       ################################       38  27%
+  LaLiga               ######################                 26  18%
+  Bundesliga           ##################                     22  15%
+  Serie A              #######                                 8   6%
+  Ligue des champions  #####                                   6   4%
+
+Les soirees les plus prolifiques
+  mer. 19/08/2026    15 but(s)
+  ven. 21/08/2026    14 but(s)
+  mer. 12/08/2026    12 but(s)
+
+Nature des buts
+  But                       113  79%
+  But contre son camp        11   8%
+  Penalty                    19  13%
+
+143 but(s) confirme(s) sur 144 signale(s), dans 6 competition(s).
+53 match(s) avec au moins un but signale, 2.7 but(s) par match.
+Un 0-0 ne laisse aucune trace dans le journal, ni dans cette moyenne.
+1 but(s) retire(s) par la VAR, deduit(s) de tout ce qui precede.
+17 but(s) dans le temps additionnel, comptes dans la tranche de leur minute.
+```
+
+**Des tranches de dix minutes**, parce que c'est la maille ou le football se
+raconte : "juste avant la mi-temps", "dans le dernier quart d'heure". A la
+minute pres il faudrait quatre-vingt-dix lignes pour ne montrer que du bruit.
+Un but a `90+3'` reste un but de la 90e et va dans la tranche `81-90` : le
+sortir ailleurs aplatirait justement la bosse qu'on vient voir. Et
+l'histogramme couvre toujours les quatre-vingt-dix minutes, meme quand la
+fenetre n'a que trois buts a la 12e : une tranche vide est une forme elle
+aussi, et s'arreter au dernier but l'effacerait. Une prolongation, elle,
+allonge le cadre jusqu'a la 120e.
+
+**Une soiree n'est pas un jour de calendrier.** Le journal change de jour a
+minuit, une soiree de football non : un coup d'envoi a 21h qui part en
+prolongation, une affiche sud-americaine, un match de NHL vu depuis l'Europe.
+Le but de 23h50 et celui de 00h12 sont de la meme soiree, et compter par date
+en ferait deux demi-soirees dont aucune n'a existe. Six heures du matin coupe
+la nuit. **Trois soirees sont nommees**, et les ex aequo de la troisieme sont
+comptees en une ligne de plus - `... et 17 autre(s) soiree(s) a 6 but(s).` Les
+nommer toutes chasserait le reste de la sortie hors de l'ecran un soir de
+multiplex ; s'arreter a trois sans compter les autres laisserait croire a un
+podium qui n'existe pas.
+
+**Un but refuse par la VAR ne compte nulle part**, exactement comme dans
+[le classement des buteurs](#le-classement-des-buteurs) : le rattachement
+positionnel est le meme code, pas un second. Ni dans l'histogramme, ni dans la
+competition, ni dans la soiree. Les annulations dont le but est tombe avant
+l'ouverture de la fenetre sont annoncees a part.
+
+**La nature d'un but sort de l'en-tete de sa ligne**, la seule chose qui la
+porte : `BUT SUR PENALTY`, `BUT CONTRE SON CAMP`, `ESSAI`, `PENALITE`, `DROP`.
+Quand la source publie l'action trop tard, le but est ecrit `BUT` et compte
+comme tel : cette part est un plancher, pas un total exact. Une seule nature
+dans la fenetre n'a pas droit a son tableau - "143 buts sur 143 sont des buts"
+n'apprend rien.
+
+**Et ce qui n'est pas la n'y est pas par honnetete.** Le journal n'ecrit que ce
+qui bouge : un 0-0 n'y laisse pas une ligne, donc `--stats` ne connait aucun
+match sans but, et sa moyenne est celle des matchs **ou un but est tombe** -
+mecaniquement plus haute que celle d'une saison, ce que le pied de sortie dit
+en toutes lettres. Le passeur, le pied, la distance, la possession : la source
+ne les publie pas, personne ne peut donc les compter ici. Une minute que le
+journal n'ecrit pas comme une minute de jeu - l'horloge d'un match de hockey,
+un libelle de phase, une ligne d'une version qu'on ne sait plus lire - reste
+hors de l'histogramme, et le pied de sortie la compte plutot que de la faire
+entrer de travers.
+
+**Le calcul se fait hors reseau** : tout est deja dans le fichier. Une reserve,
+la meme que pour `--top-scorers` : nommer une equipe fait d'abord verifier ce
+nom aupres du catalogue, et cette verification-la, elle, demande le reseau.
+C'est voulu - `--stats --teams om` qui rendrait une page vide sur une faute de
+frappe serait pire que muet - et une source injoignable le dit puis laisse
+passer. Sans `--teams` ni `--exclude-teams`, rien ne sort de la machine.
+
+Un journal absent, vide, ou dont aucune ligne ne tombe dans la fenetre le dit
+en toutes lettres, comme `--today`.
+
+---
+
 ## Journal
 
 ```
@@ -1963,7 +2245,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**937 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1024 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
