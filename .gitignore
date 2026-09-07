@@ -9,3 +9,7 @@ venv/
 packaging/*.pkg.tar.*
 packaging/src/
 packaging/pkg/
+
+# Reglages personnels de Claude Code, et ses worktrees de travail
+.claude/settings.local.json
+.claude/worktrees/
