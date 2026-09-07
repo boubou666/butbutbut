@@ -1885,6 +1885,21 @@ class TestNamedSound(unittest.TestCase):
         rows = dict(cli._named_arming(cli.sound_assignments(args), args))
         self.assertIn("introuvable", rows["om -> cri.wav"])
 
+    def test_status_is_not_refused_when_a_named_file_is_gone(self):
+        # Le meme cas, mais par la vraie ligne de commande : le refus au
+        # demarrage vaut pour tout le monde SAUF --status, sans quoi la seule
+        # commande capable de repondre "voila ce qui cloche" sortirait en 2
+        # avant d'avoir rien affiche. Le test ci-dessus, lui, appelle
+        # _named_arming() en direct : il ne verrait pas ce refus-la.
+        cri = self.cri()
+        cri.unlink()
+        code, printed, complained = self.run_cli(
+            ["--status", "--sound-for", "om=" + str(cri), "--leagues", "l1"])
+        self.assertEqual(code, 0)
+        self.assertIn("om -> cri.wav", printed)
+        self.assertIn("introuvable", printed)
+        self.assertNotIn("introuvable", complained)
+
 
 def fixtures(*rows, **kwargs):
     """Des matchs a venir, tels que la source les decrit.

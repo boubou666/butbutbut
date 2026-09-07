@@ -2688,8 +2688,12 @@ def main(argv=None) -> int:
     except sound.Invalid as exc:
         print(tr("butbutbut : {}", exc), file=sys.stderr)
         return 2
+    # --status echappe seul a ce refus : c'est la commande dont le travail est
+    # justement de dire ce qui cloche. Refuser de la lancer reviendrait a nier
+    # la reponse a la question qu'on vient de poser - et le chemin fautif est
+    # de toute facon nomme, ligne par ligne, dans ce qu'elle affiche.
     problems = sound.check_assignments(named)
-    if problems:
+    if problems and not args.status:
         for message in problems:
             print(tr("butbutbut : {}", message), file=sys.stderr)
         return 2

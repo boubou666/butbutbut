@@ -37,7 +37,9 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - Cle durable `sound_for` dans le fichier de configuration : toutes les paires
   dans une seule cle, separees par des virgules ou une par ligne. Une virgule
   ne coupe que devant une nouvelle paire, pour qu'un chemin qui en contient une
-  reste ecrivable. `--status` dit ce que chaque paire arme, et ce qui cloche.
+  reste ecrivable. `--status` dit ce que chaque paire arme, et ce qui cloche -
+  c'est la seule commande que le refus au demarrage epargne, sans quoi la seule
+  capable de repondre sortirait en erreur avant d'avoir rien affiche.
 - `--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
   sons nommes.
 

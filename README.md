@@ -1021,6 +1021,14 @@ butbutbut --status            # ce que chaque paire arme, et ce qui cloche
                 ucl -> hymne.mp3       les buts de Ligue des champions
 ```
 
+Et c'est bien `--status` qui le dit, meme quand ca cloche : un chemin fautif est
+refuse au demarrage de toutes les commandes **sauf celle-la**. Sortir en erreur
+devant la seule commande a qui on pose justement la question reviendrait a
+refuser d'y repondre ; elle affiche donc la paire en cause, avec ce qu'elle a -
+`om -> om.wav  quand cette equipe marque  (fichier introuvable)`. C'est le cas
+qui compte, parce que le demarrage remonte parfois a des semaines et qu'un
+disque externe se debranche.
+
 Dans le fichier de configuration, tout tient dans une seule cle - separee par
 des virgules, ou une paire par ligne quand la liste s'allonge :
 
@@ -2332,7 +2340,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1073 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1074 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

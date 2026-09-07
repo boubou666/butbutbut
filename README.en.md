@@ -1020,6 +1020,14 @@ butbutbut --status            # what each pair arms, and what is wrong with it
                 ucl -> hymne.mp3       les buts de Ligue des champions
 ```
 
+And `--status` does say so even when something is wrong: a faulty path is
+refused at startup by every command **except that one**. Erroring out in front
+of the only command you asked the question of would amount to refusing to
+answer; it prints the offending pair instead, with what it has -
+`om -> om.wav  quand cette equipe marque  (fichier introuvable)`. That is the
+case that matters, because startup was sometimes weeks ago and external drives
+get unplugged.
+
 In the configuration file everything fits in a single key - comma-separated, or
 one pair per line once the list grows:
 
@@ -2324,7 +2332,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1073 tests**, with no network and no screen: the source is simulated by an
+**1074 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
