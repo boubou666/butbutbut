@@ -654,11 +654,15 @@ def do_replay(args) -> int:
                     quiet=args.quiet)
 
         crest = crest_cache(args)
+        # Le rejeu emprunte les memes chemins que le direct, carte epinglee
+        # comprise : c'est justement la qu'on la regle sans attendre un match.
+        pin = pinned.Pin(args.pin,
+                         on_log=lambda message: log(message, quiet=args.quiet))
         try:
             if stack is None:
-                _watch_headless(guard, args, pace, reporter)
+                _watch_headless(guard, args, pace, reporter, pin)
             else:
-                _watch_with_cards(guard, args, pace, stack, reporter, crest)
+                _watch_with_cards(guard, args, pace, stack, reporter, pin, crest)
         except KeyboardInterrupt:
             log("rejeu interrompu.", quiet=args.quiet)
         finally:
