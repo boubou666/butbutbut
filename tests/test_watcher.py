@@ -186,9 +186,10 @@ class TestMatchPhases(unittest.TestCase):
         self.assertEqual(events[0].extra_lines(), [])
         self.assertEqual(events[0].detail_line(), "")
 
-    def test_only_the_kickoff_looks_back(self):
-        # A la mi-temps, ce qui vient de se passer est plus interessant que ce
-        # qui s'est passe le mois dernier.
+    def test_nothing_looks_back_once_the_ball_has_rolled(self):
+        # Avant le premier ballon, la forme des deux clubs est ce qu'on a de
+        # mieux a dire. A la mi-temps, ce qui vient de se passer est plus
+        # interessant que ce qui s'est passe le mois dernier.
         for first, second in (({"state": "in"},
                                {"state": "in", "status_name": "STATUS_HALFTIME"}),
                               ({"state": "in"}, {"state": "post"})):
@@ -547,6 +548,24 @@ class TestPrematchCard(unittest.TestCase):
         # prime() photographie : meme dans la fenetre, rien ne sort.
         guard = make_watcher(self.state, before_kickoff=10 * 60.0)
         self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_the_card_carries_the_form_under_the_countdown(self):
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            home_form="LLWWW", away_form="WWDWL",
+            home_record="1-0-2", away_record="2-1-0"))
+        events = self.guard().refresh(LIGUE1)
+        # Le compte a rebours reste la troisieme ligne : c'est ce pour quoi la
+        # carte existe, la forme passe dessous.
+        self.assertEqual(events[0].detail_line(), "Coup d'envoi dans 5 min")
+        self.assertEqual(events[0].extra_lines(),
+                         ["Angers : PPGGG  1G 0N 2P",
+                          "Stade Rennais : GGNGP  2G 1N 0P"])
+
+    def test_a_prematch_the_source_says_nothing_about_keeps_its_countdown(self):
+        events = self.guard().refresh(LIGUE1)
+        self.assertEqual(events[0].extra_lines(), [])
+        self.assertEqual(events[0].detail_line(), "Coup d'envoi dans 5 min")
 
     def test_a_match_too_far_away_says_nothing(self):
         self.state["payload"] = payload(event(state="pre", date=in_minutes(45)))

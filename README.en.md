@@ -1360,9 +1360,11 @@ source says nothing about gets no line, and the card then goes back to being
 exactly what it was - which is the whole of hockey, whose scoreboard publishes
 neither form nor record. Rugby has its form but not its record.
 
-It is the only card that looks backwards, and that is deliberate: at half-time
-or at full-time, what has just happened is more interesting than what happened
-last month.
+The [pre-match card](#the-pre-match-announcement) says the same thing, under its
+countdown. Those two are the only ones that look backwards, and that is
+deliberate: they are the only two where the match has nothing to say about
+itself. From half-time on, what has just happened is more interesting than what
+happened last month.
 
 The **full-time** card goes a little further: it lists each side's scorers
 under the score, because a bare `1 - 2` does not say who scored, and that is
@@ -1550,7 +1552,15 @@ should already have kicked off would be a lie.
 LE MATCH VA COMMENCER   LIGUE 1
 Angers              0 - 0              Stade Rennais
 Coup d'envoi dans 5 min
+Angers : PPGGG  1G 0N 2P
+Stade Rennais : GGNGP  2G 1N 0P
 ```
+
+The countdown stays on the third line - it is what the card exists for - and
+the form of both sides goes underneath, as at
+[kick-off](#the-key-moments-of-a-match). It is the tallest card in the
+programme, and the only one whose height depends on what the source publishes:
+a match it says nothing about gives back the three lines from before.
 
 Like the red card, this card has its own switch and does not depend on
 `--no-phase-cards`. Set to more than a quarter of an hour ahead, it also
@@ -3086,7 +3096,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1461 tests**, with no network and no screen: the source is simulated by an
+**1463 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
@@ -3107,10 +3117,11 @@ neither into the name nor into the score. Each one is right, none of them says
 what the card looks like, and a two-pixel shift slipped between them without a
 single test blinking.
 
-So nine cards are frozen as **ASCII blueprints** under `tests/plans/`: the
-goal card, the pinned card, kick-off, full time, a rugby card, a card with red
-cards on both sides, names long enough to be truncated, and the goal card at
-two other `--scale` values. Every blueprint carries a drawing and a table.
+So ten cards are frozen as **ASCII blueprints** under `tests/plans/`: the goal
+card, the pinned card, the pre-match card, kick-off, full time, a rugby card, a
+card with red cards on both sides, names long enough to be truncated, and the
+goal card at two other `--scale` values. Every blueprint carries a drawing and
+a table.
 
 ```
      0         80        160       240       320       400       480
@@ -3148,7 +3159,7 @@ scenarios' cards are written in `tests/blueprint.py` rather than built by
 `Card.from_event`, because a blueprint freezes a geometry and has no business
 breaking the day a translation changes.
 
-After a deliberate layout change, **one** command regenerates the nine
+After a deliberate layout change, **one** command regenerates the ten
 blueprints:
 
 ```bash

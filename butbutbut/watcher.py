@@ -82,6 +82,13 @@ PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
 # couper les temps forts ne doit pas couper ce qu'on a explicitement demande.
 SOBER = PHASES + (RED_CARD, PREMATCH, CATCHUP)
 
+# Les deux cartes qui regardent en arriere : celles d'avant le premier ballon.
+# Le match n'a rien a raconter sur lui-meme - 0 - 0, aucune action, le titre a
+# tout dit - et c'est la seule fenetre ou la forme des deux clubs vaut mieux
+# qu'un blanc. Des la mi-temps, ce qui vient de se passer est plus interessant
+# que ce qui s'est passe le mois dernier.
+LOOKING_BACK = (PREMATCH, KICKOFF)
+
 # Une cle de traduction par sorte d'evenement : la formulation vit dans
 # i18n.py, pas ici.
 TITLE_KEYS = {
@@ -201,7 +208,7 @@ def _record_text(record, lang=None) -> str:
 
 
 def _form_lines(match, lang=None) -> list:
-    """Une ligne par camp au coup d'envoi : sa forme, puis son bilan.
+    """Une ligne par camp avant le match : sa forme, puis son bilan.
 
     Un camp dont la source ne dit rien n'a pas de ligne, et une carte de hockey
     n'en a donc aucune - exactement la carte qu'elle etait avant. C'est la
@@ -427,11 +434,12 @@ class Event:
     def extra_parts(self, lang=None) -> list:
         """Les lignes supplementaires de la carte, en morceaux.
 
-        Trois cartes en ont. La fin du match, parce que le score seul ne dit
+        Quatre cartes en ont. La fin du match, parce que le score seul ne dit
         pas qui a marque, alors que c'est la premiere chose qu'on cherche quand
         on n'a pas vu le match ; un camp sans but n'a pas de ligne du tout. Le
-        rattrapage de sortie de veille, une ligne par match qui a bouge. Et le
-        coup d'envoi, une ligne par camp : sa forme et son bilan.
+        rattrapage de sortie de veille, une ligne par match qui a bouge. Et les
+        deux cartes d'avant le premier ballon - l'avant-match et le coup
+        d'envoi - une ligne par camp : sa forme et son bilan.
 
         Ni l'une ni l'autre ne borne sa liste ici : c'est `overlay._layout` qui
         coupe, sur la hauteur (MAX_EXTRA_LINES) comme sur la largeur (des
@@ -442,12 +450,12 @@ class Event:
             # se repete pas ici.
             return [_change_parts(change, full=True, lang=lang)
                     for change in self.changes[1:]]
-        if self.kind == KICKOFF:
-            # Le seul moment du match ou l'on n'a rien a raconter sur le match
-            # lui-meme : 0 - 0, aucune action, et le titre a tout dit. C'est la
-            # que la forme des deux clubs a sa place, et nulle part ailleurs -
-            # a la mi-temps, ce qui vient de se passer est plus interessant que
-            # ce qui s'est passe le mois dernier.
+        if self.kind in LOOKING_BACK:
+            # L'avant-match et le coup d'envoi, et rien d'autre : voir
+            # LOOKING_BACK. L'avant-match garde son compte a rebours en
+            # troisieme ligne (detail_parts) et pose la forme SOUS lui - le
+            # temps qui reste est ce pour quoi la carte existe, il passe
+            # devant.
             return _form_lines(self.match, lang=lang)
         if self.play is not None and self.play.assists:
             # Les passeurs prennent une ligne a eux plutot que la fin de celle
