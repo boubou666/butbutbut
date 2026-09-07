@@ -24,13 +24,21 @@ l'annonce d'un coup d'envoi imminent. Les deux derniers sont a la demande.
 La cadence s'adapte : rapide quand un match est en cours, lente quand il n'y a
 rien a regarder. Chaque championnat a son propre rythme, donc on n'interroge
 pas la Bundesliga toutes les 25 s un mardi soir de Ligue 1.
+
+Tout ceci vaut pour les trois sports ouverts (voir sports.py), sans une ligne
+de plus : la detection ne regarde que le score, et un score qui monte est un
+score qui monte, qu'il gagne 1 au football et au hockey ou 5 au rugby. Ce qui
+change d'un sport a l'autre, ce sont les mots - le titre de la carte et le
+texte du buteur -, et ils sont demandes au sport, jamais decides ici. Un sport
+qui ne publie aucune action (le hockey) ou qui n'a pas de mi-temps (le hockey
+encore) se contente donc de moins de cartes ; rien ne s'y desactive a la main.
 """
 
 from __future__ import annotations
 
 import time
 
-from . import espn, i18n
+from . import espn, i18n, sports
 
 DEFAULT_INTERVAL = 25.0        # un match est en cours
 DEFAULT_IDLE_INTERVAL = 300.0  # rien en cours dans ce championnat
@@ -74,15 +82,26 @@ TITLE_KEYS = {
 }
 
 
-def title_of(kind, play=None, lang=None) -> str:
-    """Le titre d'une carte, dans la langue demandee (courante par defaut)."""
-    if kind == GOAL and play is not None:
-        if play.own_goal:
-            return i18n.text("title_own_goal", lang=lang)
-        if play.penalty:
-            return i18n.text("title_penalty", lang=lang)
+def title_of(kind, play=None, lang=None, sport=None) -> str:
+    """Le titre d'une carte, dans la langue demandee (courante par defaut).
+
+    Deux niveaux, et dans cet ordre :
+
+      - l'action, quand elle sait se nommer. Un csc, un penalty, un essai, une
+        transformation ne s'annoncent pas comme un but ordinaire, et ce n'est
+        pas le sport qui le dit, c'est l'action elle-meme ;
+      - le sport, sinon. Un score qui monte sans action pour l'expliquer se dit
+        "BUT !" au football et au hockey, "POINTS !" au rugby ; et une pause se
+        dit "MI-TEMPS" ici, "FIN DU TIERS-TEMPS" la.
+
+    Un sport qui n'a rien de particulier a dire retombe sur le vocabulaire du
+    football : c'est le socle, et c'est pour ca que rien n'a bouge pour lui.
+    """
+    sport = sport or sports.DEFAULT
+    if kind == GOAL and play is not None and play.title_key:
+        return i18n.text(play.title_key, lang=lang)
     key = TITLE_KEYS.get(kind)
-    return i18n.text(key, lang=lang) if key else kind.upper()
+    return i18n.text(sport.title_key(key), lang=lang) if key else kind.upper()
 
 # Ce qui declenche une carte de phase : (phase precedente, phase actuelle).
 # Un match jamais vu en cours ne declenche pas de "fin du match" : on n'a rien
@@ -102,13 +121,13 @@ def _scorer_text(play, lang=None) -> str:
 
     Volontairement plus court que Play.summary() : la carte de fin de match en
     aligne plusieurs sur une ligne, "But de " repete trois fois mangerait la
-    place des noms.
+    place des noms. La mention entre parentheses vient de l'action - "csc" et
+    "sp" au football, "essai" et "transf." au rugby, rien pour un but simple.
     """
     who = play.scorer or play.prefix(lang=lang)
-    if play.own_goal:
-        who += " (" + i18n.text("own_goal_short", lang=lang) + ")"
-    elif play.penalty:
-        who += " (" + i18n.text("penalty_short", lang=lang) + ")"
+    mark = play.short_mark(lang=lang)
+    if mark:
+        who += " (" + mark + ")"
     return (who + " " + play.minute) if play.minute else who
 
 
@@ -149,6 +168,10 @@ class Event:
         return self.match.league
 
     @property
+    def sport(self):
+        return self.match.sport
+
+    @property
     def goal(self) -> bool:
         return self.kind == GOAL
 
@@ -164,7 +187,7 @@ class Event:
 
     @property
     def title(self) -> str:
-        return title_of(self.kind, self.play)
+        return title_of(self.kind, self.play, sport=self.sport)
 
     @property
     def minute(self) -> str:
@@ -221,6 +244,14 @@ class Event:
 
         play = self.play
         if play is None:
+            # Rien pour habiller le score. Au rugby, le seul fait qu'il ait
+            # bouge de 5 dit deja qu'un essai vient d'etre marque : le delta
+            # est une information, la ou au football il n'en serait pas une
+            # (un but vaut un but). Le hockey, lui, n'a jamais d'action a
+            # afficher - la source n'en publie pas - et retombe sur la minute.
+            if not self.sport.unit_score and self.delta > 0:
+                return [(i18n.text("points_added", lang=lang,
+                                   points=self.delta), False)]
             minute = self.minute
             if not minute:
                 return []
@@ -267,7 +298,8 @@ class Event:
         changement de langue resterait sinon a moitie illisible pour le
         relecteur.
         """
-        head = title_of(self.kind, self.play, lang=i18n.FALLBACK).rstrip(" !")
+        head = title_of(self.kind, self.play, lang=i18n.FALLBACK,
+                        sport=self.sport).rstrip(" !")
         parts = ["{} [{}] {}".format(head, self.league.name, self.score_line)]
         if self.team:
             parts.append("pour " + self.team)
@@ -331,10 +363,14 @@ class Watcher:
         # les tests ne peuvent pas endormir la machine pour de vrai.
         self.clock = clock or time.time
 
-        self.matches = {}          # slug -> list[Match] du dernier passage
+        # Les competitions sont indexees par leur `ref` et non par leur `slug` :
+        # deux sports pourraient un jour partager un code ESPN, et leurs matchs
+        # se melangeraient dans ces trois dictionnaires. Au football, `ref` vaut
+        # le `slug` - rien n'a bouge de ce cote.
+        self.matches = {}          # ref -> list[Match] du dernier passage
         self._snapshots = {}       # match_id -> _Snapshot
-        self._due = {league.slug: 0.0 for league in self.leagues}
-        self._failures = {league.slug: 0 for league in self.leagues}
+        self._due = {league.ref: 0.0 for league in self.leagues}
+        self._failures = {league.ref: 0 for league in self.leagues}
         self._primed = set()       # championnats deja photographies une fois
         self._planned = 0.0        # attente annoncee a la boucle de surveillance
         self._planned_at = None    # ... et l'heure a laquelle on l'a annoncee
@@ -343,14 +379,14 @@ class Watcher:
 
     def due_leagues(self, now=None) -> list:
         now = now if now is not None else time.monotonic()
-        return [l for l in self.leagues if self._due.get(l.slug, 0.0) <= now]
+        return [l for l in self.leagues if self._due.get(l.ref, 0.0) <= now]
 
     def next_delay(self, now=None) -> float:
         """Secondes a attendre avant le prochain passage, bornees."""
         now = now if now is not None else time.monotonic()
         if not self.leagues:
             return self.idle_interval
-        soonest = min(self._due.get(l.slug, 0.0) for l in self.leagues)
+        soonest = min(self._due.get(l.ref, 0.0) for l in self.leagues)
         return max(1.0, min(60.0, soonest - now))
 
     def plan_wait(self, now=None) -> float:
@@ -407,13 +443,13 @@ class Watcher:
     def live_matches(self) -> list:
         found = []
         for league in self.leagues:
-            found.extend(m for m in self.matches.get(league.slug, []) if m.live)
+            found.extend(m for m in self.matches.get(league.ref, []) if m.live)
         return found
 
     def all_matches(self) -> list:
         found = []
         for league in self.leagues:
-            found.extend(self.matches.get(league.slug, []))
+            found.extend(self.matches.get(league.ref, []))
         return found
 
     # -------------------------------------------------------------- lecture -
@@ -424,24 +460,24 @@ class Watcher:
         try:
             matches = espn.scoreboard(league, timeout=self.timeout, opener=self.opener)
         except espn.SourceError as exc:
-            self._failures[league.slug] = self._failures.get(league.slug, 0) + 1
-            failures = self._failures[league.slug]
+            self._failures[league.ref] = self._failures.get(league.ref, 0) + 1
+            failures = self._failures[league.ref]
             wait = min(MAX_BACKOFF, self.interval * (2 ** min(failures, 4)))
-            self._due[league.slug] = now + wait
+            self._due[league.ref] = now + wait
             if failures in (1, 5) or failures % 20 == 0:
                 self.on_log("{} injoignable ({}) - nouvel essai dans {:.0f}s"
                             .format(league.name, exc, wait))
             return []
 
-        if self._failures.get(league.slug):
+        if self._failures.get(league.ref):
             self.on_log(league.name + " de nouveau joignable")
-        self._failures[league.slug] = 0
+        self._failures[league.ref] = 0
 
-        self.matches[league.slug] = matches
-        self._due[league.slug] = now + self._cadence(matches)
+        self.matches[league.ref] = matches
+        self._due[league.ref] = now + self._cadence(matches)
 
-        primed = league.slug in self._primed
-        self._primed.add(league.slug)
+        primed = league.ref in self._primed
+        self._primed.add(league.ref)
 
         events = []
         for match in matches:
@@ -486,7 +522,7 @@ class Watcher:
         total = len(self.leagues)
         for index, league in enumerate(self.leagues):
             self.refresh(league)
-            self._due[league.slug] += index * SPREAD
+            self._due[league.ref] += index * SPREAD
             if pause and index + 1 < total:
                 time.sleep(pause)
 
@@ -616,10 +652,18 @@ class Watcher:
 
     @staticmethod
     def _pick_play(match, team_id, seen_keys):
-        """La derniere action de cette equipe qu'on n'avait pas encore vue."""
+        """L'action qui explique le mieux le score, parmi celles qu'on n'a pas vues.
+
+        Au football, toutes les actions valent 1 : c'est donc la derniere, et
+        rien n'a change. Au rugby, un essai et sa transformation peuvent tomber
+        dans le meme releve - le score passe de 14 a 21 d'un coup. Annoncer
+        "TRANSFORMATION" parce que c'est la derniere de la liste serait annoncer
+        le detail et taire l'evenement : on garde la plus chere, et la plus
+        recente a valeur egale (d'ou le parcours a l'envers).
+        """
         fresh = [p for p in match.plays_for(team_id) if p.key not in seen_keys]
         if fresh:
-            return fresh[-1]
+            return max(reversed(fresh), key=lambda play: play.points)
         known = match.plays_for(team_id)
         return known[-1] if known else None
 

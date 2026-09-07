@@ -91,6 +91,94 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
     }
 
 
+# --- Les autres sports -------------------------------------------------------
+# Ce que la vraie source publie ailleurs qu'au football, releve sur
+# `hockey/nhl` et sur les competitions de `rugby/<numero>`. Les differences
+# sont exactement celles que espn.py doit encaisser, et elles sont reproduites
+# ici telles quelles - c'est tout l'interet de ces fabriques.
+
+# Rugby : `type.id` porte la nature de l'action, et il n'y a AUCUN drapeau -
+# ni scoringPlay, ni redCard, ni scoreValue.
+RUGBY_TYPE_IDS = {
+    "try": "1",
+    "conversion": "2",
+    "penalty goal": "3",
+    "drop goal": "4",
+    "yellow card": "5",
+    "red card": "6",
+    "player substituted": "7",
+    "substitute on": "8",
+    "start of first half": "9",
+    "end of first half": "10",
+    "start of second half": "11",
+    "end of second half": "12",
+    "drop goal-missed": "37",
+}
+
+
+def rugby_detail(team_id, kind="try", minute="8'", player="L. Carter", index=0):
+    """Une action de rugby, dans la forme exacte de la source.
+
+    Aucun drapeau : c'est `type.id` qui dit s'il s'agit d'un essai, d'une
+    transformation ou d'un remplacement. Lue avec le lecteur du football, une
+    telle action ne serait tout simplement pas vue.
+    """
+    detail = {
+        "type": {"id": RUGBY_TYPE_IDS.get(kind, "0"), "text": kind},
+        "clock": {"value": 60.0 * index, "displayValue": minute},
+        "team": {"id": team_id},
+    }
+    if player:
+        detail["athletesInvolved"] = [{
+            "id": "3" + str(index),
+            "fullName": player,
+            "displayName": player,
+            "shortName": player,
+            "position": "FH",
+            "links": [],
+        }]
+    return detail
+
+
+def hockey_event(match_id="1", home="Boston Bruins", away="Montreal Canadiens",
+                 home_score=0, away_score=0, state="in",
+                 detail="2nd Period - 12:07", clock="12:07", period=2,
+                 date="2026-09-19T23:00Z", status_name="STATUS_IN_PROGRESS"):
+    """Un match de hockey tel que la source le publie.
+
+    Deux ecarts avec le football, et ils sont volontaires :
+
+      - **aucune cle `details`**. La source n'en publie pas pour le hockey, ni
+        pendant le match ni apres : pas de tableau d'actions, donc jamais de
+        buteur. La fabrique ne peut pas en offrir un que la source n'a pas ;
+      - le score est un **entier**, pas une chaine, et l'equipe n'a qu'une
+        seule couleur.
+
+    `period` remplace la mi-temps : 1, 2, 3, puis 4 (prolongation) et 5 (tirs
+    au but).
+    """
+    def side(name, where, score, team_id, color):
+        return {"homeAway": where, "score": score,
+                "team": {"id": team_id, "displayName": name,
+                         "shortDisplayName": name.split()[-1],
+                         "abbreviation": name[:3].upper(), "color": color}}
+
+    return {
+        "id": match_id,
+        "competitions": [{
+            "id": match_id,
+            "date": date,
+            "competitors": [
+                side(home, "home", home_score, "H" + match_id, "231f20"),
+                side(away, "away", away_score, "A" + match_id, "c41230"),
+            ],
+            "status": {"clock": 727.0, "displayClock": clock, "period": period,
+                       "type": {"state": state, "name": status_name,
+                                "shortDetail": detail, "detail": detail}},
+        }],
+    }
+
+
 def payload(*events):
     return {"events": list(events)}
 
@@ -103,13 +191,19 @@ def opener_for(state):
 
 
 def bump(source, side="away", by=1, details=()):
-    """Copie la charge utile en ajoutant `by` but(s) a un cote."""
+    """Copie la charge utile en ajoutant `by` point(s) a un cote.
+
+    `by` vaut 1 au football et au hockey, 5 pour un essai, 3 pour une penalite.
+    Le tableau d'actions n'est cree que s'il y a quelque chose a y mettre : le
+    hockey n'en a pas du tout, et lui en inventer un mentirait sur la source.
+    """
     after = copy.deepcopy(source)
     competition = after["events"][0]["competitions"][0]
     for competitor in competition["competitors"]:
         if competitor["homeAway"] == side:
             competitor["score"] = str(int(competitor["score"]) + by)
-    competition["details"].extend(details)
+    if details:
+        competition.setdefault("details", []).extend(details)
     return after
 
 

@@ -633,6 +633,12 @@ def do_status(args) -> int:
     print(tr("  suivi       : {}", summary))
     if names != summary and len(selection) <= 10:
         print(tr("  competitions: {}", names))
+    followed = leagues.sports_of(selection)
+    if len(followed) > 1:
+        # Une ligne de plus seulement quand il y a de quoi se tromper : suivre
+        # du foot et du hockey en meme temps, ca se dit.
+        print(tr("  sports      : {}",
+                 ", ".join(sport.name for sport in followed)))
     print(tr("  source      : ESPN scoreboard (public, sans cle)"))
     print(tr("  cadence     : {}s en direct / {}s au repos", 
         args.interval, args.idle_interval))
@@ -695,9 +701,9 @@ def do_status(args) -> int:
 
 
 def do_list(args) -> int:
-    """Le catalogue des competitions, avec les noms acceptes."""
+    """Le catalogue des competitions, tous sports confondus."""
     print(tr("butbutbut : competitions surveillables\n"))
-    for title, name, slug, alias in leagues.catalogue_lines():
+    for title, name, slug, alias in leagues.catalogue_lines(all_sports=True):
         if title is not None:
             print(tr("{}:", title))
             continue
@@ -706,8 +712,12 @@ def do_list(args) -> int:
     print(tr("\nExemples :"))
     print("  butbutbut --leagues l1,ucl,ligue2")
     print(tr("  butbutbut --exclude liga,seriea        (les 5 grands moins deux)"))
-    print(tr("  butbutbut --leagues all                (tout le catalogue)"))
+    print(tr("  butbutbut --leagues all                (tout le catalogue de football)"))
+    print(tr("  butbutbut --leagues nhl,top14          (hockey et rugby, a la demande)"))
+    print(tr("  butbutbut --leagues rugby              (tout le rugby du catalogue)"))
+    print(tr("  butbutbut --leagues all-sports         (vraiment tout)"))
     print(tr("  butbutbut --leagues por.1              (n'importe quel code ESPN)"))
+    print(tr("  butbutbut --leagues hockey:nhl         (... y compris dans un autre sport)"))
     return 0
 
 
@@ -778,7 +788,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="butbutbut",
         description=tr("Un but tombe en Ligue 1, Premier League, LaLiga, Serie A "
                        "ou Bundesliga : le son part et le score s'affiche a "
-                       "l'ecran."),
+                       "l'ecran. Le hockey et le rugby sont dans le catalogue, "
+                       "a la demande (voir --list)."),
     )
     parser.add_argument("--version", action="version",
                         version="butbutbut {}".format(__version__))
@@ -816,9 +827,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--leagues", default=None, metavar=tr("LISTE"),
                         help=tr("competitions suivies, separees par des virgules "
-                             "(defaut : les 5 grands championnats). Ex : "
-                             "--leagues l1,pl,ucl ; 'all' pour tout le "
-                             "catalogue ; un code ESPN marche aussi (por.1)"))
+                             "(defaut : les 5 grands championnats de football). "
+                             "Ex : --leagues l1,pl,ucl ; 'all' pour tout le "
+                             "catalogue de football, 'hockey' ou 'rugby' pour "
+                             "un autre sport entier, 'all-sports' pour tout ; "
+                             "un code ESPN marche aussi (por.1, hockey:nhl)"))
     parser.add_argument("--exclude", default=None, metavar=tr("LISTE"),
                         help=tr("competitions a ne pas suivre, meme syntaxe. Ex : "
                              "--exclude liga,seriea"))

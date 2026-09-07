@@ -114,6 +114,26 @@ DEMO = {
               "scorer": "H. Kane", "minute": "56'"},
 }
 
+# La meme chose pour les autres sports, ou l'exemple ne peut pas etre une
+# equipe de football. Chacun apporte aussi son vocabulaire : une carte de
+# demonstration de rugby qui annoncerait "BUT !" ne demontrerait rien.
+#
+# Les identifiants ne sont pas des numeros partout : le hockey range ses
+# ecussons sous l'abreviation du club ("bos"), le rugby sous un numero. C'est
+# `sport.logo_pattern` qui sait lequel (voir sports.py).
+DEMO_BY_SPORT = {
+    "hockey": {"home": ("Boston Bruins", "bos", "231f20", "fdb71a"),
+               "away": ("Montreal Canadiens", "mtl", "c41230", "013a81"),
+               "score": (3, 2), "side": "home",
+               "scorer": "D. Pastrnak", "minute": "12:07",
+               "title": "title_goal", "by": "goal_by"},
+    "rugby": {"home": ("Stade Toulousain", "25922", "000000", ""),
+              "away": ("Stade Francais", "25921", "cc0066", ""),
+              "score": (19, 14), "side": "home",
+              "scorer": "A. Dupont", "minute": "63'",
+              "title": "title_try", "by": "try_by"},
+}
+
 
 class TkinterMissing(RuntimeError):
     """tkinter absent : paquet systeme a installer."""
@@ -239,12 +259,18 @@ class Card:
         from .leagues import LEAGUES
 
         league = league or LEAGUES[0]
-        sample = DEMO.get(league.slug, DEMO["fra.1"])
+        sport = league.sport
+        # Une competition de football sans exemple a elle emprunte celui de la
+        # Ligue 1 ; un autre sport prend l'exemple de son sport, sans quoi une
+        # carte de NHL montrerait Angers contre Rennes.
+        sample = (DEMO.get(league.slug)
+                  or DEMO_BY_SPORT.get(sport.code)
+                  or DEMO["fra.1"])
         home, away = sample["home"], sample["away"]
         scoring = home if sample["side"] == "home" else away
 
         return cls(
-            title=i18n.text("title_goal"),
+            title=i18n.text(sample.get("title", "title_goal")),
             league=league.label,
             minute=sample["minute"],
             home=home[0],
@@ -252,12 +278,13 @@ class Card:
             home_score=sample["score"][0],
             away_score=sample["score"][1],
             side=sample["side"],
-            detail=[(i18n.text("goal_by"), False), (sample["scorer"], True)],
+            detail=[(i18n.text(sample.get("by", "goal_by")), False),
+                    (sample["scorer"], True)],
             accent=league.accent,
             team_accent=crests.pick_accent(scoring[2], scoring[3],
                                            league.accent, CARD_BG),
-            home_logo=_crest(crest, espn.logo_url(home[1])),
-            away_logo=_crest(crest, espn.logo_url(away[1])),
+            home_logo=_crest(crest, espn.logo_url(home[1], sport)),
+            away_logo=_crest(crest, espn.logo_url(away[1], sport)),
         )
 
     def text_line(self) -> str:

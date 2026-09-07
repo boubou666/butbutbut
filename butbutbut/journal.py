@@ -22,14 +22,39 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from . import watcher
+from . import i18n, watcher
 
-# Les en-tetes que log_line() peut poser devant un but. "BUT ANNULE" avant
-# "BUT" : l'alternance s'arrete au premier motif qui colle.
-HEADS = (
-    ("BUT ANNULE", watcher.CANCELLED),
-    ("BUT", watcher.GOAL),
-)
+# Les cles de titre que log_line() peut poser devant un score qui bouge. Le
+# journal est toujours ecrit en francais, mais on prend les libelles dans le
+# catalogue plutot qu'en dur : une reformulation ne doit pas rendre muet
+# `--today` sans que rien ne le dise.
+#
+# Le rugby en apporte quatre (essai, transformation, penalite, drop) et le
+# hockey aucune : un but de hockey se dit "but", comme au football.
+_GOAL_KEYS = ("title_goal", "title_own_goal", "title_penalty", "title_points",
+              "title_try", "title_conversion", "title_penalty_goal",
+              "title_drop_goal")
+_CANCELLED_KEYS = ("title_cancelled", "title_points_cancelled")
+
+
+def _heads() -> tuple:
+    """Les en-tetes reconnus, du plus long au plus court.
+
+    L'ordre compte peu - le motif exige un " [" derriere l'en-tete, donc "BUT"
+    ne mord pas sur "BUT ANNULE [" - mais le garder decroissant met le lecteur
+    a l'abri d'un futur libelle qui serait prefixe d'un autre.
+    """
+    found = []
+    for keys, kind in ((_CANCELLED_KEYS, watcher.CANCELLED),
+                       (_GOAL_KEYS, watcher.GOAL)):
+        for key in keys:
+            head = i18n.text(key, lang=i18n.FALLBACK).rstrip(" !")
+            if head and (head, kind) not in found:
+                found.append((head, kind))
+    return tuple(sorted(found, key=lambda row: -len(row[0])))
+
+
+HEADS = _heads()
 
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\s\s+(.+)$")
 _SCORE = re.compile(r"^(?P<home>.+?) (?P<home_score>\d+) - (?P<away_score>\d+) "
