@@ -364,8 +364,16 @@ def crest_cache(args, on_log=None):
 
     Toujours un objet, jamais None : c'est lui qui decide de ne rien faire,
     l'appelant n'a pas a s'en soucier a chaque but.
+
+    C'est ici que la taille d'affichage voyage jusqu'au cache : overlay sait
+    quel cote un ecusson occupera a ce --scale, crests sait quoi en faire, et
+    aucun des deux n'a besoin de connaitre l'autre. L'import est local comme
+    partout ailleurs dans ce fichier - --status ne doit pas payer overlay pour
+    afficher un chemin.
     """
+    from . import overlay
     return crests.Cache(paths()["logos"], enabled=not args.no_logos,
+                        size=overlay.crest_size(args.scale),
                         on_log=on_log or (lambda message: None))
 
 

@@ -7,6 +7,57 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Modifie
+
+- **Les ecussons sont telecharges a la taille ou ils s'affichent : sept fois
+  moins d'octets.** ESPN publie ses ecussons en 500x500 et sert le meme
+  fichier redimensionne cote serveur (`combiner/i?img=...&h=64&w=64`), quand
+  une carte n'en montre jamais plus de quelques dizaines de pixels. Mesure
+  contre la vraie source sur cinq ecussons - trois de football, un de hockey,
+  un de rugby : **185 031 -> 25 071 octets**, soit 37,0 ko -> 5,0 ko par club.
+  L'image y gagne aussi : tkinter ne reduit qu'en rapports entiers, et diviser
+  un 64x64 par deux rend mieux que diviser un 500x500 par quinze.
+- **La reserve qui retenait cette piste est levee, pas contournee.** C'est une
+  URL qu'on *fabrique*, la ou le projet prefere partout celle que la source
+  annonce : elle n'est donc traitee que comme une preference.
+  `crests.combiner_url()` ne fabrique que ce qu'il sait manipuler - un chemin
+  d'image d'`espncdn.com`, et rien d'autre : un autre hote, une extension
+  inconnue, un parametre de requete deja present ne produisent aucune URL. Et
+  `crests.Cache.fetch_now()` essaie l'URL fabriquee d'abord, celle qu'ESPN
+  annonce ensuite : un 404, un corps vide, une reponse qui n'est pas un PNG
+  exploitable ne coutent qu'une requete perdue. Un ecusson casse ne peut donc
+  pas apparaitre - il n'entre pas dans le cache.
+- **La taille demandee suit `--scale`.** Demander 64 pixels pour un ecusson
+  affiche a 160 serait une regression visible. `overlay.crest_size()` deduit
+  de `--scale` le cote qu'un ecusson occupera - sans racine tkinter, parce que
+  `--test` telecharge avant d'ouvrir une fenetre - et `cli.crest_cache()` le
+  porte jusqu'au cache. `crests.py` ne connait toujours que des pixels, et ne
+  sait rien de la facon dont une carte est dessinee.
+- **Le cache d'ecussons est indexe par (URL, taille)** et non plus par la
+  seule URL : le meme ecusson en 64 et en 256 sont deux fichiers, sinon un
+  `--scale` change d'un jour a l'autre servirait l'image de l'autre taille
+  sans jamais la remplacer. C'est l'URL *annoncee* qui est condensee, jamais
+  celle qu'on fabrique, pour que le repli range son image au meme endroit.
+  Consequence assumee : les ecussons deja sur le disque ne sont plus
+  consultes. Ils sont remplaces au fil des buts par des fichiers sept fois
+  plus legers, il n'y a rien a faire, et le dossier reste effacable a tout
+  moment - c'etait deja sa promesse.
+- **Pas d'option pour desactiver le redimensionnement.** Elle n'aurait servi
+  qu'a eteindre a la main quelque chose qui s'eteint tout seul des que la
+  source ne suit plus, et `--no-logos` couvre deja le refus de telecharger.
+  Une option durable coute une ligne dans le fichier de configuration, deux
+  dans les README et un test : celle-la n'aurait rien achete.
+- **Un PNG doit maintenant avoir son entete IHDR** et des dimensions non
+  nulles pour entrer dans le cache, la signature seule ne suffit plus. C'est
+  ce qui distingue une image d'un debut d'image, et c'est ce qui declenche le
+  repli sur l'URL annoncee.
+- 1335 -> **1353 tests** : la fabrication de l'URL depuis un href reel de
+  football, de hockey et de rugby, les formes qu'on refuse de manipuler, le
+  repli sur cinq facons de mal repondre, l'echelle des tailles, la taille qui
+  ne descend jamais sous ce que la carte affichera, deux tailles qui ne
+  s'ecrasent pas, l'ancien nom de fichier conserve quand aucune taille n'est
+  demandee, et l'ecusson qui n'existe nulle part - toujours sans consequence.
+
 ## [1.11.0] - 2026-09-07
 
 ### Ajoute

@@ -14,9 +14,11 @@ Deux choses qui vont ensemble, parce qu'elles viennent de la meme source :
     carte ne doit JAMAIS attendre le reseau : un but s'affiche dans la seconde.
     Les ecussons sont donc servis depuis un cache disque, et un ecusson encore
     inconnu part se telecharger dans un fil de fond - la carte du moment se
-    passe de lui, celle du prochain but l'aura.
+    passe de lui, celle du prochain but l'aura. Ce qu'on telecharge est
+    demande a la taille ou la carte l'affichera, pas en 500x500 : voir le
+    combineur, plus bas.
 
-Rien qu'urllib, hashlib et threading : zero dependance, comme le reste.
+Rien qu'urllib, hashlib, struct et threading : zero dependance, comme le reste.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import struct
 import threading
 import urllib.request
 from pathlib import Path
@@ -120,6 +123,86 @@ def _download(url: str, timeout: float) -> bytes:
         return response.read(MAX_BYTES + 1)
 
 
+def _usable_png(data: bytes) -> bool:
+    """Vrai si tkinter a une chance d'ouvrir ces octets.
+
+    La signature seule ne suffit pas : une page d'erreur deguisee, une reponse
+    coupee en chemin, une image que le redimensionneur a rendue dans un autre
+    format passeraient. On exige donc l'entete IHDR a sa place et des
+    dimensions non nulles - c'est ce qui separe une image d'un debut d'image,
+    et c'est aussi ce qui declenche le repli sur l'URL annoncee.
+    """
+    if not data.startswith(PNG_MAGIC) or len(data) < 24:
+        return False
+    if data[12:16] != b"IHDR":
+        return False
+    width, height = struct.unpack(">II", data[16:24])
+    return width > 0 and height > 0
+
+
+# ------------------------------------------------------------- combineur ----
+
+# ESPN publie ses ecussons en 500x500 et sert le meme fichier redimensionne
+# cote serveur, par ce qu'il appelle un combineur. Une carte n'affiche jamais
+# un ecusson plus grand que quelques dizaines de pixels : demander la bonne
+# taille fait passer les cinq ecussons du releve de 185 ko a 25 ko.
+#
+# La reserve qui a longtemps retenu cette piste tient en une phrase : c'est une
+# URL qu'on FABRIQUE, la ou le projet prefere partout celle que la source
+# annonce. Elle est donc traitee comme une preference, pas comme une verite :
+# des qu'elle ne rend pas un PNG exploitable, `fetch_now` reprend l'annonce et
+# rien ne se voit sur la carte. On ne fabrique d'ailleurs que ce qu'on sait
+# manipuler - un href d'une autre forme n'en produit aucune.
+COMBINER = "https://a.espncdn.com/combiner/i?img={path}&h={size}&w={size}"
+
+ESPNCDN_IMAGE = re.compile(
+    r"^https?://[a-z0-9-]+\.espncdn\.com(/i/[a-z0-9._/-]+\.png)$",
+    re.IGNORECASE)
+
+# Les tailles qu'on demande, plutot que la taille exacte de l'affichage. Le
+# cache etant indexe par (URL, taille), un barreau par pixel ferait retourner
+# tout le monde au reseau au moindre reglage de --scale ; trois barreaux
+# suffisent a couvrir de la carte minuscule a la carte de projection. Au-dela
+# du dernier, on reprend l'original : le combineur ne ferait que l'agrandir.
+SIZES = (64, 128, 256)
+
+
+def fit_size(target):
+    """Le barreau a demander pour un ecusson affiche a `target` pixels.
+
+    None quand il n'y a rien a gagner : taille inconnue, absurde, ou plus
+    grande que le dernier barreau. On arrondit vers le HAUT, parce qu'un
+    ecusson trop petit qu'il faut rezoomer se voit, alors qu'un ecusson trop
+    grand ne coute que des octets.
+    """
+    try:
+        wanted = int(target)
+    except (TypeError, ValueError):
+        return None
+    if wanted <= 0:
+        return None
+    for size in SIZES:
+        if wanted <= size:
+            return size
+    return None
+
+
+def combiner_url(url, size):
+    """L'URL redimensionnee d'un ecusson, ou None si on ne sait pas la faire.
+
+    Fonction pure, et volontairement stricte : un autre hote, une extension
+    inconnue, un parametre de requete deja present, et on rend None plutot que
+    d'inventer. Le chemin extrait ne contient alors que des caracteres surs, ce
+    qui evite d'avoir a l'echapper pour le recoller dans une URL.
+    """
+    if not size:
+        return None
+    found = ESPNCDN_IMAGE.match(str(url or "").strip())
+    if found is None:
+        return None
+    return COMBINER.format(path=found.group(1), size=int(size))
+
+
 class Cache:
     """Les ecussons deja telecharges, ranges sur le disque.
 
@@ -129,14 +212,21 @@ class Cache:
     ne doit empecher une carte de s'afficher, ni faire tomber le daemon.
     """
 
-    __slots__ = ("directory", "enabled", "timeout", "fetcher", "on_log",
+    __slots__ = ("directory", "enabled", "timeout", "size", "fetcher", "on_log",
                  "_lock", "_running", "_failed")
 
     def __init__(self, directory, enabled: bool = True,
-                 timeout: float = DEFAULT_TIMEOUT, fetcher=None, on_log=None):
+                 timeout: float = DEFAULT_TIMEOUT, size=None, fetcher=None,
+                 on_log=None):
         self.directory = Path(directory)
         self.enabled = bool(enabled)
         self.timeout = float(timeout)
+        # `size` est le cote, en pixels, auquel la carte affichera l'ecusson.
+        # C'est overlay qui le sait (il depend de --scale) et cli qui le fait
+        # voyager : crests.py n'a pas a savoir comment une carte est dessinee.
+        # Sans lui, on reste sur le comportement d'avant - l'URL annoncee,
+        # telle quelle.
+        self.size = fit_size(size)
         # `fetcher` sert aux tests : n'importe quel callable(url, timeout) -> bytes.
         self.fetcher = fetcher
         self.on_log = on_log or (lambda message: None)
@@ -147,14 +237,27 @@ class Cache:
     # ---------------------------------------------------------- lecture ----
 
     def path_for(self, url: str) -> Path:
-        """Ou vit l'ecusson de cette URL.
+        """Ou vit l'ecusson de cette URL, a la taille demandee.
 
         Le nom est un condense de l'URL : deux competitions peuvent servir le
         meme numero d'equipe, et une URL n'est pas toujours un nom de fichier
         valable sur toutes les plateformes.
+
+        La taille entre dans le condense, sinon le meme ecusson en 64 et en 128
+        se battraient pour le meme fichier et l'un servirait a la place de
+        l'autre. C'est l'URL ANNONCEE qui est condensee, jamais celle qu'on
+        fabrique : le repli sur l'annonce doit ranger son image au meme
+        endroit, sans quoi un ecusson que le combineur refuse serait redemande
+        a chaque but.
         """
-        digest = hashlib.sha1(str(url).encode("utf-8")).hexdigest()[:20]
+        key = str(url) if not self.size else "{}#{}".format(url, self.size)
+        digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:20]
         return self.directory / (digest + ".png")
+
+    def candidates(self, url) -> tuple:
+        """Les URL a essayer pour cet ecusson, dans l'ordre de preference."""
+        smaller = combiner_url(url, self.size)
+        return (smaller, url) if smaller else (url,)
 
     def get(self, url):
         """Le chemin de l'ecusson s'il est deja en cache, sinon None.
@@ -206,16 +309,29 @@ class Cache:
 
         C'est le corps de la tache de fond, isole pour etre testable sans fil
         ni reseau : il suffit de passer un `fetcher`.
+
+        C'est aussi ici que se joue le repli du combineur : on essaie les URL
+        de `candidates` dans l'ordre et on garde la premiere qui rend un PNG
+        exploitable. Une URL fabriquee qui repond 404, qui rend un corps vide
+        ou qui rend autre chose qu'une image ne coute donc qu'une requete
+        perdue, jamais un ecusson casse.
         """
         if not url:
             return None
-        try:
-            fetcher = self.fetcher or _download
-            data = fetcher(url, self.timeout)
-        except Exception as exc:
-            self.on_log("ecusson injoignable ({}) : {}".format(url, exc))
-            return None
-        return self.store(url, data)
+        fetcher = self.fetcher or _download
+        for candidate in self.candidates(url):
+            try:
+                data = fetcher(candidate, self.timeout)
+            except Exception as exc:
+                self.on_log("ecusson injoignable ({}) : {}".format(candidate, exc))
+                continue
+            found = self.store(url, data)
+            if found is not None:
+                return found
+            if candidate != url:
+                self.on_log("ecusson redimensionne inutilisable ({}) : "
+                            "on reprend celui qu'ESPN annonce".format(candidate))
+        return None
 
     def store(self, url, data):
         """Range des octets deja recuperes. Rend le chemin ecrit, ou None.
@@ -227,7 +343,7 @@ class Cache:
         if not isinstance(data, (bytes, bytearray)):
             return None
         data = bytes(data)
-        if not data.startswith(PNG_MAGIC) or len(data) > MAX_BYTES:
+        if not _usable_png(data) or len(data) > MAX_BYTES:
             return None
 
         path = self.path_for(url)
