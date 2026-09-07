@@ -7,6 +7,55 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Le hockey sur glace et le rugby a XV**, a la demande. Le tableau de bord
+  d'ESPN a la meme forme pour tous les sports, seul le premier segment de
+  l'URL change : `soccer/fra.1`, `hockey/nhl`, `rugby/180659`. Dix
+  competitions de plus, verifiees une par une contre la source - la NHL, et
+  neuf competitions de rugby (Tournoi des Six Nations, Top 14, Premiership,
+  URC, Champions Cup, Rugby Championship, Super Rugby, Coupe du monde, matchs
+  internationaux).
+- Trois nouvelles facons de choisir : `--leagues hockey` ou `--leagues rugby`
+  prend un sport entier, `--leagues foot` le football seul, et
+  `--leagues all-sports` (ou `tous-sports`) prend vraiment tout.
+- **Le vocabulaire des cartes suit le sport, dans les cinq langues.** Un essai
+  s'annonce `ESSAI !` et vaut cinq points, une transformation `TRANSFORMATION`,
+  une penalite `PENALITE`, un drop `DROP` ; le hockey garde `BUT !` - un but de
+  hockey est un but - mais commence par une `MISE AU JEU` et souffle a la
+  `FIN DU TIERS-TEMPS`, n'ayant pas de mi-temps mais deux pauses entre trois
+  tiers-temps. Une carte de rugby dont l'action n'est pas encore publiee
+  annonce `POINTS !` et dit de combien : `+5 points`.
+- L'echappatoire vise maintenant un autre sport : `--leagues hockey:nhl`,
+  `--leagues rugby:270565`, `--leagues hockey/mens-college-hockey`. Sans
+  prefixe, c'est toujours du football.
+- `butbutbut --list` affiche les autres sports dans leurs propres groupes, et
+  `--status` ajoute une ligne `sports` quand on en suit plusieurs.
+- Un sport ecarte expres explique pourquoi plutot que de repondre "inconnu" :
+  `--leagues basketball:nba` renvoie qu'un panier toutes les trente secondes
+  ferait de butbutbut une alarme et non une notification.
+
+### Change
+
+- **`--leagues all` reste tout le catalogue de football**, et n'interroge donc
+  pas la NHL. Quelqu'un qui tapait `all` pour suivre les coupes nationales ne
+  doit pas se retrouver, apres une simple mise a jour, avec des cartes de
+  hockey a deux heures du matin : une mise a jour ne change pas ce qu'on suit.
+  C'est `all-sports` qui prend tout.
+- Une action porte desormais elle-meme sa cle de vocabulaire et sa valeur en
+  points : le reste du programme n'a plus jamais a se demander de quel sport
+  vient la carte qu'il ecrit.
+- Quand plusieurs actions tombent entre deux releves, c'est la plus chere qui
+  est annoncee et non la derniere : un essai transforme (sept points d'un coup)
+  affiche `ESSAI !`, pas `TRANSFORMATION`.
+
+### Corrige
+
+- `--today` relit maintenant les buts contre son camp et les buts sur penalty,
+  que leur en-tete de journal (`BUT CONTRE SON CAMP`, `BUT SUR PENALTY`)
+  faisait passer a travers le filet depuis toujours.
+
+
 ## [1.6.0] - 2026-09-07
 
 ### Ajoute

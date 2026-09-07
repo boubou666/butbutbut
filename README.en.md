@@ -23,6 +23,10 @@ don't tread on each other: the cards stack up from the corner. The key moments
 of a match (kick-off, half-time, restart, full-time) get a quieter card of
 their own, with no sound: that's the third one above.
 
+**Ice hockey** and **rugby union** are in the catalogue too, on request:
+`butbutbut --leagues nhl,top14`. Football stays the absolute default, nothing
+invites itself. See [Sports](#sports).
+
 Like [doot](https://github.com/boubou666/doot): **zero dependencies**, nothing
 but the Python standard library, and it runs on Windows, macOS and Linux.
 
@@ -120,12 +124,14 @@ some:
 butbutbut --leagues l1,pl                 # only these two
 butbutbut --exclude liga,seriea           # the big 5 minus two
 butbutbut --leagues l1,ligue2,ucl,cdf     # Ligue 1 + Ligue 2 + UCL + Coupe de France
-butbutbut --leagues all                   # the whole catalogue
+butbutbut --leagues all                   # the whole football catalogue
 butbutbut --leagues big5                  # the big 5, explicitly
+butbutbut --leagues nhl,top14             # and outside football
+butbutbut --leagues all-sports            # really everything
 ```
 
-The catalogue goes well beyond the big five: **36 competitions** checked
-against the source, among them
+The catalogue goes well beyond the big five: **36 football competitions**
+checked against the source, among them
 
 | Family | Examples (accepted names) |
 | --- | --- |
@@ -152,6 +158,136 @@ the first poll (`gre.1` becomes "GREEK SUPER LEAGUE").
 > A word of warning all the same: `--leagues all` means 36 endpoints to poll.
 > The adaptive polling rate does most of the work (a competition with no
 > fixture is only re-read every 5 minutes), but do stay reasonable.
+
+---
+
+## Sports
+
+butbutbut also follows **ice hockey** and **rugby union**. Neither invites
+itself: football stays the absolute default, and plain `butbutbut` still
+follows the big five leagues and nothing else.
+
+```bash
+butbutbut --leagues nhl                 # the NHL
+butbutbut --leagues top14,6nations      # Top 14 and the Six Nations
+butbutbut --leagues l1,nhl              # both at once
+butbutbut --leagues hockey              # every hockey competition in the catalogue
+butbutbut --leagues rugby               # every rugby competition in the catalogue
+```
+
+| Sport | Competitions (accepted names) |
+| --- | --- |
+| Ice hockey | `nhl`/`lnh` |
+| Rugby union | `6nations`/`tournoi`, `top14`, `prem`, `urc`, `champions-cup`, `trc`, `superrugby`, `rwc`, `testmatch` |
+
+### What `all` means
+
+**`--leagues all` is still the whole football catalogue**, exactly what it
+meant before. Two reasons, and the first one is enough:
+
+- **nobody asked for the NHL.** Someone who typed `--leagues all` to follow
+  domestic cups must not find themselves, after a mere update, with hockey
+  cards at two in the morning. An update does not change what you follow;
+- `all` is already 36 endpoints. Pouring the other sports into it would make
+  46 without that being a choice.
+
+For really everything: `--leagues all-sports` (or `tous-sports`). And
+`--leagues foot` means football alone, just like `all`.
+
+### Why these sports, and not basketball
+
+butbutbut's model fits in one sentence: **a score going up is an event worth a
+sound**. A sport only gets in if it fits that sentence.
+
+| Sport | Rhythm | Verdict |
+| --- | --- | --- |
+| Football | a goal every ~45 min | the default |
+| Ice hockey | a goal every ~10 min | perfect fit |
+| Rugby union | 5 to 8 scoring actions a match, and they are not equal | perfect fit |
+| Basketball | **a basket every 20 to 30 s** | declined |
+
+A card and a stadium horn at the rhythm of an NBA game (some 220 points) are
+no longer a notification, they are a fire alarm: after ten minutes you mute the
+sound, after twenty you uninstall. Making basketball bearable would mean
+**changing the model**, not adding a line to the catalogue: it would have to
+report only what matters - a decisive three-pointer, a lead that flips, the
+last two minutes of a close game - hence judge how important an action is,
+hence read something other than the score. That is a different program.
+`--leagues basketball:nba` is therefore refused, with that reason spelled out.
+
+The same reasoning declines handball (60 goals a match) and tennis (a score
+that is not an integer going up). American football and baseball would land in
+the right rhythm but not in the right model: a touchdown is worth 6 points and
+then 1 more a minute later, and a score going up by 6 then by 1 would make two
+cards for a single action.
+
+### The wording follows the sport
+
+A hockey goal is not a rugby try, and a try is worth five points: the title,
+the scorer line and the delta follow the sport, in all five languages.
+
+```
+TRY!   TOP 14                                                 63'
+Stade Toulousain      19 - 14      Stade Francais
+Try by A. Dupont
+```
+
+| | Football | Hockey | Rugby |
+| --- | --- | --- | --- |
+| A score going up | `GOAL!` | `GOAL!` | `TRY!`, `CONVERSION`, `PENALTY GOAL`, `DROP GOAL` |
+| Start of play | `KICK-OFF` | `PUCK DROP` | `KICK-OFF` |
+| Break | `HALF-TIME` | `END OF PERIOD` | `HALF-TIME` |
+| Score corrected | `GOAL DISALLOWED` | `GOAL DISALLOWED` | `POINTS REMOVED` |
+
+A hockey goal **is** a goal: hockey only rewords what genuinely differs, namely
+its breaks - it has no half-time, it has two breaks between three periods.
+Rugby keeps football's wording for the run of play (it does have two halves)
+and only brings its own scoring actions.
+
+### What each sport actually publishes
+
+All three were checked against the source, endpoint by endpoint. They do not
+say the same things, and butbutbut never pretends otherwise.
+
+| | Football | Hockey | Rugby |
+| --- | --- | --- | --- |
+| Score, clock, phase | yes | yes | yes |
+| Crest, club colours | yes | yes | yes (a single colour) |
+| Event list | yes | **no** | yes, but with no flags |
+| Scorer, minute of the action | yes | **no** | yes |
+| Red cards (`--red-cards`) | yes | not applicable | yes |
+
+**Hockey publishes no event list at all** - not during the game, not after it.
+You get the score, the clock and the period; never the scorer. The card says so
+by saying nothing: it shows the score and the minute, with no third line.
+Better an honest card than an invented name.
+
+**Rugby publishes everything, but without a single flag**: where football marks
+a goal with `scoringPlay` and a sending-off with `redCard`, rugby only gives a
+`type.id` (1 try, 2 conversion, 3 penalty goal, 4 drop goal, 6 red card). Read
+with football's reader, a rugby match would have no events at all - which is
+why it has its own.
+
+And **whatever does not apply switches itself off**: `--red-cards` on hockey
+does not crash, it simply finds nothing to report, the source publishing no
+sanctions. Rugby's yellow card is deliberately ignored: it is a ten-minute
+temporary exclusion, not a sending-off.
+
+### An ESPN code in another sport
+
+The escape hatch works everywhere. With no prefix it is football - that is what
+`--leagues gre.1` has always meant, and it does not change. To aim at another
+sport, prefix it with the sport's name:
+
+```bash
+butbutbut --leagues gre.1                        # football (implied)
+butbutbut --leagues hockey:mens-college-hockey   # college hockey
+butbutbut --leagues rugby:270565                 # a rugby competition outside the catalogue
+butbutbut --leagues hockey/nhl                   # the URL's "/" works too
+```
+
+The competition takes the name the source announces on the first poll, just
+like in football.
 
 ### Following only certain teams
 
@@ -477,20 +613,25 @@ configuration file settles it.
 scoreboard, one endpoint per competition.
 
 ```
-https://site.api.espn.com/apis/site/v2/sports/soccer/<code>/scoreboard
+https://site.api.espn.com/apis/site/v2/sports/<sport>/<code>/scoreboard
 ```
 
 | League | Code |
 | --- | --- |
-| Ligue 1 | `fra.1` |
-| Premier League | `eng.1` |
-| LaLiga | `esp.1` |
-| Serie A | `ita.1` |
-| Bundesliga | `ger.1` |
+| Ligue 1 | `soccer/fra.1` |
+| Premier League | `soccer/eng.1` |
+| LaLiga | `soccer/esp.1` |
+| Serie A | `soccer/ita.1` |
+| Bundesliga | `soccer/ger.1` |
 
 That is also what makes the catalogue extensible: Ligue 2 is `fra.2`, the
 Champions League `uefa.champions`, the Coupe de France `fra.coupe_de_france`...
 same response format, same reading code.
+
+The **first segment is the sport**, and it is the only thing that changes
+outside football: `hockey/nhl`, `rugby/180659`. Rugby is keyed by a number
+rather than a word; every one of them was checked against the source, one by
+one. See [Sports](#sports) for what each one actually publishes.
 
 Why this source: no API key, no sign-up, no quota to keep an eye on, it is
 updated live, and it gives the **scorer**, the **minute**, **own goals**,
@@ -504,6 +645,11 @@ On every poll, each match's score is compared with the one from the previous
 poll. **A score that goes up is a goal.** ESPN's list of events only serves to
 dress the card (scorer, minute, own goal, penalty): it sometimes arrives a few
 seconds after the score, and the goal must not wait for the scorer's name.
+
+That is exactly why the other sports cost the detection nothing: a score going
+up is a score going up, whether it gains 1 in football and hockey or 5 in
+rugby. Hockey, which publishes no events at all, is therefore followed just as
+well as the rest - it simply has cards with no scorer's name.
 
 Two safeguards:
 
@@ -802,7 +948,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**498 tests**, with no network and no screen: the source is simulated by an
+**573 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

@@ -135,8 +135,6 @@ MESSAGES = {
     "\nExemples :": "\nEjemplos:",
     "  butbutbut --exclude liga,seriea        (les 5 grands moins deux)":
         "  butbutbut --exclude liga,seriea        (las 5 grandes menos dos)",
-    "  butbutbut --leagues all                (tout le catalogue)":
-        "  butbutbut --leagues all                (todo el catalogo)",
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         "  butbutbut --leagues por.1              (cualquier codigo ESPN)",
 
@@ -167,10 +165,6 @@ MESSAGES = {
     "butbutbut : corne regeneree -> {}": "butbutbut : bocina regenerada -> {}",
 
     # -------------------------------------------------------------- aide ----
-    "Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : "
-    "le son part et le score s'affiche a l'ecran.":
-        "Cae un gol en Ligue 1, Premier League, LaLiga, Serie A o Bundesliga: "
-        "suena el aviso y el marcador sale en pantalla.",
 
     # Les metavariables : ce que --help montre a la place de la valeur.
     "CHEMIN": "RUTA",
@@ -211,12 +205,6 @@ MESSAGES = {
     "(n'ecrase rien)":
         "escribe un fichero de configuracion de ejemplo, comentado, y sale "
         "(no sobrescribe nada)",
-    "competitions suivies, separees par des virgules (defaut : les 5 grands "
-    "championnats). Ex : --leagues l1,pl,ucl ; 'all' pour tout le catalogue ; "
-    "un code ESPN marche aussi (por.1)":
-        "competiciones seguidas, separadas por comas (por defecto: las 5 "
-        "grandes ligas). Ej: --leagues l1,pl,ucl; 'all' para todo el catalogo; "
-        "un codigo ESPN tambien vale (por.1)",
     "competitions a ne pas suivre, meme syntaxe. Ex : --exclude liga,seriea":
         "competiciones que no seguir, misma sintaxis. "
         "Ej: --exclude liga,seriea",

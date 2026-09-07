@@ -23,6 +23,10 @@ se marchent pas dessus : les cartes s'empilent depuis le coin. Les temps forts
 du match (coup d'envoi, mi-temps, reprise, fin) ont droit a une carte plus
 discrete, sans son : c'est la troisieme ci-dessus.
 
+Le **hockey sur glace** et le **rugby a XV** sont dans le catalogue eux aussi,
+a la demande : `butbutbut --leagues nhl,top14`. Le football reste le defaut
+absolu, rien ne s'invite. Voir [Les sports](#les-sports).
+
 Comme [doot](https://github.com/boubou666/doot) : **zero dependance**, rien que
 la bibliotheque standard de Python, et ca tourne sur Windows, macOS et Linux.
 
@@ -120,12 +124,14 @@ Par defaut : les cinq grands championnats. `--leagues` en choisit,
 butbutbut --leagues l1,pl                 # seulement ces deux-la
 butbutbut --exclude liga,seriea           # les 5 grands moins deux
 butbutbut --leagues l1,ligue2,ucl,cdf     # Ligue 1 + Ligue 2 + C1 + Coupe de France
-butbutbut --leagues all                   # tout le catalogue
+butbutbut --leagues all                   # tout le catalogue de football
 butbutbut --leagues big5                  # les 5 grands, explicitement
+butbutbut --leagues nhl,top14             # et hors du football
+butbutbut --leagues all-sports            # vraiment tout
 ```
 
-Le catalogue va bien au-dela des cinq grands : **36 competitions** verifiees
-contre la source, dont
+Le catalogue va bien au-dela des cinq grands : **36 competitions** de football
+verifiees contre la source, dont
 
 | Famille | Exemples (noms acceptes) |
 | --- | --- |
@@ -152,6 +158,140 @@ premier releve (`gre.1` devient « GREEK SUPER LEAGUE »).
 > Attention quand meme : `--leagues all`, c'est 36 endpoints a interroger. La
 > cadence adaptative fait le gros du travail (une competition sans match est
 > relue toutes les 5 minutes seulement), mais reste raisonnable.
+
+---
+
+## Les sports
+
+butbutbut suit aussi le **hockey sur glace** et le **rugby a XV**. Ni l'un ni
+l'autre ne s'invite : le football reste le defaut absolu, et `butbutbut` tout
+court continue de suivre les cinq grands championnats et rien d'autre.
+
+```bash
+butbutbut --leagues nhl                 # la NHL
+butbutbut --leagues top14,6nations      # Top 14 et Tournoi
+butbutbut --leagues l1,nhl              # les deux en meme temps
+butbutbut --leagues hockey              # tout le hockey du catalogue
+butbutbut --leagues rugby               # tout le rugby du catalogue
+```
+
+| Sport | Competitions (noms acceptes) |
+| --- | --- |
+| Hockey sur glace | `nhl`/`lnh` |
+| Rugby a XV | `6nations`/`tournoi`, `top14`, `prem`, `urc`, `champions-cup`, `trc`, `superrugby`, `rwc`, `testmatch` |
+
+### Ce que `all` veut dire
+
+**`--leagues all` reste tout le catalogue de football**, exactement ce qu'il
+designait avant. Deux raisons, et la premiere suffit :
+
+- **personne n'a demande la NHL.** Quelqu'un qui tapait `--leagues all` pour
+  suivre les coupes nationales ne doit pas se retrouver, apres une simple mise
+  a jour, avec des cartes de hockey a deux heures du matin. Une mise a jour ne
+  change pas ce qu'on suit ;
+- `all`, c'est deja 36 endpoints. Y verser les autres sports en ferait 46 sans
+  que ce soit un choix.
+
+Pour vraiment tout : `--leagues all-sports` (ou `tous-sports`). Et
+`--leagues foot` designe le football seul, comme `all`.
+
+### Pourquoi ces sports-la, et pas le basket
+
+Le modele de butbutbut tient en une phrase : **un score qui monte, c'est un
+evenement qui merite un son**. Un sport n'entre ici que s'il tient dans cette
+phrase.
+
+| Sport | Rythme | Verdict |
+| --- | --- | --- |
+| Football | un but toutes les ~45 min | le defaut |
+| Hockey sur glace | un but toutes les ~10 min | parfait |
+| Rugby a XV | 5 a 8 actions de points par match, qui ne se valent pas | parfait |
+| Basket | **un panier toutes les 20 a 30 s** | ecarte |
+
+Une carte et une corne de stade au rythme d'un match NBA (environ 220 points)
+ne sont plus une notification, c'est une alarme incendie : au bout de dix
+minutes on coupe le son, au bout de vingt on desinstalle. Rendre le basket
+supportable demanderait de **changer le modele**, pas d'ajouter une ligne au
+catalogue : il faudrait ne signaler que ce qui compte - un 3-points decisif, un
+ecart qui bascule, les deux dernieres minutes d'un match serre -, donc juger de
+l'importance d'une action, donc lire autre chose que le score. C'est un autre
+programme. `--leagues basketball:nba` est donc refuse, avec cette raison en
+clair.
+
+Le meme raisonnement ecarte le handball (60 buts par match) et le tennis (un
+score qui n'est pas un entier qui monte). Le football americain et le baseball
+tomberaient dans la bonne cadence mais pas dans le bon modele : un touchdown
+vaut 6 points puis 1 de plus une minute apres, et un score qui monte de 6 puis
+de 1 ferait deux cartes pour une seule action.
+
+### Le vocabulaire suit le sport
+
+Un but de hockey n'est pas un essai de rugby, et un essai vaut cinq points :
+le titre, le texte du buteur et le delta suivent le sport, dans les cinq
+langues.
+
+```
+ESSAI !   TOP 14                                              63'
+Stade Toulousain      19 - 14      Stade Francais
+Essai de A. Dupont
+```
+
+| | Football | Hockey | Rugby |
+| --- | --- | --- | --- |
+| Un score qui monte | `BUT !` | `BUT !` | `ESSAI !`, `TRANSFORMATION`, `PENALITE`, `DROP` |
+| Debut du match | `COUP D'ENVOI` | `MISE AU JEU` | `COUP D'ENVOI` |
+| Pause | `MI-TEMPS` | `FIN DU TIERS-TEMPS` | `MI-TEMPS` |
+| Score corrige | `BUT ANNULE` | `BUT ANNULE` | `POINTS RETIRES` |
+
+Un but de hockey **est** un but : le hockey ne reformule que ce qui differe
+vraiment, c'est-a-dire ses pauses - il n'a pas de mi-temps, il a deux pauses
+entre trois tiers-temps. Le rugby, lui, garde le vocabulaire du football pour
+le deroulement du match (il a bien deux mi-temps) et n'apporte que ses actions.
+
+### Ce que chaque sport publie vraiment
+
+Les trois ont ete verifies contre la source, endpoint par endpoint. Ils ne
+disent pas la meme chose, et butbutbut ne fait jamais semblant du contraire.
+
+| | Football | Hockey | Rugby |
+| --- | --- | --- | --- |
+| Score, horloge, phase | oui | oui | oui |
+| Ecusson, couleurs du club | oui | oui | oui (une seule couleur) |
+| Tableau d'actions | oui | **non** | oui, mais sans drapeaux |
+| Buteur, minute de l'action | oui | **non** | oui |
+| Cartons rouges (`--red-cards`) | oui | sans objet | oui |
+
+**Le hockey ne publie aucun tableau d'actions** - ni pendant le match, ni
+apres. On a le score, l'horloge et la periode ; jamais le buteur. La carte le
+dit en ne disant rien : elle affiche le score et la minute, sans troisieme
+ligne. Mieux vaut une carte honnete qu'un nom invente.
+
+**Le rugby publie tout, mais sans un seul drapeau** : la ou le football marque
+un but par `scoringPlay` et une expulsion par `redCard`, le rugby ne donne
+qu'un `type.id` (1 essai, 2 transformation, 3 penalite, 4 drop, 6 carton
+rouge). Lu avec le lecteur du football, un match de rugby n'aurait aucune
+action du tout - c'est pour ca qu'il a le sien.
+
+Et **ce qui ne s'applique pas s'eteint tout seul** : `--red-cards` sur du
+hockey ne plante pas, il ne trouve simplement rien a signaler, la source ne
+publiant pas de sanctions. Le carton jaune du rugby, lui, est ignore expres :
+c'est une exclusion temporaire de dix minutes, pas une expulsion.
+
+### Un code ESPN dans un autre sport
+
+L'echappatoire marche partout. Sans prefixe, c'est du football - c'est ce que
+`--leagues gre.1` a toujours voulu dire, et ca ne change pas. Pour viser un
+autre sport, on prefixe par son nom :
+
+```bash
+butbutbut --leagues gre.1                        # football (sous-entendu)
+butbutbut --leagues hockey:mens-college-hockey   # hockey universitaire
+butbutbut --leagues rugby:270565                 # une competition de rugby hors catalogue
+butbutbut --leagues hockey/nhl                   # le "/" de l'URL marche aussi
+```
+
+La competition prend le nom que la source annonce au premier releve, comme au
+football.
 
 ### Suivre seulement certaines equipes
 
@@ -477,20 +617,25 @@ configuration tranche.
 public d'ESPN, un endpoint par competition.
 
 ```
-https://site.api.espn.com/apis/site/v2/sports/soccer/<code>/scoreboard
+https://site.api.espn.com/apis/site/v2/sports/<sport>/<code>/scoreboard
 ```
 
 | Championnat | Code |
 | --- | --- |
-| Ligue 1 | `fra.1` |
-| Premier League | `eng.1` |
-| LaLiga | `esp.1` |
-| Serie A | `ita.1` |
-| Bundesliga | `ger.1` |
+| Ligue 1 | `soccer/fra.1` |
+| Premier League | `soccer/eng.1` |
+| LaLiga | `soccer/esp.1` |
+| Serie A | `soccer/ita.1` |
+| Bundesliga | `soccer/ger.1` |
 
 C'est aussi ce qui rend le catalogue extensible : Ligue 2 c'est `fra.2`, la
 Ligue des champions `uefa.champions`, la Coupe de France
 `fra.coupe_de_france`... meme format de reponse, meme code de lecture.
+
+Le **premier segment est le sport**, et c'est la seule chose qui change hors du
+football : `hockey/nhl`, `rugby/180659`. Le rugby se code par un numero et non
+par un mot ; ils ont tous ete verifies un par un contre la source. Voir
+[Les sports](#les-sports) pour ce que chacun publie vraiment.
 
 Pourquoi cette source : pas de cle d'API, pas d'inscription, pas de quota a
 surveiller, elle est mise a jour en direct, et elle donne le **buteur**, la
@@ -504,6 +649,12 @@ A chaque releve, le score de chaque match est compare a celui du releve
 precedent. **Un score qui monte, c'est un but.** La liste des actions d'ESPN ne
 sert qu'a habiller la carte (buteur, minute, csc, penalty) : elle arrive parfois
 quelques secondes apres le score, et le but ne doit pas attendre le nom du
+buteur.
+
+C'est exactement pour cette raison que les autres sports n'ont rien coute a la
+detection : un score qui monte est un score qui monte, qu'il gagne 1 au
+football et au hockey ou 5 au rugby. Le hockey, qui ne publie aucune action,
+est donc suivi aussi bien que le reste - il a simplement des cartes sans nom de
 buteur.
 
 Deux garde-fous :
@@ -795,7 +946,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**498 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**573 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
