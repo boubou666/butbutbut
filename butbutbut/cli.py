@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
                journal, leagues, pinned, presenting, replay, screens, silence,
-               sound, state, teams, watcher)
+               sound, speech, state, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -305,6 +305,19 @@ def play_goal_sound(path, min_gap: float = 2.0):
     return sound.play_async(path)
 
 
+def speak_goal(voice, args, event) -> None:
+    """Dit le but a voix haute, quand --speak est arme. Rend la main aussitot.
+
+    La phrase part apres la corne (speech.AFTER_SOUND) : parler pendant le
+    jingle rendrait les deux inaudibles. En mode muet il n'y a rien a attendre,
+    et la voix devient la seule alerte.
+    """
+    if voice is None or not voice:
+        return
+    voice.say(hook.phrase_of(event),
+              after=0.0 if args.no_sound else speech.AFTER_SOUND)
+
+
 def crest_cache(args, on_log=None):
     """Le cache d'ecussons, ou un cache eteint avec --no-logos.
 
@@ -529,6 +542,13 @@ def do_daemon(args) -> int:
         # laisse aucune trace ensuite, autant savoir ce qui a ete arme.
         log("crochet a chaque but : {}".format(on_goal.command), quiet=args.quiet)
 
+    voice = speech.Voice(args.speak, lang=i18n.language(),
+                         on_log=lambda message: log(message, quiet=args.quiet))
+    if voice:
+        # Ce qui parlera est dit au demarrage : une machine sans synthetiseur
+        # se decouvrirait sinon au premier but, c'est-a-dire trop tard.
+        log("annonce vocale : {}".format(voice.describe()), quiet=args.quiet)
+
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -566,14 +586,15 @@ def do_daemon(args) -> int:
     try:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
-                            on_goal=on_goal, hush=hush)
+                            on_goal=on_goal, hush=hush, voice=voice)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                              crest, on_goal=on_goal, hush=hush)
+                              crest, on_goal=on_goal, hush=hush, voice=voice)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
         stopping.set()
+        voice.close()
         if stack is not None:
             stack.close()
         if recorder is not None:
@@ -590,7 +611,7 @@ def do_daemon(args) -> int:
 
 
 def _watch_headless(guard, args, stopping, reporter, pin,
-                    on_goal=None, hush=None) -> None:
+                    on_goal=None, hush=None, voice=None) -> None:
     """Sans carte : un seul fil, le son et le journal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
@@ -624,6 +645,10 @@ def _watch_headless(guard, args, stopping, reporter, pin,
                 continue            # but annule et phases de match : muets
             if hushed:
                 continue            # nuit, ou presentation : le journal a deja tout
+            # La voix avant le son : elle part dans son propre fil et n'attend
+            # personne, alors que resolve_sound() relit le dossier et peut
+            # mesurer un fichier. Elle attendra la corne d'elle-meme.
+            speak_goal(voice, args, event)
             # Un son par but, et pas un par releve : deux buts du meme tour
             # peuvent venir de deux equipes, donc de deux fichiers.
             play_goal_sound(resolve_sound(args, event)[0])
@@ -634,7 +659,7 @@ def _watch_headless(guard, args, stopping, reporter, pin,
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                      crest=None, on_goal=None, hush=None) -> None:
+                      crest=None, on_goal=None, hush=None, voice=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -679,6 +704,13 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                         on_goal.fire(event)
                     if hushed:
                         continue    # rien ne monte a tkinter : ni carte, ni son
+                    # La voix part d'ici et pas de drain(), pour la meme raison
+                    # que le crochet : elle ne doit rien devoir a tkinter, et
+                    # une carte qui n'arrive pas a s'afficher ne doit pas
+                    # rendre le but muet. Elle a son fil, elle ne retient
+                    # personne.
+                    if event.goal:
+                        speak_goal(voice, args, event)
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
@@ -773,7 +805,12 @@ def do_replay(args) -> int:
       - aucun `hush` n'est passe aux boucles de surveillance : `--quiet-hours`
         et `--quiet-while-presenting` restent sans effet en rejeu. Un rejeu est
         une commande qu'on vient de taper ; la taire parce qu'il est 3 h
-        ressemblerait a une panne.
+        ressemblerait a une panne ;
+      - aucune voix non plus : `--speak` ne parle pas en rejeu. Une soiree
+        rejouee a `--speed 60` reduit une mi-temps a trente secondes, ou une
+        phrase de trois secondes par but ne raconterait plus rien - elle
+        parlerait encore du premier but que le match serait fini. Le crochet se
+        tait ici pour une raison voisine.
 
     Le watcher, la detection des buts, les cartes, le son et les lignes de
     journal, eux, sont exactement ceux du direct. C'est voulu : un rejeu qui
@@ -899,6 +936,24 @@ def _startup_summary(guard) -> str:
     return line
 
 
+def speak_demo(args, card):
+    """Fait dire la carte de demo par --test --speak. Rend la voix, a fermer.
+
+    La phrase est celle du crochet, montee sur les morceaux de la carte plutot
+    que sur un evenement : la demo n'en a pas, et elle merite quand meme la
+    phrase que le daemon dira le soir venu.
+    """
+    voice = speech.Voice(args.speak, lang=i18n.language(),
+                         on_log=lambda message: print(tr("butbutbut : {}",
+                                                         message)))
+    if voice:
+        print(tr("butbutbut : voix - {}", voice.describe()))
+        voice.say(hook.phrase(card.title, card.league, card.text_line(),
+                              card.detail, card.minute),
+                  after=0.0 if args.no_sound else speech.AFTER_SOUND)
+    return voice
+
+
 def do_test(args) -> int:
     from . import overlay
 
@@ -925,10 +980,16 @@ def do_test(args) -> int:
 
     path, duration = resolve_sound(args)
 
+    # Sans ca, regler --speak voudrait dire attendre un vrai but pour savoir
+    # si la machine parle - la meme demi-journee de mise au point que
+    # --test-hook a supprimee pour le crochet.
+    voice = speak_demo(args, cards[0])
+
     if args.no_overlay:
         handle = play_goal_sound(path)
         time.sleep(min(duration, 5.0))
         sound.release(handle)
+        voice.close(2.0)
         return 0
 
     try:
@@ -945,6 +1006,7 @@ def do_test(args) -> int:
         # On laisse finir les ecussons partis en fond : sinon la demo,
         # toujours tuee juste apres, ne les aurait jamais.
         crest.join(3.0)
+        voice.close(2.0)
     return 0
 
 
@@ -2144,6 +2206,9 @@ def do_status(args) -> int:
     print(tr("  crochet     : {}",
              tr("{}  (essai : --test-hook)", args.on_goal) if args.on_goal
              else tr("aucun (voir --on-goal)")))
+    # Toujours affichee, comme le silence : "qui parlerait ici" est la premiere
+    # question de qui vient d'essayer --speak sans rien entendre.
+    print(tr("  voix        : {}", speech.Voice(args.speak).describe()))
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -2490,6 +2555,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "telecharge (les couleurs des clubs restent)"))
     parser.add_argument("--no-sound", action="store_true", dest="no_sound",
                         help=tr("mode muet"))
+    parser.add_argument("--speak", action="store_true", dest="speak",
+                        help=tr("dit le but a voix haute, en plus du son (ou a "
+                             "sa place avec --no-sound). La phrase est celle "
+                             "des cartes, dans leur langue. 'butbutbut --test "
+                             "--speak' l'essaie tout de suite."))
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
                         help=tr("volume de la corne synthetisee, 0.0 a 1.0"))
     parser.add_argument("--regen-sound", action="store_true", dest="regen_sound",
