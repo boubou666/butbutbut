@@ -4,7 +4,7 @@ import unittest
 from unittest import mock
 
 from butbutbut import fullscreen, i18n, leagues, overlay, screens, watcher
-from butbutbut import crests, leagues, overlay, screens, watcher
+from butbutbut import crests, espn, leagues, overlay, screens, watcher
 
 from helpers import (bump, event, fake_fonts, goal_detail, in_minutes,
                      opener_for, payload, red_card_detail)
@@ -695,6 +695,152 @@ class TestStackFullscreen(unittest.TestCase):
             raise RuntimeError("journal casse")
 
         overlay.Stack(on_log=broken)._log("note")
+
+
+def one_match(**kwargs):
+    """Un Match, tel que le tableau de bord le donnerait."""
+    kwargs.setdefault("state", "in")
+    return espn.parse(payload(event(**kwargs)), LIGUE1)[0]
+
+
+class TestPinnedCard(unittest.TestCase):
+    """La carte epinglee : elle montre ou en est le match, pas ce qui arrive."""
+
+    def test_it_carries_the_score_and_the_minute(self):
+        card = overlay.Card.pinned(
+            one_match(home_score=1, away_score=2, clock="61'"))
+        self.assertEqual(card.title, "EN DIRECT")
+        self.assertEqual(card.league, "LIGUE 1")
+        self.assertEqual(card.minute, "61'")
+        self.assertEqual((card.home_score, card.away_score), (1, 2))
+        self.assertEqual(card.text_line(), "Angers 1 - 2 Stade Rennais")
+
+    def test_it_is_as_quiet_as_a_phase_card(self):
+        # Le titre gris est la marque des cartes muettes : rien ici ne joue de
+        # son, et aucune equipe n'est mise en couleur - la couleur d'un club
+        # veut dire "elle vient de marquer", pas "elle mene".
+        card = overlay.Card.pinned(one_match(home_score=3))
+        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.accent, LIGUE1.accent)
+        self.assertEqual(card.team_accent, LIGUE1.accent)
+        self.assertIsNone(card.side)
+        self.assertEqual(card.parts, ())
+        self.assertEqual(card.extra, ())
+
+    def test_the_final_whistle_changes_the_title(self):
+        card = overlay.Card.pinned(
+            one_match(state="post", clock="90'+4'", detail="FT"), ended=True)
+        self.assertEqual(card.title, "FIN DU MATCH")
+        self.assertEqual(card.minute, "90'+4'")
+
+    def test_a_match_without_a_clock_falls_back_on_the_detail(self):
+        card = overlay.Card.pinned(one_match(clock="", detail="HT"))
+        self.assertEqual(card.minute, "HT")
+
+    def test_the_crests_come_from_the_cache_only(self):
+        cache = _FakeCache({"https://exemple/1.png": CREST})
+        card = overlay.Card.pinned(
+            one_match(home_logo="https://exemple/1.png",
+                      away_logo="https://exemple/2.png"), crest=cache)
+        self.assertEqual(card.home_logo, CREST)
+        self.assertIsNone(card.away_logo)      # pas encore telecharge
+
+    def test_a_broken_cache_does_not_break_the_card(self):
+        card = overlay.Card.pinned(
+            one_match(home_logo="https://exemple/1.png"), crest=_BrokenCache())
+        self.assertIsNone(card.home_logo)
+        self.assertEqual(card.home, "Angers")
+
+    def test_it_is_shorter_than_a_goal_card(self):
+        fonts = fake_fonts()
+        pinned_box = overlay._layout(overlay.Card.pinned(one_match()), fonts)
+        goal = overlay._layout(overlay.Card.demo(), fonts)
+        self.assertLess(pinned_box["height"], goal["height"])
+        check_inside(self, overlay.Card.pinned(one_match()))
+
+    def test_the_demo_card_shows_the_same_thing(self):
+        """Sans --test, personne ne pourrait regler cette carte-la."""
+        for league in leagues.LEAGUES:
+            card = overlay.Card.demo_pinned(league)
+            self.assertEqual(card.title, "EN DIRECT")
+            self.assertEqual(card.league, league.label)
+            self.assertIsNone(card.side)
+            self.assertEqual(card.parts, ())
+            check_inside(self, card)
+
+
+class TestPinnedAndTheStackTogether(unittest.TestCase):
+    """Ou vit la carte epinglee par rapport a la pile des fugaces."""
+
+    def setUp(self):
+        self.monitor = screens.Monitor(0, 0, 1920, 1080, primary=True)
+        self.pinned = (400, 90)
+        self.sizes = [(400, 100), (400, 120), (360, 100)]
+
+    def test_without_a_pinned_card_nothing_changes(self):
+        anchor, places = overlay.layout_stack(self.monitor, None, self.sizes,
+                                              "bottom-right")
+        self.assertIsNone(anchor)
+        self.assertEqual(places, overlay.stack_positions(
+            self.monitor, self.sizes, "bottom-right"))
+
+    def test_the_pinned_card_takes_the_corner(self):
+        anchor, _places = overlay.layout_stack(self.monitor, self.pinned,
+                                               self.sizes, "bottom-right")
+        self.assertEqual(anchor,
+                         self.monitor.place(400, 90, "bottom-right"))
+
+    def test_the_ephemeral_stack_starts_after_it(self):
+        anchor, places = overlay.layout_stack(self.monitor, self.pinned,
+                                              self.sizes, "bottom-right")
+        # Une carte de but ne se pose jamais sur l'epinglee : elle commence
+        # au-dessus, l'espace habituel en plus.
+        self.assertEqual(places[0][1] + self.sizes[0][1] + overlay.STACK_GAP,
+                         anchor[1])
+        for (below, (_x, y)), (_width, height) in zip(
+                enumerate(places[1:]), self.sizes[1:]):
+            self.assertLessEqual(y + height, places[below][1])
+
+    def test_five_goals_never_push_it_out(self):
+        """Le plafond de cinq cartes ne compte que les fugaces."""
+        alone, _ = overlay.layout_stack(self.monitor, self.pinned, [],
+                                        "bottom-right")
+        crowded, places = overlay.layout_stack(
+            self.monitor, self.pinned, [(400, 100)] * overlay.MAX_VISIBLE,
+            "bottom-right")
+        self.assertEqual(alone, crowded)
+        self.assertEqual(len(places), overlay.MAX_VISIBLE)
+
+    def test_it_works_from_every_corner(self):
+        for corner in screens.CORNERS:
+            anchor, places = overlay.layout_stack(self.monitor, self.pinned,
+                                                  self.sizes, corner)
+            self.assertEqual(anchor, self.monitor.place(400, 90, corner))
+            for (x, y), (width, height) in zip(places, self.sizes):
+                self.assertGreaterEqual(x, self.monitor.x)
+                self.assertGreaterEqual(y, self.monitor.y)
+                self.assertLessEqual(y + height, self.monitor.y + self.monitor.height)
+
+    def test_an_empty_stack_leaves_nothing_but_the_pinned_card(self):
+        anchor, places = overlay.layout_stack(self.monitor, self.pinned, [])
+        self.assertIsNotNone(anchor)
+        self.assertEqual(places, [])
+
+
+class TestStackKnowsItsPinnedCard(unittest.TestCase):
+    """Ce qu'on peut verifier de la pile sans ouvrir la moindre fenetre."""
+
+    def test_a_fresh_stack_has_none(self):
+        stack = overlay.Stack()
+        self.assertIsNone(stack.pinned)
+        self.assertEqual(len(stack), 0)
+
+    def test_unpinning_nothing_is_harmless(self):
+        # Le daemon appelle unpin() a chaque releve sans carte epinglee : ca ne
+        # doit ni ouvrir tkinter ni se plaindre.
+        stack = overlay.Stack()
+        stack.unpin()
+        self.assertIsNone(stack.root)
 
 
 if __name__ == "__main__":

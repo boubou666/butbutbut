@@ -10,7 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, i18n, leagues, state, watcher
+from butbutbut import cli, espn, i18n, leagues, pinned, state, watcher
 
 from helpers import event, payload
 
@@ -402,6 +402,10 @@ class FakeStack:
     def __init__(self, state_path):
         self.state_path = state_path
         self.cards = []
+        # La carte epinglee est tenue a part, comme dans la vraie pile : elle
+        # ne s'empile pas, elle se remplace.
+        self.pinned = []
+        self.unpinned = 0
         self.drain = None
         self.stopping = None
 
@@ -419,6 +423,12 @@ class FakeStack:
 
     def push(self, card, duration=None):
         self.cards.append(card)
+
+    def pin(self, card):
+        self.pinned.append(card)
+
+    def unpin(self):
+        self.unpinned += 1
 
     def stop(self):
         pass
@@ -458,7 +468,8 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_headless_loop_publishes_the_state(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        cli._watch_headless(guard, self.args, stopping, self.reporter())
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""))
 
         data = state.read(self.paths["state"])
         self.assertEqual(data["goals_today"], 1)
@@ -469,12 +480,142 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         guard = self.guard_with_one_goal(stopping)
         stack = FakeStack(self.paths["state"])
         stack.stopping = stopping
-        cli._watch_with_cards(guard, self.args, stopping, stack, self.reporter())
+        cli._watch_with_cards(guard, self.args, stopping, stack,
+                              self.reporter(), pinned.Pin(""))
 
         data = state.read(self.paths["state"])
         self.assertEqual(data["goals_today"], 1)
         self.assertEqual(data["matches"][0]["home"], "Angers")
         self.assertEqual(len(stack.cards), 1)
+
+    def test_without_pin_nothing_is_pinned_anywhere(self):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"])
+        stack.stopping = stopping
+        cli._watch_with_cards(guard, self.args, stopping, stack,
+                              self.reporter(), pinned.Pin(""))
+
+        self.assertEqual(stack.pinned, [])
+        self.assertEqual(stack.unpinned, 0)
+        self.assertIsNone(state.read(self.paths["state"])["pinned"])
+
+    def test_the_card_loop_pins_the_followed_match(self):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"])
+        stack.stopping = stopping
+        cli._watch_with_cards(guard, self.args, stopping, stack,
+                              self.reporter(), pinned.Pin("angers"))
+
+        self.assertEqual(len(stack.pinned), 1)
+        card = stack.pinned[0]
+        self.assertEqual((card.home, card.away), ("Angers", "Stade Rennais"))
+        self.assertEqual((card.home_score, card.away_score), (1, 0))
+        # Et l'etat le publie, pour --status.
+        row = state.read(self.paths["state"])["pinned"]
+        self.assertEqual(row["home"], "Angers")
+
+    def test_the_headless_loop_still_publishes_the_pinned_match(self):
+        """Sans ecran, la ligne "epinglee" de --status ne doit pas mentir."""
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin("angers"))
+
+        row = state.read(self.paths["state"])["pinned"]
+        self.assertEqual(row["home"], "Angers")
+        self.assertEqual(row["home_score"], 1)
+
+
+class TestPinOption(unittest.TestCase):
+    """--pin : une equipe, une carte, et un mot verifie comme --teams."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+        self.paths["data"].mkdir(parents=True, exist_ok=True)
+
+    def test_it_is_opt_in(self):
+        parser = cli.build_parser()
+        self.assertIsNone(parser.parse_args([]).pin)
+        self.assertEqual(parser.parse_args(["--pin", "om"]).pin, "om")
+
+    def test_a_list_of_teams_is_refused(self):
+        # Il n'y a jamais qu'une carte epinglee : accepter la liste
+        # reviendrait a n'en suivre silencieusement qu'une seule.
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self.assertEqual(cli.main(["--pin", "om,psg"]), 2)
+
+    def test_a_word_that_names_nothing_is_refused_at_startup(self):
+        with mock.patch.object(espn, "catalogue",
+                               return_value=[("Marseille", "OM", "MAR")]):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                self.assertEqual(cli.main(["--pin", "marseile", "--leagues", "l1"]), 2)
+
+    def test_a_word_that_names_a_team_goes_through(self):
+        with mock.patch.object(espn, "catalogue",
+                               return_value=[("Marseille", "OM", "MAR")]), \
+                mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                self.assertEqual(cli.main(["--pin", " om ", "--leagues", "l1"]), 0)
+        self.assertEqual(daemon.call_args[0][0].pin, "om")
+
+    def test_the_demo_can_show_one(self):
+        """Sans --test, personne ne pourrait regler cette carte-la."""
+        with mock.patch.object(espn, "catalogue",
+                               return_value=[("Marseille", "OM", "MAR")]):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = cli.main(["--test", "--pin", "om", "--leagues", "l1",
+                                 "--no-overlay", "--no-sound", "--duration", "0.1"])
+        self.assertEqual(code, 0)
+        self.assertIn("demo epinglee", buffer.getvalue())
+
+    def state_with(self, **extra):
+        payload_ = state.Reporter(self.paths["state"], interval=25,
+                                  idle_interval=300, pin="om").snapshot()
+        payload_.update(extra)
+        state.write(self.paths["state"], payload_)
+
+    def test_status_says_what_is_pinned(self):
+        row = {"league": "Ligue 1", "home": "Marseille", "away": "Paris FC",
+               "home_score": 1, "away_score": 0, "clock": "34'"}
+        self.state_with(pinned=row)
+        summary = cli.pin_summary("om")
+        self.assertIn("om ->", summary)
+        self.assertIn("[Ligue 1] Marseille 1 - 0 Paris FC", summary)
+        self.assertIn("34'", summary)
+
+    def test_status_says_when_nothing_is_pinned(self):
+        self.state_with(pinned=None)
+        self.assertEqual(cli.pin_summary("om"), "om (aucun match en cours)")
+
+    def test_status_does_not_invent_a_match_from_a_stale_state(self):
+        # Un etat perime decrirait un match fini depuis des heures.
+        self.assertIn("etat inconnu", cli.pin_summary("om"))
+        self.state_with(updated_at=0.0,
+                        pinned={"league": "Ligue 1", "home": "Marseille"})
+        self.assertIn("etat inconnu", cli.pin_summary("om"))
+
+    def test_the_status_line_shows_up(self):
+        self.state_with(pinned=None)
+        matches = espn.parse(payload(event(state="in")), leagues.BY_SLUG["fra.1"])
+        with mock.patch.object(espn, "scoreboard", return_value=matches), \
+                mock.patch.object(espn, "catalogue",
+                                  return_value=[("Marseille", "OM", "MAR")]):
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                cli.main(["--status", "--pin", "om", "--leagues", "l1"])
+        self.assertIn("epinglee", buffer.getvalue())
 
 
 if __name__ == "__main__":

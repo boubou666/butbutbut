@@ -335,7 +335,9 @@ butbutbut --opacity 0.9
 
 The cards stack from the corner you choose: the latest one sits against the
 corner, the earlier ones move up (or down, from a top corner). Past five
-visible cards, the oldest one gives up its place.
+visible cards, the oldest one gives up its place. One card is the exception,
+[the pinned card](#the-pinned-card): it holds the corner permanently, the stack
+starts after it, and it does not count towards the five.
 
 ### Club crests and colours
 
@@ -470,6 +472,9 @@ exclude = seriea
 teams = om,psg
 exclude_teams = psg
 
+# The card that stays on screen for the duration of the match (one team)
+pin = om
+
 # Where and how it shows up
 position = top-right
 screen = 1
@@ -555,6 +560,77 @@ speeds up the polling rate so that the time you asked for is actually met.
 The **team filter** applies to these three cards just as it does to goals:
 with `--teams om`, only OM's sendings-off, announcements and full-time cards
 come through.
+
+### The pinned card
+
+```bash
+butbutbut --pin om        # while OM are playing, a card stays on screen
+```
+
+Every card above is fleeting: it shows up on an event, it leaves a few seconds
+later. This one does the opposite. It appears at kick-off, **refreshes at every
+poll** - the score and the clock - and leaves a while after the final whistle.
+That is what turns butbutbut from an alert into a **dashboard**: the card lives
+on your second screen while you work.
+
+```
+LIVE   PREMIER LEAGUE                                            61'
+Arsenal                2 - 1                Chelsea
+```
+
+Two lines, not three: it does not tell you what just happened, it tells you
+where the match stands. No team turns to its club colour either - everywhere
+else that colour means "they have just scored", and reusing it for "they are
+ahead" would be a category error stretched over ninety minutes. And it **never
+makes a sound**: the sound stays the mark of a goal. A goal still rings and
+still gets its own card, next to this one.
+
+**Where it lives.** It is **anchored to the corner you chose**, and the stack
+of fleeting cards starts right after it. Two deliberate consequences: five
+goals in a row cannot push it out, because the five-card ceiling only counts
+the fleeting ones; and it cannot hide a goal card, because every position is
+computed together, its own first. It gives up the corner, which is the best
+spot - that is the price of being there permanently: your eye knows where to
+look, a goal should not have to wait.
+
+**Its life cycle.** It appears at kick-off, or straight away if a match is
+already under way when the daemon starts: starting it at half-time should give
+you the card, not make you wait for the next match. It follows the match to the
+end, then stays **five minutes** past the final whistle - long enough to catch
+the score on your way back from the kitchen - and disappears. It does not spend
+the night on screen. A match that vanishes from the scoreboard (a new matchday,
+a truncated response) is treated as a finished one, with the same delay: a card
+that lingers beats a card that flickers.
+
+**One team, one card.** `--pin om,psg` is refused at startup: there is never
+more than one pinned card, and accepting the list would silently follow only
+one of the two. A word that catches **several clubs** is allowed, though -
+`--pin real` is Madrid, Sociedad and Betis - because the naming is the one from
+`--teams`, and refusing here what we accept there would make no sense. In that
+case the card follows **the match that kicked off first**, and does not change
+while it lasts: a card hopping from one match to another at every poll would be
+unreadable. When it ends, the card moves on to another one still in play.
+
+The naming is exactly that of `--teams` (`om`, `barca`, `manu`, unaccented
+names, the start of a word), and a word that names no team is **refused at
+startup**, just like `--teams`: a silent `--pin marseile` would be a card that
+never arrives, with no way to know why.
+
+`--pin` is not a filter: it adds a card, it hides none. To be alerted only
+about that team, `--teams` is the option, and the two combine:
+`butbutbut --teams om --pin om`.
+
+```bash
+butbutbut --test --pin om     # a demo pinned card
+butbutbut --status            # the "epinglee" line says what it follows
+```
+
+```
+  epinglee    : om -> [Ligue 1] Marseille 1 - 0 Paris FC  34'
+```
+
+The log records the card arriving and leaving, and nothing in between: one line
+per poll for ninety minutes would teach nobody anything.
 
 ### Language
 
