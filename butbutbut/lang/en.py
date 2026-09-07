@@ -3,17 +3,31 @@
 Une entree absente rend le francais. Les {accolades} sont des trous a valeur :
 elles doivent se retrouver a l'identique dans la traduction, sinon le texte
 sortira sans sa donnee.
+
+Deux familles de phrases n'ont pas d'entree ici, et c'est voulu :
+
+  - les gabarits purement typographiques ("{:6} {}", "{:<16} {}") n'ont pas un
+    mot a traduire ;
+  - les phrases que l'anglais laisse telles quelles - le nom du programme, les
+    metavariables CODE et MINUTES, la ligne "daemon" - rendraient le francais,
+    c'est-a-dire elles-memes.
+
+Les etiquettes de --status forment une colonne : le " : " doit rester au meme
+index qu'en francais, quitte a abreger (last poll, own sounds).
 """
 
 MESSAGES = {
     # ------------------------------------------------------------ --status --
-    # Les etiquettes forment une colonne : le " : " doit rester au meme index
-    # que dans le francais, sinon --status part de travers.
-    "butbutbut {}": "butbutbut {}",
-    "  daemon      : {}": "  daemon      : {}",
     "actif (pid {})": "running (pid {})",
     "arrete": "stopped",
     "  releve      : {}": "  last poll   : {}",
+    "aucun pour l'instant": "none yet",
+    "aucun (le daemon efface son etat en s'arretant)":
+        "none (the daemon clears its state when it stops)",
+    "date inconnue": "unknown date",
+    "il y a {} s": "{} s ago",
+    "il y a {} min": "{} min ago",
+    "il y a {} h {:02d}": "{} h {:02d} ago",
     "                etat laisse par un daemon qui ne tourne plus":
         "                state left by a daemon that is no longer running",
     "                (!) plus rien depuis, alors que la cadence est de {}s : "
@@ -23,6 +37,8 @@ MESSAGES = {
     "  en cours    : inconnu (le dernier releve est trop vieux)":
         "  live        : unknown (the last poll is too old)",
     "  en cours    : {}": "  live        : {}",
+    "{} match(s)": "{} match(es)",
+    " sur {} au programme": " of {} scheduled",
     "  buts du jour: {}  (le detail : butbutbut --today)":
         "  goals today : {}  (details: butbutbut --today)",
     "  equipes     : {}": "  teams       : {}",
@@ -34,9 +50,12 @@ MESSAGES = {
     "  cadence     : {}s en direct / {}s au repos":
         "  polling     : {}s live / {}s idle",
     "  donnees     : {}": "  data        : {}",
-    "  config      : {}{}": "  config      : {}{}",
+    "  (absent, voir --write-config)": "  (missing, see --write-config)",
     "  son         : {}{}": "  sound       : {}{}",
+    " (+{} autre(s), tirage au hasard)": " (+{} other(s), picked at random)",
     "  son         : {} ({})": "  sound       : {} ({})",
+    "fourni": "bundled",
+    "corne synthetisee": "synthesised horn",
     "  sons perso  : {}  ({} fichier(s))":
         "  own sounds  : {}  ({} file(s))",
     "  ecussons    : {}": "  crests      : {}",
@@ -44,25 +63,43 @@ MESSAGES = {
     "{}  ({} en cache)": "{}  ({} cached)",
     "  ecrans      : {} -> carte en {} sur {}":
         "  screens     : {} -> card at {} on {}",
+    "1 ecran ({}x{})": "1 screen ({}x{})",
+    "{} ecrans [{}]": "{} screens [{}]",
     "l'ecran principal": "the primary screen",
     "ecran {}": "screen {}",
     "  plein ecran : {}": "  fullscreen  : {}",
+    "detecte (la carte masquee est notee au journal)":
+        "detected (a hidden card is noted in the log)",
+    "non detectable sur cette plateforme": "not detectable on this platform",
     "  journal     : {}": "  log         : {}",
     "  lecteur     : winsound + MCI (integres)":
         "  player      : winsound + MCI (built in)",
     "  lecteur     : {}": "  player      : {}",
+    "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)":
+        "NONE (install mpv/ffmpeg/pipewire/alsa-utils)",
     "  affichage   : tkinter OK": "  display     : tkinter OK",
     "  affichage   : tkinter MANQUANT (voir README)":
         "  display     : tkinter MISSING (see README)",
+    "\n  Connexion   : ": "\n  Connection  : ",
     "OK ({} : {} match(s))": "OK ({}: {} match(es))",
     "ECHEC ({})": "FAILED ({})",
 
+    # ----------------------------------------------------- le suivi decrit --
+    # Rendu par leagues.describe(), affiche sur la ligne "suivi" de --status.
+    "les 5 grands championnats": "the big five leagues",
+    "tout le catalogue ({} competitions)": "the whole catalogue ({} leagues)",
+    "{} et {} autres": "{} and {} others",
+
     # ------------------------------------------------------------ --scores --
-    "\n{}": "\n{}",
-    "{:<16} {}": "{:<16} {}",
     "injoignable ({})": "unreachable ({})",
-    "  {} {:>22} {} - {} {:<22} {}": "  {} {:>22} {} - {} {:<22} {}",
-    "      {:<22} {}": "      {:<22} {}",
+    "  (aucun match au programme)": "  (no match scheduled)",
+    "  (aucun match de ces equipes)": "  (no match for these teams)",
+    # L'etat du match, en bout de ligne, quand la source ne dit rien de mieux.
+    "en cours": "live",
+    "termine": "finished",
+    "a venir": "upcoming",
+    "imminent": "kicking off",
+    "dans {} min": "in {} min",
     "\n{} match(s), '>' = en cours.": "\n{} match(es), '>' = live.",
 
     # ------------------------------------------------------------- --today --
@@ -74,8 +111,10 @@ MESSAGES = {
     "'-' = but retire par la VAR ({}).": "'-' = goal ruled out by VAR ({}).",
 
     # -------------------------------------------------------------- --list --
-    "{}:": "{}:",
-    "  {:<30} {:<24} {}": "  {:<30} {:<24} {}",
+    "butbutbut : competitions surveillables\n":
+        "butbutbut : leagues that can be watched\n",
+    "Les 5 grands (defaut)": "The big five (default)",
+    "Aussi disponibles": "Also available",
     "\nExemples :": "\nExamples:",
     "  butbutbut --exclude liga,seriea        (les 5 grands moins deux)":
         "  butbutbut --exclude liga,seriea        (the big five minus two)",
@@ -88,10 +127,8 @@ MESSAGES = {
     "{} - {} equipe(s)": "{} - {} team(s)",
     "  (la source ne publie pas de liste pour cette competition)":
         "  (the source publishes no list for this league)",
-    "  {} {:<30} {}": "  {} {:<30} {}",
     "'*' = suivie, '-' = exclue.": "'*' = followed, '-' = excluded.",
     "Exemples :": "Examples:",
-    "  {:<16} -> {}{}": "  {:<16} -> {}{}",
     "butbutbut : aucune equipe ne correspond a {} dans {}. "
     "Voir 'butbutbut --list-teams'.":
         "butbutbut : no team matches {} in {}. "
@@ -99,6 +136,7 @@ MESSAGES = {
 
     # ----------------------------------------------------------- --screens --
     "butbutbut : {} ecran(s) detecte(s)": "butbutbut : {} screen(s) detected",
+    "  (principal)": "  (primary)",
     "  {}  {:<16} {}x{} a +{}+{}{}": "  {}  {:<16} {}x{} at +{}+{}{}",
     "\nPar defaut la carte s'affiche en bas a droite de l'ecran principal.":
         "\nBy default the card appears at the bottom right of the primary "
@@ -106,16 +144,12 @@ MESSAGES = {
     "La deplacer :  butbutbut --screen 1 --position top-right":
         "To move it:  butbutbut --screen 1 --position top-right",
 
-    # ------------------------------------------- --paths, --test, --update --
-    "{:6} {}": "{:6} {}",
-    "butbutbut : demo - [{}] {} - {}": "butbutbut : demo - [{}] {} - {}",
+    # ------------------------------------------- --update, --stop, erreurs --
     "butbutbut {} - mise a jour": "butbutbut {} - update",
+    "butbutbut : aucun daemon en cours.": "butbutbut : no daemon running.",
     "butbutbut : daemon {} arrete.": "butbutbut : daemon {} stopped.",
     "butbutbut : impossible d'arreter {} : {}":
         "butbutbut : cannot stop {} : {}",
-
-    # ----------------------------------------------------------- messages --
-    "butbutbut : {}": "butbutbut : {}",
     "butbutbut : position inconnue : {} (voir --help)":
         "butbutbut : unknown position: {} (see --help)",
     "butbutbut : dossier de donnees inutilisable : {}":
@@ -124,6 +158,18 @@ MESSAGES = {
         "butbutbut : horn regenerated -> {}",
 
     # -------------------------------------------------------------- --help --
+    "Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : "
+    "le son part et le score s'affiche a l'ecran.":
+        "A goal goes in in Ligue 1, the Premier League, LaLiga, Serie A or "
+        "the Bundesliga: the sound fires and the score comes up on screen.",
+
+    # Les metavariables de l'aide. CODE et MINUTES s'ecrivent pareil.
+    "CHEMIN": "PATH",
+    "LISTE": "LIST",
+    "COIN": "CORNER",
+    "CHOIX": "CHOICE",
+    "SECONDES": "SECONDS",
+
     "affiche N cartes de demonstration puis quitte (defaut 1 ; --test 3 "
     "montre l'empilement)":
         "show N demonstration cards, then quit (default 1 ; --test 3 shows "
@@ -198,11 +244,13 @@ MESSAGES = {
     "match (les buts, si)":
         "no card at kick-off, half-time, the restart or full-time (goals "
         "still get one)",
+    # La phrase nomme la metavariable : elle doit la nommer comme --help
+    # l'affiche desormais, SECONDS, sinon elle renvoie a un mot absent.
     "quand une application en plein ecran masque l'ecran, repasser la carte "
     "des que l'ecran se libere, pendant SECONDES au plus (defaut {:.0f} ; "
     "Windows uniquement, voir README)":
         "when a fullscreen application hides the screen, show the card again "
-        "as soon as the screen is free, for SECONDES at most (default "
+        "as soon as the screen is free, for SECONDS at most (default "
         "{:.0f} ; Windows only, see README)",
     "signale aussi les cartons rouges, par une carte discrete et sans son":
         "report red cards too, with a discreet card and no sound",
