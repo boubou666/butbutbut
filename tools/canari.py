@@ -52,7 +52,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from butbutbut import __version__, crests, espn, leagues  # noqa: E402
+from butbutbut import __version__, crests, espn, leagues, sports  # noqa: E402
 
 SCOREBOARD_URL = espn.SCOREBOARD_URL
 TEAMS_URL = espn.TEAMS_URL
@@ -186,7 +186,12 @@ DETAIL_KEYS = (
     ("ownGoal", REQUIRED, "booleen"),
     ("penaltyKick", REQUIRED, "booleen"),
     ("shootout", REQUIRED, "booleen"),
-    ("athletesInvolved", REQUIRED, "liste"),
+    # Pas REQUIRED : la source laisse parfois une action sans joueur nomme
+    # (une sur deux cents un dimanche de LaLiga). espn.py le lit deja
+    # defensivement - la carte sort alors sans buteur - donc crier au loup
+    # la-dessus tous les matins, ce serait apprendre a ignorer le rouge.
+    # Ce qu'on surveille vraiment, c'est que la cle n'ait pas disparu.
+    ("athletesInvolved", SAMPLED, "liste"),
 )
 
 ATHLETE_KEYS = (
@@ -514,9 +519,31 @@ def lookback_range(today=None, days=LOOKBACK_DAYS):
     return "{}-{}".format(start.strftime("%Y%m%d"), today.strftime("%Y%m%d"))
 
 
+def split_sport(slug):
+    """(sport, code) a partir de ce qu'on tape : "fra.1" ou "hockey:nhl".
+
+    Meme ecriture que --leagues, ou le football est sous-entendu. Le canari ne
+    surveille par defaut que le football : les autres sports lisent le meme
+    tableau de bord, mais pas le meme tableau d'actions, et leurs cles
+    meriteront leur propre inventaire.
+    """
+    if ":" in str(slug):
+        code, _, rest = str(slug).partition(":")
+        sport = sports.find(code)
+        if sport is not None:
+            return sport, rest
+    return sports.DEFAULT, str(slug)
+
+
 def scoreboard_url(slug, dates=""):
-    url = SCOREBOARD_URL.format(slug=slug)
+    sport, code = split_sport(slug)
+    url = SCOREBOARD_URL.format(sport=sport.code, slug=code)
     return url + "?dates=" + dates if dates else url
+
+
+def teams_url(slug):
+    sport, code = split_sport(slug)
+    return TEAMS_URL.format(sport=sport.code, slug=code)
 
 
 # --------------------------------------------------------------- passage -----
@@ -572,7 +599,7 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
               " pas un echec.", file=out)
 
     try:
-        teams = fetch_json(TEAMS_URL.format(slug=slug), opener, timeout)
+        teams = fetch_json(teams_url(slug), opener, timeout)
     except espn.SourceError as exc:
         print("  INJOIGNABLE  {}\n".format(exc), file=out)
         return INJOIGNABLE, ledger
@@ -597,7 +624,7 @@ def run(slugs=DEFAULT_SLUGS, opener=None, dates="", timeout=TIMEOUT, out=None):
     out = out or sys.stdout
     print("canari butbutbut {} - la forme du tableau de bord ESPN"
           .format(__version__), file=out)
-    print(SCOREBOARD_URL.format(slug="<code>"), file=out)
+    print(SCOREBOARD_URL.format(sport="<sport>", slug="<code>"), file=out)
     print("", file=out)
 
     verdicts = {}

@@ -149,9 +149,19 @@ class TestMissingKeys(unittest.TestCase):
         self.assertIn("detail.penaltyKick", report)
 
     def test_a_missing_scorer_is_caught(self):
-        report = self.amputate("events", 0, "competitions", 0, "details", 0,
-                               "athletesInvolved")
-        self.assertIn("detail.athletesInvolved", report)
+        """Pas par le compte de cles, mais par le second filet du canari.
+
+        `athletesInvolved` est SAMPLED et non REQUIRED : la source laisse
+        parfois une action sans joueur nomme, et crier au loup la-dessus tous
+        les matins apprendrait a ignorer le rouge. C'est le re-passage dans
+        espn.parse() qui rattrape la disparition - des cles presentes qui ne
+        produisent plus rien, c'est exactement ce qu'il surveille.
+        """
+        code, report = canary(live=without(played(), "events", 0,
+                                           "competitions", 0, "details", 0,
+                                           "athletesInvolved"))
+        self.assertEqual(code, 1, report)
+        self.assertIn("aucun buteur nomme", report)
 
     def test_a_renamed_state_is_caught(self):
         report = self.amputate("events", 0, "competitions", 0, "status",
