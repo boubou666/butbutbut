@@ -26,9 +26,25 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   pouvait plus effacer parce qu'il restait ouvert (`WinError 145`). Le nouveau
   test etire l'ecriture pour que la course soit certaine a chaque passage
   plutot qu'une fois sur deux : sans l'attente il echoue, avec elle il passe.
-
-### Corrige
-
+- **Un but dans les arrets de jeu ne comptait nulle part.** La source ecrit la
+  minute `90'+9'` - apostrophe des les deux cotes du plus - la ou le lecteur du
+  journal n'acceptait que `90+3'`, la forme qu'on ecrit a la main et que les
+  captures de test portaient depuis toujours. Les deux se ressemblent assez
+  pour que personne ne les confronte, et le resultat est le pire genre de
+  panne : rien ne casse, `--stats` compte simplement ces buts parmi les minutes
+  illisibles. Sur une vraie journee de Premier League, seize formes de temps
+  additionnel sur soixante et un matchs partaient ainsi a la poubelle, et le
+  compteur des arrets de jeu affichait zero depuis le premier jour. Les deux
+  formes sont desormais lues.
+- **Le canari surveille maintenant la FORME de l'horloge**, et pas seulement la
+  presence de sa cle. C'est ce qui manquait pour attraper le defaut ci-dessus :
+  il relit les minutes qu'il vient de telecharger avec le lecteur du journal
+  (`journal.minute_of`, rendue publique pour lui), et une horloge que plus
+  personne ne sait lire vaut une ligne rouge. Le football seul y est tenu :
+  `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+- 1029 -> **1033 tests** : les deux formes de temps additionnel, une apostrophe
+  de trop qui doit rester illisible, l'horloge qui change de forme vue par le
+  canari, et celle du hockey qui ne doit pas le faire crier au loup.
 - **Un nom polonais ne termine plus la commande sur une trace d'appels.**
   Sous Windows, une sortie redirigee - `butbutbut --scores > matchs.txt`, un
   pipe, le journal d'un service - n'herite pas de l'UTF-8 de la console mais de
