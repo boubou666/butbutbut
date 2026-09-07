@@ -1,0 +1,41 @@
+# La meme carte de but a --scale 1.6 : tout grandit ensemble, y compris les ecussons et les cartons.
+# echelle 1.60 - police (largeur/interligne) detail 12/22  label 11/19  score 24/43  scorer 14/24  team 17/32  title 14/24
+# carte 720 x 145 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480       560       640
+  0 |+----------------------------------------------------------------------------------------+|
+  8 |##                                                                                       ||
+ 16 |##                                                                                       ||
+ 24 |##  BUT !     LIGUE 1                                                              35'   ||
+ 32 |##                                                                                       ||
+ 40 |##                                                                                       ||
+ 48 |##                                                                                       ||
+ 56 |##           oooooo                                                              oooooo  ||
+ 64 |##           oooooo              RR                                              oooooo  ||
+ 72 |##           ooooooAngers        RR   1   -       2        Stade R...            oooooo  ||
+ 80 |##           oooooo              RR                                              oooooo  ||
+ 88 |##           oooooo                                                              oooooo  ||
+ 96 |##                                                                                       ||
+104 |##                                                                                       ||
+112 |##  But de    C. Arcus                                                                   ||
+120 |##                                                                                       ||
+128 |##                                                                                       ||
+136 |##---------------------------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    719    144
+filet               3      7     10    138
+titre              29     16     99     40  "BUT !"
+competition       113   18.5    190   37.5  "LIGUE 1"
+minute            665   18.5    698   37.5  "35'"
+ecusson dom.    102.5     52  145.5     95
+ecusson ext.    649.5     52  692.5     95
+equipe dom.     155.5   57.5  257.5   89.5  "Angers"
+score dom.      303.5     52  327.5     95  "1"
+separateur      327.5     52  399.5     95  " - "
+score ext.      399.5     52  423.5     95  "2"
+equipe ext.     469.5   57.5  639.5   89.5  "Stade R..."
+carton          266.5     65  277.5     82
+detail             29    106    113    128  "But de "
+detail            113    105    225    129  "C. Arcus"

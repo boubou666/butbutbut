@@ -4,6 +4,11 @@
 # tests/helpers.py : les tests du sdist ne demarraient meme pas.
 recursive-include tests *.py
 
+# Les plans de carte de tests/plans/. Ce sont des references, pas du code : sans
+# cette ligne, la suite du sdist trouverait tests/test_plans.py mais rien a quoi
+# comparer, et les plans echoueraient tous sur un depot pourtant sain.
+recursive-include tests *.txt
+
 # tests/test_canari.py charge tools/canari.py par son chemin : sans lui, la
 # suite du sdist ne demarrerait pas non plus.
 recursive-include tools *.py

@@ -3021,7 +3021,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1313 tests**, with no network and no screen: the source is simulated by an
+**1426 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
@@ -3033,6 +3033,67 @@ the two must produce exactly the same sequence of events.
 
 One single program in the repository really talks to ESPN, and it is not in
 this suite: [the canary](#the-canary), `python tools/canari.py`.
+
+### The blueprint of a card
+
+`overlay.py` draws every card in the program, and its layout was held together
+by nothing but spot assertions: the score stays centred, a red card bites
+neither into the name nor into the score. Each one is right, none of them says
+what the card looks like, and a two-pixel shift slipped between them without a
+single test blinking.
+
+So eight cards are frozen as **ASCII blueprints** under `tests/plans/`: the
+goal card, the pinned card, full time, a rugby card, a card with red cards on
+both sides, names long enough to be truncated, and the goal card at two other
+`--scale` values. Every blueprint carries a drawing and a table.
+
+```
+     0         80        160       240       320       400       480
+  0 |+------------------------------------------------------------------+|
+ 16 |##  BUT !  LIGUE 1                                            35'  ||
+ 40 |##           oooo                                            oooo  ||
+ 56 |##           oooo Angers     1  -    2    Stade Rennais      oooo  ||
+ 80 |##  But de C. Arcus                                                ||
+104 |+------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+titre              29     16     74     31  "BUT !"
+equipe dom.       143   46.5    209   66.5  "Angers"
+score dom.        235     43    250     70  "1"
+```
+
+The drawing says where the score is, where the name is, where the crests (`o`),
+the red cards (`R`) and the competition's stripe (`#`) are; the table gives the
+same boxes to the pixel. Two more pixels of margin, and the title's row goes
+from 29 to 31: the shift **reads** in the pull request's diff instead of having
+to be guessed behind a number that changed. A reference image would have done
+the same job, in binary, unreadable in review and dependent on the font
+installed on the machine.
+
+The blueprint goes through the drawing (`_draw`) and not only through the
+layout (`_layout`): what is frozen is therefore what really reaches the screen,
+drawing order included.
+
+And it is **identical** across the three systems and the five Python versions
+of the CI - otherwise it would only ever turn the CI red. The fonts are fake
+and fixed (one width per character, one line height), not tkinter's, which do
+not measure the same thing on an Ubuntu runner and on a Windows one; and the
+scenarios' cards are written in `tests/blueprint.py` rather than built by
+`Card.from_event`, because a blueprint freezes a geometry and has no business
+breaking the day a translation changes.
+
+After a deliberate layout change, **one** command regenerates the eight
+blueprints:
+
+```bash
+python tools/plans.py
+```
+
+It is a `tools/` script and not an option of the program, for the same reason
+as [the canary](#the-canary): those blueprints only serve the repository, and
+`butbutbut --help` has no business carrying, for life, a line that speaks only
+to the tests.
 
 ### Where it runs
 

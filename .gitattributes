@@ -2,4 +2,8 @@
 *.ps1 text eol=crlf
 *.py  text eol=lf
 *.md  text eol=lf
+# Les plans de carte de tests/plans/ sont compares caractere pour caractere a ce
+# que le code dessine : un checkout Windows qui les rendrait en CRLF les
+# mettrait tous au rouge d'un coup.
+*.txt text eol=lf
 *.mp3 binary

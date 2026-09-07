@@ -1,0 +1,39 @@
+# Deux expulsions d'un cote, une de l'autre : la place est reservee des deux cotes, sur le camp le plus sanctionne, et le score reste au centre de la carte.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 590 x 111 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480       560
+  0 |+------------------------------------------------------------------------+|
+  8 |##                                                                       ||
+ 16 |##  BUT !  LIGUE 1                                                  35'  ||
+ 24 |##                                                                       ||
+ 32 |##                                                                       ||
+ 40 |##           oooo                                                   ooo  ||
+ 48 |##           oooo          RRR               RR                     ooo  ||
+ 56 |##           oooo Angers   RRR   1  -   2    RR  Stade Rennais      ooo  ||
+ 64 |##           oooo                                                   ooo  ||
+ 72 |##                                                                       ||
+ 80 |##  But de C. Arcus                                                      ||
+ 88 |##                                                                       ||
+ 96 |##                                                                       ||
+104 |+------------------------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    589    110
+filet               3      7     10    104
+titre              29     16     74     31  "BUT !"
+competition        88   17.5    137   29.5  "LIGUE 1"
+minute            547   17.5    568   29.5  "35'"
+ecusson dom.      106     43    133     70
+ecusson ext.      541     43    568     70
+equipe dom.       143   46.5    209   66.5  "Angers"
+score dom.        261     43    276     70  "1"
+separateur        276     43    321     70  " - "
+score ext.        321     43    336     70  "2"
+equipe ext.       388   46.5    531   66.5  "Stade Rennais"
+carton            218     51    225     62
+carton            228     51    235     62
+carton            362     51    369     62
+detail             29   80.5     85   94.5  "But de "
+detail             85     80    157     95  "C. Arcus"
