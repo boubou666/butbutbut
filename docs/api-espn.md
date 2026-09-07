@@ -654,6 +654,11 @@ Le meme ecusson pese **44,7 ko en 500x500 et 6,0 ko en 80x80** - et la carte ne
 l'affiche jamais plus grand que quelques dizaines de pixels. `&scale=crop`
 recadre.
 
+C'est ce que `crests.py` demande desormais : la taille suit `--scale` sur une
+echelle de trois barreaux (64, 128, 256), et au-dela c'est l'original qui
+repart. Un chemin qui n'existe pas rend **404 franc** a travers le combineur
+aussi - il n'y a pas d'image de remplacement a distinguer d'une vraie.
+
 ---
 
 ## 10. Ce que butbutbut lit vraiment
@@ -732,8 +737,8 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
 
 ## 12. Ce qu'on pourrait en tirer
 
-Quatre pistes que ce releve ouvre, avec leur arbitrage. Les deux premieres sont
-parties ; les deux autres attendent.
+Quatre pistes que ce releve ouvre, avec leur arbitrage. Chacune dit ou elle en
+est.
 
 **Demander gzip - fait.** Huit fois moins d'octets sur le fil, pour une ligne
 dans `headers()`, une decompression dans `download()` et zero dependance
@@ -767,10 +772,17 @@ Deux arbitrages ont ete tranches en chemin, et ils valent d'etre notes ici :
   n'est publie nulle part, donnent alors une carte sans nom plutot qu'une carte
   qui affiche le buteur precedent.
 
-**Le combineur d'images.** `combiner/i?img=...&h=80&w=80` divise par sept le
-poids d'un ecusson, que `crests.py` telecharge aujourd'hui en 500x500 pour
-l'afficher tout petit. Reserve : c'est une URL qu'on fabrique, la ou le projet
-prefere celle que la source annonce.
+**Le combineur d'images - fait.** `combiner/i?img=...&h=64&w=64` divise par
+sept le poids d'un ecusson, que `crests.py` telechargeait en 500x500 pour
+l'afficher tout petit : cinq ecussons mesures passent de 185 031 a 25 071
+octets. La reserve - c'est une URL qu'on fabrique, la ou le projet prefere
+celle que la source annonce - est levee et non contournee. On ne fabrique que
+ce qu'on sait manipuler, un chemin d'image d'`espncdn.com` et rien d'autre
+(`crests.combiner_url`), et `crests.Cache.fetch_now` essaie l'URL fabriquee
+d'abord, l'annonce ensuite : un 404, un corps vide, une reponse qui n'est pas
+un PNG exploitable ne coutent qu'une requete perdue. Le cache est du coup
+indexe par (URL annoncee, taille), pour que le repli range son image la ou la
+carte ira la chercher.
 
 **Les noms traduits.** Repondu, et c'est non : l'espagnol et le portugais seuls
 sont servis, le francais ne l'est pas, et **les noms d'equipes ne sont jamais

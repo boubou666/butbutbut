@@ -644,6 +644,11 @@ https://a.espncdn.com/combiner/i?img=/i/teamlogos/soccer/500/170.png&h=80&w=80
 The same crest weighs **44.7 kB at 500x500 and 6.0 kB at 80x80** - and the
 card never shows it larger than a few dozen pixels. `&scale=crop` crops.
 
+That is what `crests.py` now asks for: the size follows `--scale` on a ladder
+of three rungs (64, 128, 256), and past the last one the original comes back
+instead. A path that does not exist returns a **clean 404** through the
+combiner too - there is no placeholder image to tell apart from a real one.
+
 ---
 
 ## 10. What butbutbut actually reads
@@ -722,8 +727,8 @@ The ones that have already cost something, or that would.
 
 ## 12. What could be done with this
 
-Four leads this survey opens, with their trade-off. The first two have
-shipped; the other two are waiting.
+Four leads this survey opens, with their trade-off. Each one says where it
+stands.
 
 **Ask for gzip - done.** Eight times fewer bytes on the wire, for one line in
 `headers()`, a decompression in `download()` and zero dependencies (`gzip` is
@@ -756,10 +761,17 @@ Two trade-offs were settled along the way, and they are worth recording here:
   nowhere, then yields a card with no name rather than a card showing the
   previous scorer.
 
-**The image combiner.** `combiner/i?img=...&h=80&w=80` divides a crest's
-weight by seven, where `crests.py` downloads it at 500x500 today to display it
-tiny. Reservation: it is a URL we build, where the project prefers the one the
-source announces.
+**The image combiner - done.** `combiner/i?img=...&h=64&w=64` divides a
+crest's weight by seven, where `crests.py` used to download it at 500x500 to
+display it tiny: five measured crests go from 185,031 to 25,071 bytes. The
+reservation - it is a URL we build, where the project prefers the one the
+source announces - has been lifted, not worked around. We only build what we
+know how to handle, an `espncdn.com` image path and nothing else
+(`crests.combiner_url`), and `crests.Cache.fetch_now` tries the built URL
+first and the announced one next: a 404, an empty body, an answer that is not
+a usable PNG cost one wasted request and no more. The cache is therefore keyed
+by (announced URL, size), so that the fallback files its image where the card
+will go looking for it.
 
 **Translated names.** Answered, and the answer is no: only Spanish and
 Portuguese are served, French is not, and **team names are never translated**
