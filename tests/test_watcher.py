@@ -686,6 +686,236 @@ class TestWakeFromSleep(unittest.TestCase):
         self.assertEqual(self.guard.plan_wait(now=10.0),
                          self.guard.next_delay(now=10.0))
 
+    def test_the_catch_up_stays_off_unless_asked(self):
+        # Le silence est le comportement livre : sans --catch-up, rien de la
+        # machinerie de rattrapage ne doit se mettre en marche.
+        self.fall_asleep(40 * 60)
+        self.state["payload"] = bump(self.state["payload"], "away", by=2)
+        self.assertEqual(self.guard.tick(now=25.0), [])
+        self.assertIsNone(self.guard._missed)
+        self.assertTrue(any("sans rien annoncer" in line
+                            for line in self.logged), self.logged)
+
+
+class TestCatchUp(unittest.TestCase):
+    """--catch-up : au reveil, UNE carte muette dit ce qu'on a manque.
+
+    Meme scenario que la veille tout court, mais la photo d'avant le trou n'est
+    plus jetee : elle sert a nommer les matchs qui ont bouge, leur score
+    d'avant et les buteurs, que la source publie avec des cles stables.
+    """
+
+    def setUp(self):
+        self.clock = FakeClock()
+        self.state = {"payload": self.board()}
+        self.logged = []
+        self.guard = self.watcher()
+
+    def board(self, first=(0, 0), second=(0, 0), details=(), other_details=()):
+        """Deux matchs en cours dans le meme championnat."""
+        return payload(
+            event(state="in", home_score=first[0], away_score=first[1],
+                  details=details),
+            event(match_id="2", home="Lens", away="Lille", state="in",
+                  home_score=second[0], away_score=second[1],
+                  details=other_details))
+
+    def watcher(self, **kwargs):
+        """Un watcher qui a deja photographie l'existant, avant la veille."""
+        guard = make_watcher(self.state, interval=25, clock=self.clock,
+                             catch_up=True, on_log=self.logged.append, **kwargs)
+        guard.refresh(LIGUE1, now=0.0)
+        return guard
+
+    def fall_asleep(self, seconds=40 * 60):
+        """Promet une attente courte, puis fait sauter l'horloge murale."""
+        self.guard.plan_wait(now=25.0)
+        self.clock.jump(seconds)
+
+    def missed(self):
+        """La veille, deux buts pour Rennes et un pour Lens, puis le reveil."""
+        self.fall_asleep()
+        self.state["payload"] = self.board(
+            first=(0, 2), second=(1, 0),
+            details=(goal_detail("A1", "58'", "A. Kalimuendo", index=1),
+                     goal_detail("A1", "77'", "L. Blas", index=2)),
+            other_details=(goal_detail("H2", "23'", "F. Sotoca", index=3),))
+        return self.guard.tick(now=25.0)
+
+    # ------------------------------------------------------------- la carte --
+
+    def test_one_card_and_only_one(self):
+        # Trois buts, deux matchs : rejouer une carte par but avec des minutes
+        # perimees est exactement ce que le silence du reveil evitait.
+        events = self.missed()
+        self.assertEqual([e.kind for e in events], [watcher.CATCHUP])
+        self.assertEqual(events[0].title, "PENDANT TON ABSENCE")
+
+    def test_the_card_never_makes_a_sound(self):
+        # Le son ne part que sur `event.goal` : on n'annonce pas au klaxon un
+        # but vieux d'une heure.
+        summary = self.missed()[0]
+        self.assertFalse(summary.goal)
+        self.assertTrue(summary.sober)
+        self.assertFalse(summary.phase)   # --no-phase-cards ne la coupe pas
+        self.assertEqual(summary.delta, 0)
+        self.assertIsNone(summary.side)
+
+    def test_the_card_names_the_matches_scores_and_scorers(self):
+        summary = self.missed()
+        summary = summary[0]
+        self.assertEqual(summary.score_line, "Angers 0 - 2 Stade Rennais")
+        self.assertEqual(summary.detail_line(),
+                         "avant 0 - 0 : A. Kalimuendo 58', L. Blas 77'")
+        self.assertEqual(summary.extra_lines(),
+                         ["Lens 1 - 0 Lille (avant 0 - 0) : F. Sotoca 23'"])
+
+    def test_the_scorers_are_the_highlighted_part(self):
+        summary = self.missed()[0]
+        self.assertEqual([t for t, strong in summary.detail_parts() if strong],
+                         ["A. Kalimuendo 58', L. Blas 77'"])
+        self.assertEqual([t for t, strong in summary.extra_parts()[0] if strong],
+                         ["F. Sotoca 23'"])
+
+    def test_the_header_carries_the_length_of_the_absence(self):
+        # Aucune minute de jeu n'appartient a une carte qui couvre deux matchs.
+        self.assertEqual(self.missed()[0].minute, "40 min")
+
+    def test_a_goal_whose_action_is_unknown_still_counts(self):
+        # La source publie ses actions avec du retard : un score qui a monte
+        # sans action lisible reste un match qui a bouge.
+        self.fall_asleep()
+        self.state["payload"] = self.board(first=(0, 2))
+        summary = self.guard.tick(now=25.0)[0]
+        self.assertEqual(summary.detail_line(), "avant 0 - 0")
+        self.assertEqual(summary.extra_lines(), [])
+
+    def test_a_goal_already_seen_before_the_sleep_is_not_replayed(self):
+        # La cle de l'action est stable : celle qu'on avait deja affichee ne
+        # revient pas dans le resume.
+        self.state["payload"] = self.board(
+            first=(0, 1),
+            details=(goal_detail("A1", "12'", "L. Blas", index=1),))
+        self.guard = self.watcher()
+        self.fall_asleep()
+        self.state["payload"] = self.board(
+            first=(0, 2),
+            details=(goal_detail("A1", "12'", "L. Blas", index=1),
+                     goal_detail("A1", "58'", "A. Kalimuendo", index=2)))
+        summary = self.guard.tick(now=25.0)[0]
+        self.assertEqual(summary.detail_line(),
+                         "avant 0 - 1 : A. Kalimuendo 58'")
+
+    def test_the_log_keeps_the_whole_list(self):
+        line = self.missed()[0].log_line()
+        for piece in ("PENDANT TON ABSENCE", "Ligue 1",
+                      "Angers 0 - 2 Stade Rennais", "avant 0 - 0",
+                      "A. Kalimuendo 58'", "Lens 1 - 0 Lille", "F. Sotoca 23'",
+                      "(40 min)"):
+            self.assertIn(piece, line)
+
+    # ---------------------------------------------------------- rien a dire --
+
+    def test_nothing_missed_means_no_card_at_all(self):
+        self.fall_asleep()
+        self.assertEqual(self.guard.tick(now=25.0), [])
+
+    def test_the_catch_up_is_logged_even_without_a_card(self):
+        # Sinon "aucune carte" et "le rattrapage n'a pas tourne" seraient
+        # indistinguables dans le journal.
+        self.fall_asleep()
+        self.guard.tick(now=25.0)
+        self.assertTrue(any("rattrapage" in line and "personne" in line
+                            for line in self.logged), self.logged)
+
+    def test_the_gap_itself_is_still_logged(self):
+        self.missed()
+        self.assertTrue(any("trou" in line for line in self.logged), self.logged)
+        self.assertTrue(any("rattrapage" in line and "2 match(s)" in line
+                            for line in self.logged), self.logged)
+
+    def test_a_match_never_seen_before_the_gap_is_left_out(self):
+        # Commence et fini pendant la veille : on n'a rien suivi, meme regle
+        # que pour la carte de fin de match.
+        self.fall_asleep()
+        self.state["payload"] = payload(
+            event(state="in", home_score=0, away_score=0),
+            event(match_id="2", home="Lens", away="Lille", state="in"),
+            event(match_id="3", home="Brest", away="Nantes", state="post",
+                  home_score=2, away_score=1))
+        self.assertEqual(self.guard.tick(now=25.0), [])
+
+    # ------------------------------------------------------------- filtrage --
+
+    def test_the_team_filter_applies(self):
+        self.guard = self.watcher(teams=teams.Filter("lens"))
+        summary = self.missed()[0]
+        # Rennes a marque deux fois, mais on ne suit que Lens : c'est son match
+        # qui prend la tete de la carte, et il y est seul.
+        self.assertEqual(summary.score_line, "Lens 1 - 0 Lille")
+        self.assertEqual(summary.detail_line(), "avant 0 - 0 : F. Sotoca 23'")
+        self.assertEqual(summary.extra_lines(), [])
+
+    def test_a_filter_that_matches_nothing_gives_no_card(self):
+        self.guard = self.watcher(teams=teams.Filter("brest"))
+        self.assertEqual(self.missed(), [])
+
+    # ------------------------------------------------------------- cadence ---
+
+    def test_watching_starts_again_normally_afterwards(self):
+        self.missed()
+        self.guard.plan_wait(now=50.0)
+        self.clock.jump(25.0)
+        self.state["payload"] = self.board(first=(0, 3), second=(1, 0))
+
+        events = self.guard.tick(now=50.0)
+        self.assertEqual([e.kind for e in events], [watcher.GOAL])
+        self.assertEqual(events[0].delta, 1)
+
+    def test_two_naps_in_a_row_are_summed_up_once(self):
+        # La machine se rendort avant que le resume ait pu sortir : c'est la
+        # photo la plus ancienne qui dit tout ce qu'on a manque.
+        self.fall_asleep(20 * 60)
+        self.guard._check_gap()
+        self.state["payload"] = self.board(first=(0, 1))
+        self.guard.plan_wait(now=25.0)
+        self.clock.jump(20 * 60)
+        self.state["payload"] = self.board(first=(0, 2))
+
+        events = self.guard.tick(now=25.0)
+        self.assertEqual([e.kind for e in events], [watcher.CATCHUP])
+        self.assertEqual(events[0].detail_line(), "avant 0 - 0")
+        self.assertEqual(events[0].minute, "40 min")
+
+    def test_the_summary_waits_for_every_competition(self):
+        """Un resume a trous vaudrait moins que rien.
+
+        Sous Linux `time.monotonic()` gele pendant la veille : les echeances ne
+        retombent donc pas toutes au meme releve.
+        """
+        premier = leagues.BY_SLUG["eng.1"]
+
+        def opener(url, timeout):
+            if premier.slug in url:
+                return b'{"events": []}'
+            return opener_for(self.state)(url, timeout)
+
+        guard = watcher.Watcher([LIGUE1, premier], interval=25,
+                                clock=self.clock, catch_up=True, opener=opener,
+                                on_log=self.logged.append)
+        guard.refresh(LIGUE1, now=0.0)
+        guard.refresh(premier, now=0.0)
+        guard.plan_wait(now=25.0)
+        self.clock.jump(40 * 60)
+        self.state["payload"] = self.board(first=(0, 2))
+
+        # Seule la Ligue 1 est exigible : pas de resume tant que l'autre
+        # championnat n'a pas ete rephotographie.
+        self.assertEqual(guard.tick(now=25.0), [])
+        guard._due[premier.slug] = 26.0
+        self.assertEqual([e.kind for e in guard.tick(now=26.0)],
+                         [watcher.CATCHUP])
+
 
 if __name__ == "__main__":
     unittest.main()

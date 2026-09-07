@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from butbutbut import fullscreen, i18n, leagues, overlay, screens, watcher
+from butbutbut import espn, fullscreen, i18n, leagues, overlay, screens, watcher
 from butbutbut import crests, espn, leagues, overlay, screens, watcher
 
 from helpers import (bump, event, fake_fonts, goal_detail, in_minutes,
@@ -54,6 +54,24 @@ def one_fulltime(*details):
     state["payload"] = payload(event(state="post", clock="90'+4'", home_score=1,
                                      away_score=2, details=details))
     return guard.refresh(LIGUE1)[0]
+def one_catchup(count=2, scorer="F. Sotoca"):
+    """Le resume de sortie de veille : `count` matchs ont bouge pendant le trou."""
+    changes = []
+    for index in range(1, count + 1):
+        board = payload(event(
+            match_id=str(index), home="Equipe {}".format(index),
+            away="Adversaire {}".format(index), state="in", home_score=1,
+            details=(goal_detail("H" + str(index), "23'", scorer, index=index),)))
+        match = espn.parse(board, LIGUE1)[0]
+        changes.append(watcher.Change(match, 0, 0, match.plays))
+
+    head = changes[0].match
+    return watcher.Event(kind=watcher.CATCHUP, match=head, side=None, team="",
+                         opponent="", home_score=head.home_score,
+                         away_score=head.away_score, delta=0, play=None,
+                         changes=changes, gap=40 * 60.0)
+
+
 def goal_card(side="home", crest=None, **event_kwargs):
     """La carte d'un but marque par `side`, avec l'habillage demande."""
     return overlay.Card.from_event(
@@ -232,6 +250,43 @@ class TestFullTimeCard(unittest.TestCase):
         box = overlay._layout(self.card(), fonts)
         goal = overlay._layout(overlay.Card.demo(), fonts)
         self.assertLess(box["height"], goal["height"])
+
+
+class TestCatchUpCard(unittest.TestCase):
+    """Le resume de sortie de veille : une carte discrete, une ligne par match.
+
+    Elle ne rejoue pas la troncature de la fin de match, elle la reutilise :
+    c'est `_layout` qui coupe, en hauteur comme en largeur.
+    """
+
+    def test_it_looks_like_a_key_moment_not_like_a_goal(self):
+        card = overlay.Card.from_event(one_catchup())
+        self.assertEqual(card.title, "PENDANT TON ABSENCE")
+        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.accent, LIGUE1.accent)
+        # Aucune equipe en couleur : personne ne vient de marquer a l'instant.
+        self.assertIsNone(card.side)
+        self.assertEqual(card.minute, "40 min")
+
+    def test_the_first_match_is_on_the_score_line_and_the_others_below(self):
+        card = overlay.Card.from_event(one_catchup(count=3))
+        self.assertEqual((card.home, card.away), ("Equipe 1", "Adversaire 1"))
+        self.assertEqual(card.detail, "avant 0 - 0 : F. Sotoca 23'")
+        self.assertEqual(["".join(t for t, _ in line) for line in card.extra], [
+            "Equipe 2 1 - 0 Adversaire 2 (avant 0 - 0) : F. Sotoca 23'",
+            "Equipe 3 1 - 0 Adversaire 3 (avant 0 - 0) : F. Sotoca 23'",
+        ])
+
+    def test_a_long_night_is_capped_like_a_long_list_of_scorers(self):
+        card = overlay.Card.from_event(one_catchup(count=12))
+        box = overlay._layout(card, fake_fonts())
+        self.assertEqual(len(box["extra"]), overlay.MAX_EXTRA_LINES)
+
+    def test_a_line_too_wide_is_cut_with_an_ellipsis(self):
+        card = overlay.Card.from_event(
+            one_catchup(count=2, scorer="Un Nom Vraiment Interminable " * 4))
+        box = overlay._layout(card, fake_fonts())
+        self.assertTrue(box["extra"][0][-1][0].endswith("..."))
 class TestTeamColourOnTheCard(unittest.TestCase):
     """L'equipe qui marque prend sa couleur, le filet garde celle du championnat."""
 

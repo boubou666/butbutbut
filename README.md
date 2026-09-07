@@ -492,6 +492,7 @@ volume = 0.55
 no_sound = non
 no_overlay = non
 no_phase_cards = non
+catch_up = non
 quiet = non
 ```
 
@@ -755,9 +756,13 @@ minute perimee, voire un `COUP D'ENVOI` pour un match deja termine.
 Avant chaque releve, le daemon confronte le temps d'horloge reellement ecoule a
 celui qu'il avait prevu d'attendre. Au-dela de **deux minutes de retard** (de
 quoi laisser passer sans broncher une machine chargee ou un releve traine par
-le timeout HTTP de 8 s), il considere qu'il a saute dans le temps :
-il **rephotographie tous les scores en silence**, exactement comme au premier
-releve, et le note dans le journal :
+le timeout HTTP de 8 s), il considere qu'il a saute dans le temps. Deux
+comportements alors, selon ce qu'on lui a demande.
+
+#### Par defaut : le silence
+
+Il **rephotographie tous les scores**, exactement comme au premier releve, et
+le note dans le journal :
 
 ```
 2026-09-06 21:14:07  trou de 47 min dans le temps (veille, hibernation ou processus gele) - on rephotographie les scores sans rien annoncer
@@ -767,9 +772,60 @@ La surveillance reprend ensuite normalement, et le but suivant est annonce
 comme d'habitude. Les buts tombes pendant la veille, eux, sont perdus : c'est
 le prix a payer pour ne pas raconter n'importe quoi.
 
+#### Avec `--catch-up` : une carte de resume
+
+```bash
+butbutbut --catch-up
+```
+
+La photo d'avant le trou n'est plus jetee : elle est mise de cote, puis
+confrontee a celle du reveil. Comme la source publie le tableau des actions de
+chaque match avec des **cles stables**, on sait exactement quels buts on n'a
+jamais vus - et donc quoi raconter sans rien inventer.
+
+```
+PENDANT TON ABSENCE   LIGUE 1                                     47 min
+Angers              0 - 2              Stade Rennais
+avant 0 - 0 : A. Kalimuendo 58', L. Blas 77'
+Lens 1 - 0 Lille (avant 0 - 0) : F. Sotoca 23'
+```
+
+Ce que cette carte **ne** fait **pas** compte autant que ce qu'elle dit :
+
+- **une seule carte**, jamais une par but. Rejouer trois cartes avec des
+  minutes perimees est exactement ce que le silence evitait ;
+- **aucun son.** On n'annonce pas au klaxon un but vieux d'une heure. C'est
+  une carte discrete, comme la mi-temps ou le carton rouge - et comme elles,
+  elle a son propre interrupteur : `--no-phase-cards` ne la coupe pas ;
+- **rien a dire, pas de carte du tout.** Si personne n'a marque pendant la
+  veille, l'ecran reste vide ; le journal, lui, note quand meme le rattrapage ;
+- le **filtre par equipe** s'applique : avec `--teams om`, seuls les matchs de
+  l'OM y figurent ;
+- un match **commence et fini pendant la veille** n'y figure pas non plus : on
+  n'en a rien suivi, meme regle que pour la carte de fin de match.
+
+Le premier match concerne occupe la ligne de score, les autres prennent une
+ligne chacun en dessous. Une nuit entiere de Coupe du monde ne fait pas
+deborder la carte pour autant : elle est coupee en hauteur comme en largeur,
+par le meme mecanisme que la liste des buteurs de la carte de fin de match. Le
+journal, lui, garde tout :
+
+```
+2026-09-06 21:14:07  trou de 47 min dans le temps (veille, hibernation ou processus gele) - on rephotographie les scores, et on resume ce qu'on a manque
+2026-09-06 21:14:09  rattrapage : 2 match(s) ont bouge pendant les 47 min d'absence
+2026-09-06 21:14:09  PENDANT TON ABSENCE [Ligue 1] Angers 0 - 2 Stade Rennais - avant 0 - 0 : A. Kalimuendo 58', L. Blas 77' - Lens 1 - 0 Lille (avant 0 - 0) : F. Sotoca 23' (47 min)
+```
+
+`butbutbut --status` rappelle sur sa ligne « rattrapage » lequel des deux
+comportements est arme, et la cle `catch_up` du fichier de configuration
+l'allume sans retaper l'option.
+
 La mesure porte sur l'horloge murale et non sur `time.monotonic()` : sous
 Linux, monotonic est gelee pendant la veille et ne verrait donc aucun trou,
-alors que sous Windows elle continue d'avancer.
+alors que sous Windows elle continue d'avancer. C'est aussi pourquoi le resume
+attend que **toutes** les competitions suivies aient ete rephotographiees :
+leurs echeances ne retombent pas au meme releve, et un resume a trous vaudrait
+moins que rien.
 
 ### Cadence
 

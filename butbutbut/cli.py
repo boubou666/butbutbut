@@ -24,6 +24,7 @@ DEFAULT_INTERVAL = 25          # secondes, quand un match est en cours
 DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
 DEFAULT_DURATION = 6.0         # duree d'affichage minimale de la carte
 PHASE_DURATION = 5.0           # coup d'envoi, mi-temps, reprise, fin : sans son
+CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs lignes
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
@@ -359,6 +360,7 @@ def do_daemon(args) -> int:
         teams=chosen_teams,
         red_cards=args.red_cards,
         before_kickoff=args.before_kickoff * 60.0,
+        catch_up=args.catch_up,
     )
 
     if recorder is not None:
@@ -381,6 +383,9 @@ def do_daemon(args) -> int:
     if pin.active:
         log("carte epinglee sur {} : elle reste a l'ecran tant qu'un match est "
             "en cours".format(args.pin), quiet=args.quiet)
+    if args.catch_up:
+        log("rattrapage de sortie de veille : une carte de resume, sans son",
+            quiet=args.quiet)
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -539,10 +544,14 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                 if event.sober:
                     if event.phase and args.no_phase_cards:
                         continue    # le journal garde la trace, pas l'ecran
-                    # Temps forts, expulsion, avant-match : carte seule, pas de
-                    # son. La duree ne depend donc pas de celle du jingle.
+                    # Temps forts, expulsion, avant-match, rattrapage : carte
+                    # seule, pas de son. La duree ne depend donc pas de celle
+                    # du jingle - et le resume de veille, qui a plusieurs
+                    # lignes a lire, reste un peu plus longtemps.
+                    default = (CATCHUP_DURATION if event.kind == watcher.CATCHUP
+                               else PHASE_DURATION)
                     stack.push(overlay.Card.from_event(event, crest),
-                               duration=args.duration or PHASE_DURATION)
+                               duration=args.duration or default)
                     continue
 
                 if media is None:
@@ -967,6 +976,10 @@ def do_status(args) -> int:
              screens.describe(found), args.position,
              tr("l'ecran principal") if args.screen is None
              else tr("ecran {}", args.screen)))
+    print(tr("  rattrapage  : {}",
+             tr("actif (une carte de resume au reveil, sans son)")
+             if args.catch_up
+             else tr("inactif (le reveil reste silencieux, voir --catch-up)")))
     print(tr("  plein ecran : {}", 
         tr("detecte (la carte masquee est notee au journal)")
         if fullscreen.supported()
@@ -1206,6 +1219,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("annonce le match ce nombre de minutes avant le "
                              "coup d'envoi, une seule fois et sans son "
                              "(0 = desactive, defaut)"))
+    parser.add_argument("--catch-up", action="store_true", dest="catch_up",
+                        help=tr("au reveil apres une veille, resume en une "
+                             "carte muette les buts tombes pendant l'absence "
+                             "(par defaut le reveil reste silencieux)"))
     parser.add_argument("--lang", default=None, metavar=tr("CODE"),
                         help=tr("langue des cartes : fr, en, es, it, de (defaut : "
                              "celle du systeme, francais a defaut). Le journal, "
