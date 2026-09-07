@@ -13,12 +13,19 @@ Le **nom** des fichiers deposes parle : `om.mp3` ne sort que quand l'OM marque,
 encaisse. Le reste est le fond sonore, tire au hasard comme avant. Tout se
 joue dans armed_sounds(), une fonction pure : le dossier est relu a chaque but,
 et le classement se teste sans jouer une note.
+
+`--sound-for om=cri.wav` dit la meme chose sans renommer ni deplacer quoi que
+ce soit, et surtout sans deviner : le mot est donne, pas lu dans un nom de
+fichier. Ces paires-la passent par les MEMES etages - une equipe l'emporte sur
+sa competition parce qu'elle est plus precise - et couvrent le dossier a etage
+egal, puisqu'elles ont ete ecrites noir sur blanc.
 """
 
 from __future__ import annotations
 
 import math
 import random
+import re
 import shutil
 import struct
 import subprocess
@@ -239,6 +246,11 @@ class Context:
                    for club in self.clubs)
 
 
+def is_conceded_word(token) -> bool:
+    """Ce mot est-il celui du but encaisse (`contre`, `against`...) ?"""
+    return teams.normalize(token) in _CONCEDED
+
+
 def tier_of(path, context):
     """L'etage arme par ce nom de fichier pour ce but, ou None.
 
@@ -247,7 +259,7 @@ def tier_of(path, context):
     Ces fichiers-la sont ecartes du tirage, pas verses dedans.
     """
     for name in name_candidates(path):
-        if teams.normalize(name) in _CONCEDED:
+        if is_conceded_word(name):
             return TIER_CONCEDED if context.conceded else None
         if context.names_scorer(name):
             return TIER_TEAM
@@ -271,7 +283,164 @@ def sounds_by_tier(files, context) -> dict:
     return pools
 
 
-def armed_sounds(files, context=None) -> list:
+# ------------------------------------------------------- les sons nommes ----
+
+class Invalid(ValueError):
+    """Une paire de --sound-for qui ne veut rien dire."""
+
+
+# Ce qui separe deux paires : la virgule et le point-virgule comme partout
+# ailleurs, et le retour a la ligne parce qu'une valeur du fichier de
+# configuration peut s'ecrire sur plusieurs lignes.
+#
+# Un separateur ne coupe que s'il est SUIVI d'un `mot=`. Sans cela
+# `om=Mes sons, vol. 2/om.wav` serait coupe en deux, et un chemin a virgule
+# deviendrait impossible a ecrire - alors que rien, dans un systeme de
+# fichiers, n'interdit la virgule.
+PAIR_SPLIT = re.compile(r"[,;\n]\s*(?=[^=,;\n]+=)")
+
+
+class Assignment:
+    """Un son nomme a la main : le mot vise, et le fichier a jouer.
+
+    Le mot n'est pas resolu ici. Une competition se reconnaitrait hors ligne,
+    une equipe non - il faudrait le catalogue de la source - et surtout la
+    reponse depend du but : `om` designe l'equipe qui marque dans un match, et
+    personne dans le suivant. On garde donc le mot tel qu'il a ete tape, et
+    c'est assignment_tier() qui tranche, but par but.
+    """
+
+    __slots__ = ("token", "path")
+
+    def __init__(self, token, path):
+        self.token = str(token).strip()
+        # `~` est ce qu'on tape spontanement dans un fichier de configuration,
+        # et rien ne l'y developpe : le shell n'est pas passe par la.
+        self.path = Path(str(path).strip()).expanduser()
+
+    def __repr__(self):
+        return "<Assignment {}={}>".format(self.token, self.path)
+
+
+def parse_assignments(value) -> list:
+    """Lit "om=cri.wav,ucl=corne.mp3" et rend [Assignment, ...]. Leve Invalid.
+
+    Le meme texte vient de deux endroits, la ligne de commande et une cle du
+    fichier de configuration : d'ou une lecture unique, et une erreur qui se
+    dit avec le mot fautif sous les yeux plutot qu'un "valeur invalide" sec.
+    """
+    if not value:
+        return []
+    text = value if isinstance(value, str) else "\n".join(
+        str(part) for part in value)
+
+    found = []
+    for chunk in PAIR_SPLIT.split(text):
+        # Une virgule de fin de ligne n'a coupe nulle part, faute de paire
+        # derriere : elle arrive ici, collee au chemin.
+        chunk = chunk.strip().strip(",;").strip()
+        if not chunk:
+            continue
+        token, sign, path = chunk.partition("=")
+        if not sign or not token.strip() or not path.strip():
+            raise Invalid(
+                "--sound-for attend des paires nom=chemin ({!r} n'en est pas "
+                "une). Exemple : --sound-for om=cri.wav,ucl=corne.mp3".format(
+                    chunk))
+        found.append(Assignment(token, path))
+    return found
+
+
+def unusable(path):
+    """Ce qui cloche avec ce fichier, ou None s'il est jouable.
+
+    Rend la phrase plutot qu'un booleen : c'est elle qu'on affiche au demarrage
+    et qu'on ecrit au journal, et "fichier introuvable" ne s'arbitre pas de la
+    meme facon que "format inconnu" par celui qui lit.
+
+    Le format se juge sur l'extension, comme partout ailleurs dans ce module :
+    ouvrir le fichier pour de bon demanderait un decodeur qu'on n'a pas, et le
+    lecteur du systeme, lui, se fie deja au nom.
+    """
+    path = Path(path)
+    try:
+        if path.is_dir():
+            return "c'est un dossier, pas un fichier"
+        if not path.is_file():
+            return "fichier introuvable"
+        if path.suffix.lower() not in AUDIO_EXTENSIONS:
+            return "format que butbutbut ne sait pas jouer (au choix : {})".format(
+                ", ".join(extension[1:] for extension in AUDIO_EXTENSIONS))
+        with path.open("rb") as handle:
+            handle.read(1)
+    except (OSError, ValueError) as exc:
+        # Droits refuses, chemin impossible sur ce systeme, disque parti :
+        # tout cela se dit, et rien de tout cela ne doit lever ici.
+        return "fichier illisible ({})".format(exc)
+    return None
+
+
+def check_assignments(assigned) -> list:
+    """Ce qui cloche dans ces paires : une phrase par paire fautive.
+
+    Une liste vide veut dire que tout est jouable. Toutes les paires sont
+    regardees, pas seulement la premiere : corriger trois chemins un par un,
+    en relancant a chaque fois, n'amuse personne.
+    """
+    problems = []
+    for one in assigned:
+        problem = unusable(one.path)
+        if problem is not None:
+            problems.append("le son de {} : {} ({})".format(
+                one.token, problem, one.path))
+    return problems
+
+
+def assignment_tier(assignment, context):
+    """L'etage arme par cette paire pour ce but, ou None.
+
+    Le meme entonnoir que les noms de fichiers - l'equipe avant sa competition,
+    parce qu'elle est plus precise - a un etage pres : il n'y a pas de general
+    ici. Un son nomme vise quelqu'un ; un mot qui ne dit rien de CE but-la se
+    tait plutot que de devenir le fond sonore de tous les autres.
+    """
+    name = assignment.token
+    if is_conceded_word(name):
+        return TIER_CONCEDED if context.conceded else None
+    if context.names_scorer(name):
+        return TIER_TEAM
+    if context.names_beaten(name):
+        return None                      # elle vient d'encaisser : elle se tait
+    if context.names_league(name):
+        return TIER_LEAGUE
+    return None
+
+
+def named_by_tier(assigned, context, on_missing=None) -> dict:
+    """Les sons nommes ranges par etage, ceux qui ont disparu en moins.
+
+    Le disque n'est consulte que pour les paires que CE but arme. Un son nomme
+    pour une equipe qui ne joue pas ce soir n'a pas a etre cherche, et sa
+    disparition n'a pas a remplir le journal d'une ligne par but tombe
+    ailleurs. Le chemin a ete verifie au demarrage : s'il ne repond plus, c'est
+    qu'une cle USB est partie ou qu'un fichier a ete renomme en cours de
+    route - on le note, et l'etage repasse la main comme s'il etait vide.
+    """
+    pools = {tier: [] for tier in TIERS}
+    for one in assigned:
+        tier = assignment_tier(one, context)
+        if tier is None:
+            continue
+        problem = unusable(one.path)
+        if problem is not None:
+            if on_missing is not None:
+                on_missing(one, problem)
+            continue
+        pools[tier].append(one.path)
+    return pools
+
+
+def armed_sounds(files, context=None, assigned=(), on_missing=None) -> list:
     """Les fichiers a tirer au sort pour ce but : l'etage le plus precis servi.
 
     L'ordre est **equipe > contre > competition > general**, et il se lit comme
@@ -289,13 +458,25 @@ def armed_sounds(files, context=None) -> list:
     passe la main au suivant plutot que de rendre le silence - un dossier qui
     n'a que `contre.mp3` et `corne.mp3` joue `corne.mp3` le reste du temps.
 
+    Les paires de `--sound-for` entrent aux memes etages, et y couvrent ce que
+    le dossier propose : a etage egal, ce qui a ete nomme l'emporte sur ce qui
+    a ete devine dans un nom de fichier. C'est le seul arbitrage qui se defend
+    devant quelqu'un qui a ecrit `--sound-for om=cri.wav` en ayant deja un
+    `om.mp3` dans son dossier - il vient de dire lequel il voulait.
+
     Sans contexte (`--test`, une carte muette), rien ne change : tout le
-    dossier est candidat, comme avant.
+    dossier est candidat, comme avant. Un son nomme, lui, ne sort pas : il
+    designe une equipe ou une competition, et il n'y a la aucun but a qui les
+    comparer.
     """
     files = list(files)
     if context is None:
         return files
     pools = sounds_by_tier(files, context)
+    named = named_by_tier(assigned, context, on_missing)
+    for tier in TIERS:
+        if named[tier]:
+            pools[tier] = named[tier]
     for tier in TIERS:
         if pools[tier]:
             return pools[tier]
@@ -311,7 +492,7 @@ def declared(path, clubs=()) -> tuple:
     n'en jouera pas moins pour son equipe le jour ou elle marque.
     """
     for name in name_candidates(path):
-        if teams.normalize(name) in _CONCEDED:
+        if is_conceded_word(name):
             return (TIER_CONCEDED, None)
         found = leagues.designates(name)
         if found is not None:
@@ -322,14 +503,18 @@ def declared(path, clubs=()) -> tuple:
 
 
 def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55,
-               context=None) -> Path:
+               context=None, assigned=(), on_missing=None) -> Path:
     """Son a jouer : perso d'abord, puis celui fourni, puis la corne synthetisee.
 
     `context` (sound.Context) laisse le nom des fichiers designer une equipe,
     une competition ou un but encaisse ; sans lui, tirage au hasard dans tout
-    le dossier, comme avant.
+    le dossier, comme avant. `assigned` porte les paires de `--sound-for`, et
+    `on_missing(assignment, probleme)` est appele pour celle dont le fichier
+    s'est evapore depuis le demarrage - le son suivant prend le relais, il n'y
+    a pas de raison de se taire pour autant.
     """
-    customs = armed_sounds(custom_sounds(custom_dir), context)
+    customs = armed_sounds(custom_sounds(custom_dir), context, assigned,
+                           on_missing)
     if customs:
         return random.choice(customs)
 

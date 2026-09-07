@@ -1735,6 +1735,157 @@ class TestContextualSound(unittest.TestCase):
         self.assertIn("non suivie", rows["pl.mp3"])
 
 
+class TestNamedSound(unittest.TestCase):
+    """`--sound-for om=cri.wav` : le mot est donne, et le chemin verifie tot."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = cli.paths()["sound"]
+        self.folder.mkdir(parents=True)
+        self.mine = Path(self.tmp.name) / "cris"
+        self.mine.mkdir()
+
+    def cri(self, name="cri.wav") -> Path:
+        path = self.mine / name
+        path.write_bytes(b"x")
+        return path
+
+    def args(self, *extra):
+        return cli.build_parser().parse_args(
+            ["--quiet", "--duration", "1"] + list(extra))
+
+    def goal(self, side="home"):
+        matches = espn.parse(
+            payload(event(home="Marseille",
+                          away=("Paris Saint-Germain", "Paris SG", "PSG"),
+                          state="in", home_score=1)),
+            leagues.BY_SLUG["fra.1"])
+        match = matches[0]
+        home = side == "home"
+        return watcher.Event(kind=watcher.GOAL, match=match, side=side,
+                             team=match.home if home else match.away,
+                             opponent=match.away if home else match.home,
+                             home_score=1, away_score=0, delta=1, play=None)
+
+    def run_cli(self, argv, catalogue=(("Marseille", "OM", "MAR"),)):
+        """main() sans reseau : le catalogue d'equipes est fabrique."""
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(espn, "catalogue", return_value=list(catalogue)), \
+                mock.patch.object(cli, "do_daemon", return_value=0):
+            with redirect_stdout(out), redirect_stderr(err):
+                code = cli.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    # --- ce qui se dit au demarrage ------------------------------------------
+
+    def test_a_missing_file_is_refused_before_the_first_goal(self):
+        code, _out, err = self.run_cli(
+            ["--sound-for", "om=" + str(self.mine / "absent.wav"),
+             "--leagues", "l1"])
+        self.assertEqual(code, 2)
+        self.assertIn("introuvable", err)
+        self.assertIn("om", err)
+
+    def test_a_format_nobody_can_play_is_refused_too(self):
+        note = self.mine / "cri.txt"
+        note.write_bytes(b"x")
+        code, _out, err = self.run_cli(
+            ["--sound-for", "om=" + str(note), "--leagues", "l1"])
+        self.assertEqual(code, 2)
+        self.assertIn("format", err)
+
+    def test_something_that_is_not_a_pair_is_refused(self):
+        code, _out, err = self.run_cli(["--sound-for", "om", "--leagues", "l1"])
+        self.assertEqual(code, 2)
+        self.assertIn("nom=chemin", err)
+
+    def test_a_misspelled_team_is_refused_like_anywhere_else(self):
+        # Un cri nomme pour "marseile" ne sortirait jamais, et rien ne le
+        # dirait : c'est exactement ce que check_teams() attrape ailleurs.
+        code, _out, err = self.run_cli(
+            ["--sound-for", "marseile=" + str(self.cri()), "--leagues", "l1"])
+        self.assertEqual(code, 2)
+        self.assertIn("marseile", err)
+
+    def test_a_competition_is_not_looked_for_in_the_team_catalogue(self):
+        code, _out, err = self.run_cli(
+            ["--sound-for", "ucl=" + str(self.cri()), "--leagues", "l1"])
+        self.assertEqual(code, 0, err)
+
+    def test_a_good_pair_lets_the_daemon_start(self):
+        code, _out, err = self.run_cli(
+            ["--sound-for", "om=" + str(self.cri()), "--leagues", "l1"])
+        self.assertEqual(code, 0, err)
+
+    # --- ce qui sort au but --------------------------------------------------
+
+    def chosen(self, args, event_=None):
+        path, _duration = cli.resolve_sound(args, event_)
+        return path.name
+
+    def test_the_named_sound_plays_for_that_team_only(self):
+        (self.folder / "corne.mp3").write_bytes(b"x")
+        args = self.args("--sound-for", "om=" + str(self.cri()))
+        self.assertEqual(self.chosen(args, self.goal("home")), "cri.wav")
+        self.assertEqual(self.chosen(args, self.goal("away")), "corne.mp3")
+
+    def test_the_team_wins_over_its_own_competition(self):
+        args = self.args("--sound-for", "l1={},om={}".format(
+            self.cri("l1.wav"), self.cri("cri.wav")))
+        self.assertEqual(self.chosen(args, self.goal("home")), "cri.wav")
+        self.assertEqual(self.chosen(args, self.goal("away")), "l1.wav")
+
+    def test_what_is_named_covers_the_file_that_was_guessed(self):
+        (self.folder / "om.mp3").write_bytes(b"x")
+        args = self.args("--sound-for", "om=" + str(self.cri()))
+        self.assertEqual(self.chosen(args, self.goal("home")), "cri.wav")
+
+    def test_the_folder_keeps_the_goals_nobody_named(self):
+        (self.folder / "corne.mp3").write_bytes(b"x")
+        args = self.args("--sound-for", "psg=" + str(self.cri()))
+        self.assertEqual(self.chosen(args, self.goal("home")), "corne.mp3")
+
+    def test_no_sound_still_means_no_sound(self):
+        args = self.args("--no-sound", "--sound-for",
+                         "om=" + str(self.cri()))
+        self.assertIsNone(cli.resolve_sound(args, self.goal("home"))[0])
+
+    def test_a_sound_that_vanishes_degrades_and_lands_in_the_journal(self):
+        (self.folder / "corne.mp3").write_bytes(b"x")
+        cri = self.cri()
+        args = self.args("--sound-for", "om=" + str(cri))
+        cri.unlink()                      # la cle USB vient d'etre debranchee
+        self.assertEqual(self.chosen(args, self.goal("home")), "corne.mp3")
+        written = cli.paths()["log"].read_text(encoding="utf-8")
+        self.assertIn("son nomme pour om", written)
+        self.assertIn("introuvable", written)
+
+    # --- ce que --status en dit ----------------------------------------------
+
+    def test_status_says_what_each_pair_arms(self):
+        args = self.args("--teams", "om", "--sound-for",
+                         "om={},ucl={},contre={}".format(
+                             self.cri("cri.wav"), self.cri("hymne.wav"),
+                             self.cri("aie.wav")))
+        rows = dict(cli._named_arming(cli.sound_assignments(args), args,
+                                      [leagues.BY_SLUG["fra.1"]]))
+        self.assertIn("marque", rows["om -> cri.wav"])
+        self.assertIn("non suivie", rows["ucl -> hymne.wav"])
+        self.assertIn("encaisse", rows["contre -> aie.wav"])
+
+    def test_status_says_when_a_named_file_is_gone(self):
+        cri = self.cri()
+        args = self.args("--sound-for", "om=" + str(cri))
+        cri.unlink()
+        rows = dict(cli._named_arming(cli.sound_assignments(args), args))
+        self.assertIn("introuvable", rows["om -> cri.wav"])
+
+
 def fixtures(*rows, **kwargs):
     """Des matchs a venir, tels que la source les decrit.
 

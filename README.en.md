@@ -950,6 +950,91 @@ butbutbut --status            # what butbutbut made of each file
 > catalogue to settle it. `--teams angers` removes the ambiguity, and
 > `--status` then files it under the right tier.
 
+#### Naming the sound yourself: `--sound-for`
+
+Renaming a file means copying it into the `sound` folder, and accepting that
+butbutbut guesses what `om` stands for. When the club's chant already lives
+somewhere on the disk - or when the file name is needed for something else -
+the pair can simply be spelled out:
+
+```bash
+butbutbut --sound-for om=~/sounds/allez-om.wav
+butbutbut --sound-for om=~/sounds/om.wav,ucl=~/sounds/anthem.mp3
+butbutbut --teams om --sound-for om=~/sounds/om.wav,contre=~/sounds/ouch.wav
+```
+
+On the left, the very same words as everywhere else: those of `--teams` for a
+club (`om`, `barca`, `manu`, `marseille`, the start of a name), those of
+`--leagues` for a competition (`l1`, `ucl`, `nhl`, an ESPN code), and `contre`
+for a goal conceded by a followed team. On the right, a path - `~` included.
+
+**Which one wins when a goal ticks both boxes?** The team. A goal for OM in the
+Champions League, with both `om=` and `ucl=` named, plays the OM sound: the
+most precise one speaks, exactly as with file names. These are in fact the
+**same four tiers** - the team, `contre`, the competition, the background pool -
+and not a second mechanism bolted on the side. The one difference:
+`--sound-for` has no general tier. A named sound aims at someone; it never
+becomes the background noise of every other goal.
+
+**And if the folder already says something?** At equal tier, what is named
+covers what is guessed: with `om.mp3` in the folder *and*
+`--sound-for om=~/sounds/om.wav`, the latter plays. Whoever wrote the pair has
+just said which one they meant.
+
+**A wrong path is reported at startup**, not at the first goal three hours
+later - the same logic as a misspelled team name:
+
+```
+$ butbutbut --sound-for om=~/sounds/om.wav
+butbutbut : le son de om : fichier introuvable (/home/me/sounds/om.wav)
+$ butbutbut --sound-for marseile=~/sounds/om.wav
+butbutbut : aucune equipe ne correspond a 'marseile' dans Ligue 1. [...]
+```
+
+The file must exist, be readable, and carry an extension butbutbut knows how to
+play (wav, mp3, ogg, opus, flac, m4a, aac). Every faulty pair is reported at
+once: fixing three paths across three restarts is nobody's idea of fun.
+
+Once started, though, the daemon no longer stops for that. A file that
+**vanishes along the way** - USB stick unplugged, folder renamed - makes the
+goal fall back to the sound below it (the folder, then the bundled sound) and
+leaves a line in the log:
+
+```
+2026-09-07 21:14:03  son nomme pour om indisponible (fichier introuvable) :
+/media/usb/om.wav -- le son par defaut prend le relais
+```
+
+`--volume` and `--no-sound` keep their reach: silent mode also cuts the named
+sounds, and `--volume` still only tunes the synthesised horn - a file of your
+own is tuned in your own editor, just like those in the `sound` folder.
+
+```bash
+butbutbut --status            # what each pair arms, and what is wrong with it
+```
+
+```
+  son nomme   : 3 paire(s), le plus precis l'emporte
+                om -> om.wav           quand cette equipe marque
+                contre -> aie.wav      quand une equipe suivie encaisse
+                ucl -> hymne.mp3       les buts de Ligue des champions
+```
+
+In the configuration file everything fits in a single key - comma-separated, or
+one pair per line once the list grows:
+
+```ini
+[butbutbut]
+teams = om
+sound_for =
+    om=~/sounds/om.wav
+    contre=~/sounds/ouch.wav
+    ucl=~/sounds/anthem.mp3
+```
+
+A comma only splits in front of a new pair: a path that contains one
+(`om=~/sounds, vol. 2/om.wav`) stays readable as it is.
+
 ```bash
 butbutbut --no-sound          # silent
 butbutbut --no-overlay        # just the sound and the log, no card
@@ -1036,6 +1121,7 @@ interval = 25
 idle_interval = 300
 
 # Sound and discretion (oui/non, true/false, 1/0)
+sound_for = om=~/sounds/om.wav, ucl=~/sounds/anthem.mp3
 volume = 0.55
 no_sound = non
 no_overlay = non
@@ -2238,7 +2324,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1024 tests**, with no network and no screen: the source is simulated by an
+**1073 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

@@ -238,6 +238,250 @@ class TestPickWithContext(unittest.TestCase):
             self.assertNotEqual(chosen.name, "pl.mp3")
 
 
+class TestParseAssignments(unittest.TestCase):
+    """La lecture de --sound-for, partagee avec le fichier de configuration."""
+
+    def test_a_pair_gives_a_word_and_a_path(self):
+        [one] = sound.parse_assignments("om=cri.wav")
+        self.assertEqual(one.token, "om")
+        self.assertEqual(one.path, Path("cri.wav"))
+
+    def test_several_pairs_at_once(self):
+        found = sound.parse_assignments("om=cri.wav,ucl=corne.mp3")
+        self.assertEqual([one.token for one in found], ["om", "ucl"])
+
+    def test_a_line_break_separates_too(self):
+        # C'est ainsi qu'une valeur du fichier de configuration s'ecrit sur
+        # plusieurs lignes.
+        found = sound.parse_assignments("om=cri.wav\nucl=corne.mp3")
+        self.assertEqual([one.token for one in found], ["om", "ucl"])
+
+    def test_a_comma_inside_a_path_is_not_a_separator(self):
+        # Rien n'interdit la virgule dans un nom de dossier : elle ne coupe
+        # que devant une nouvelle paire.
+        found = sound.parse_assignments("om=sons, vol. 2/om.wav;ucl=corne.mp3")
+        self.assertEqual([(one.token, one.path.name) for one in found],
+                         [("om", "om.wav"), ("ucl", "corne.mp3")])
+        self.assertIn("sons, vol. 2", str(found[0].path))
+
+    def test_spaces_and_a_trailing_comma_are_forgiven(self):
+        found = sound.parse_assignments("  om = cri.wav ,  ")
+        self.assertEqual([(one.token, one.path.name) for one in found],
+                         [("om", "cri.wav")])
+
+    def test_nothing_at_all_is_not_an_error(self):
+        self.assertEqual(sound.parse_assignments(None), [])
+        self.assertEqual(sound.parse_assignments(""), [])
+        self.assertEqual(sound.parse_assignments("  ,  "), [])
+
+    def test_a_word_without_its_path_is_refused_by_name(self):
+        with self.assertRaises(sound.Invalid) as caught:
+            sound.parse_assignments("om")
+        self.assertIn("om", str(caught.exception))
+
+    def test_a_path_without_its_word_is_refused_too(self):
+        with self.assertRaises(sound.Invalid):
+            sound.parse_assignments("=cri.wav")
+
+    def test_the_home_shortcut_is_expanded(self):
+        # Personne ne developpe le `~` du fichier de configuration : le shell
+        # n'est pas passe par la.
+        [one] = sound.parse_assignments("om=~/sons/om.wav")
+        self.assertNotIn("~", str(one.path))
+        self.assertTrue(str(one.path).endswith("om.wav"))
+
+
+class TestUnusable(unittest.TestCase):
+    """Ce qu'un chemin fautif rend : une phrase, pas un booleen."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = Path(self.tmp.name)
+
+    def test_a_readable_sound_says_nothing(self):
+        path = self.folder / "cri.wav"
+        path.write_bytes(b"x")
+        self.assertIsNone(sound.unusable(path))
+
+    def test_a_missing_file_is_named_as_such(self):
+        self.assertIn("introuvable", sound.unusable(self.folder / "nulle.wav"))
+
+    def test_a_folder_is_not_a_sound(self):
+        self.assertIn("dossier", sound.unusable(self.folder))
+
+    def test_a_format_nobody_can_play_is_refused(self):
+        path = self.folder / "cri.txt"
+        path.write_bytes(b"x")
+        self.assertIn("format", sound.unusable(path))
+
+    def test_check_assignments_names_every_faulty_pair(self):
+        good = self.folder / "cri.wav"
+        good.write_bytes(b"x")
+        problems = sound.check_assignments([
+            sound.Assignment("om", good),
+            sound.Assignment("psg", self.folder / "nulle.wav"),
+            sound.Assignment("ucl", self.folder / "note.txt"),
+        ])
+        self.assertEqual(len(problems), 2)
+        self.assertIn("psg", problems[0])
+        self.assertIn("ucl", problems[1])
+
+    def test_all_is_well_gives_an_empty_list(self):
+        path = self.folder / "cri.wav"
+        path.write_bytes(b"x")
+        self.assertEqual(sound.check_assignments(
+            [sound.Assignment("om", path)]), [])
+
+
+class TestNamedSoundsAreArmed(unittest.TestCase):
+    """Un son nomme joue aux memes etages qu'un nom de fichier, et les couvre."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = Path(self.tmp.name)
+
+    def pair(self, token, name):
+        """Une paire dont le fichier existe pour de bon."""
+        path = self.folder / name
+        path.write_bytes(b"x")
+        return sound.Assignment(token, path)
+
+    def armed(self, pool, context, assigned, on_missing=None):
+        return names(sound.armed_sounds(pool, context, assigned, on_missing))
+
+    def test_a_named_team_plays_only_when_it_scores(self):
+        cri = [self.pair("om", "cri.wav")]
+        self.assertEqual(self.armed(files("corne.mp3"), scoring(), cri),
+                         ["cri.wav"])
+        self.assertEqual(
+            self.armed(files("corne.mp3"), scoring(marseille=False), cri),
+            ["corne.mp3"])
+
+    def test_a_full_name_names_the_team_too(self):
+        self.assertEqual(
+            self.armed([], scoring(), [self.pair("marseille", "cri.wav")]),
+            ["cri.wav"])
+
+    def test_a_named_league_plays_for_that_league_only(self):
+        corne = [self.pair("l1", "corne.wav")]
+        self.assertEqual(self.armed([], scoring(), corne), ["corne.wav"])
+        other = scoring(league=leagues.BY_SLUG["eng.1"])
+        self.assertEqual(self.armed([], other, corne), [])
+
+    def test_the_team_beats_its_own_competition(self):
+        # L'arbitrage documente : le plus precis gagne.
+        both = [self.pair("l1", "corne.wav"), self.pair("om", "cri.wav")]
+        self.assertEqual(self.armed([], scoring(), both), ["cri.wav"])
+        # Un but de Paris dans la meme competition : l'etage equipe est vide,
+        # celui de la competition prend la main.
+        self.assertEqual(self.armed([], scoring(marseille=False), both),
+                         ["corne.wav"])
+
+    def test_what_is_named_covers_what_was_guessed_at_the_same_tier(self):
+        pool = files("om.mp3", "corne.mp3")
+        self.assertEqual(self.armed(pool, scoring(), [self.pair("om", "cri.wav")]),
+                         ["cri.wav"])
+
+    def test_a_named_sound_never_becomes_background_noise(self):
+        # `psg` ne joue pas dans ce but-la : son cri se tait, et le fond
+        # sonore du dossier reste ce qu'il etait.
+        pool = files("corne.mp3")
+        self.assertEqual(
+            self.armed(pool, scoring(), [self.pair("psg", "cri.wav")]),
+            ["corne.mp3"])
+
+    def test_the_team_that_concedes_stays_quiet(self):
+        self.assertEqual(
+            self.armed([], scoring(), [self.pair("psg", "cri.wav")]), [])
+
+    def test_the_conceded_word_works_when_named(self):
+        aie = [self.pair("contre", "aie.wav")]
+        self.assertEqual(self.armed([], scoring(conceded=True), aie),
+                         ["aie.wav"])
+        self.assertEqual(self.armed([], scoring(), aie), [])
+
+    def test_two_sounds_for_the_same_word_are_both_drawn(self):
+        both = [self.pair("om", "cri-1.wav"), self.pair("om", "cri-2.wav")]
+        self.assertEqual(sorted(self.armed([], scoring(), both)),
+                         ["cri-1.wav", "cri-2.wav"])
+
+    def test_without_a_goal_nothing_named_comes_out(self):
+        # --test et les cartes muettes : rien a comparer, tirage d'avant.
+        pool = files("corne.mp3")
+        self.assertEqual(self.armed(pool, None, [self.pair("om", "cri.wav")]),
+                         ["corne.mp3"])
+
+    def test_every_tier_is_reachable_by_a_named_sound(self):
+        ranked = sound.named_by_tier(
+            [self.pair("om", "cri.wav"), self.pair("contre", "aie.wav"),
+             self.pair("l1", "corne.wav"), self.pair("psg", "eux.wav")],
+            scoring(conceded=True))
+        self.assertEqual(names(ranked[sound.TIER_TEAM]), ["cri.wav"])
+        self.assertEqual(names(ranked[sound.TIER_CONCEDED]), ["aie.wav"])
+        self.assertEqual(names(ranked[sound.TIER_LEAGUE]), ["corne.wav"])
+        # Il n'y a pas d'etage general pour un son nomme, et l'equipe qui
+        # encaisse n'arme rien du tout.
+        self.assertEqual(ranked[sound.TIER_GENERAL], [])
+
+
+class TestNamedSoundThatVanishes(unittest.TestCase):
+    """La cle USB debranchee : on degrade, on note, on ne se tait pas."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.folder = Path(self.tmp.name)
+        self.noted = []
+
+    def note(self, assignment, problem):
+        self.noted.append((assignment.token, problem))
+
+    def gone(self, token="om", name="cri.wav"):
+        return sound.Assignment(token, self.folder / name)
+
+    def test_the_folder_takes_over_and_the_loss_is_noted(self):
+        chosen = sound.armed_sounds(files("om.mp3"), scoring(), [self.gone()],
+                                    self.note)
+        self.assertEqual(names(chosen), ["om.mp3"])
+        self.assertEqual(self.noted[0][0], "om")
+        self.assertIn("introuvable", self.noted[0][1])
+
+    def test_an_empty_tier_hands_over_like_any_other(self):
+        chosen = sound.armed_sounds(files("corne.mp3"), scoring(),
+                                    [self.gone()], self.note)
+        self.assertEqual(names(chosen), ["corne.mp3"])
+
+    def test_a_sound_named_for_someone_else_is_never_looked_for(self):
+        # Un cri nomme pour une equipe qui ne joue pas ce soir n'a pas a etre
+        # cherche sur le disque, ni a remplir le journal a chaque but.
+        sound.armed_sounds(files("corne.mp3"), scoring(),
+                           [self.gone("lens")], self.note)
+        self.assertEqual(self.noted, [])
+
+    def test_pick_sound_falls_back_all_the_way_down(self):
+        empty = self.folder / "sound"
+        empty.mkdir()
+        chosen = sound.pick_sound(self.folder / "but.wav", empty,
+                                  context=scoring(), assigned=[self.gone()],
+                                  on_missing=self.note)
+        self.assertNotEqual(chosen.name, "cri.wav")
+        self.assertTrue(chosen.is_file())
+        self.assertEqual(len(self.noted), 1)
+
+    def test_pick_sound_plays_the_named_one_while_it_is_there(self):
+        empty = self.folder / "sound"
+        empty.mkdir()
+        cri = self.folder / "cri.wav"
+        cri.write_bytes(b"x")
+        chosen = sound.pick_sound(self.folder / "but.wav", empty,
+                                  context=scoring(),
+                                  assigned=[sound.Assignment("om", cri)])
+        self.assertEqual(chosen, cri)
+        self.assertEqual(self.noted, [])
+
+
 class TestPlayers(unittest.TestCase):
     def test_windows_needs_no_external_player(self):
         if sys.platform != "win32":

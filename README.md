@@ -950,6 +950,92 @@ butbutbut --status            # ce que butbutbut a compris de chaque fichier
 > catalogue d'equipes hors ligne pour trancher. `--teams angers` suffit a lever
 > l'ambiguite, et `--status` le range alors au bon etage.
 
+#### Nommer le son soi-meme : `--sound-for`
+
+Renommer un fichier suppose de le copier dans le dossier `sound`, et d'accepter
+que butbutbut devine ce que `om` veut dire. Quand le cri du club est deja
+quelque part sur le disque - ou quand le nom du fichier sert a autre chose -
+la paire se dit directement :
+
+```bash
+butbutbut --sound-for om=~/sons/allez-om.wav
+butbutbut --sound-for om=~/sons/om.wav,ucl=~/sons/hymne.mp3
+butbutbut --teams om --sound-for om=~/sons/om.wav,contre=~/sons/aie.wav
+```
+
+A gauche, les memes mots que partout ailleurs : ceux de `--teams` pour un club
+(`om`, `barca`, `manu`, `marseille`, un debut de nom), ceux de `--leagues` pour
+une competition (`l1`, `ucl`, `nhl`, un code ESPN), et `contre` pour un but
+encaisse par une equipe suivie. A droite, un chemin - `~` compris.
+
+**Qui gagne quand un but coche les deux ?** L'equipe. Un but de l'OM en Ligue
+des champions, avec `om=` et `ucl=` nommes tous les deux, sort le son de l'OM :
+c'est le plus precis qui parle, exactement comme pour les noms de fichiers. Ce
+sont d'ailleurs les **memes quatre etages** - l'equipe, `contre`, la
+competition, le fond sonore - et non un second mecanisme pose a cote. La seule
+difference : `--sound-for` n'a pas d'etage general. Un son nomme vise quelqu'un,
+il ne devient jamais le bruit de fond des autres buts.
+
+**Et si le dossier dit deja quelque chose ?** A etage egal, ce qui est nomme
+couvre ce qui est devine : avec `om.mp3` dans le dossier *et*
+`--sound-for om=~/sons/om.wav`, c'est le second qui sort. Celui qui a ecrit la
+paire vient de dire lequel il voulait.
+
+**Un chemin fautif se dit au demarrage**, pas au premier but trois heures plus
+tard - c'est la meme logique qu'un nom d'equipe mal orthographie :
+
+```
+$ butbutbut --sound-for om=~/sons/om.wav
+butbutbut : le son de om : fichier introuvable (/home/moi/sons/om.wav)
+$ butbutbut --sound-for marseile=~/sons/om.wav
+butbutbut : aucune equipe ne correspond a 'marseile' dans Ligue 1. [...]
+```
+
+Le fichier doit exister, etre lisible, et porter une extension que butbutbut
+sait jouer (wav, mp3, ogg, opus, flac, m4a, aac). Toutes les paires fautives
+sont dites d'un coup : corriger trois chemins en relancant trois fois n'amuse
+personne.
+
+Une fois parti, en revanche, le daemon ne s'arrete plus pour si peu. Un fichier
+qui **disparait en cours de route** - cle USB debranchee, dossier renomme - fait
+retomber le but sur le son d'en dessous (le dossier, puis le son fourni), et
+laisse une ligne au journal :
+
+```
+2026-09-07 21:14:03  son nomme pour om indisponible (fichier introuvable) :
+/media/cle/om.wav -- le son par defaut prend le relais
+```
+
+`--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
+sons nommes, et `--volume` continue de ne regler que la corne synthetisee - un
+fichier a soi se regle dans son propre editeur, comme ceux du dossier `sound`.
+
+```bash
+butbutbut --status            # ce que chaque paire arme, et ce qui cloche
+```
+
+```
+  son nomme   : 3 paire(s), le plus precis l'emporte
+                om -> om.wav           quand cette equipe marque
+                contre -> aie.wav      quand une equipe suivie encaisse
+                ucl -> hymne.mp3       les buts de Ligue des champions
+```
+
+Dans le fichier de configuration, tout tient dans une seule cle - separee par
+des virgules, ou une paire par ligne quand la liste s'allonge :
+
+```ini
+[butbutbut]
+teams = om
+sound_for =
+    om=~/sons/om.wav
+    contre=~/sons/aie.wav
+    ucl=~/sons/hymne.mp3
+```
+
+Une virgule ne coupe que devant une nouvelle paire : un chemin qui en contient
+une (`om=~/sons, vol. 2/om.wav`) reste lisible tel quel.
+
 ```bash
 butbutbut --no-sound          # muet
 butbutbut --no-overlay        # juste le son et le journal, pas de carte
@@ -1035,6 +1121,7 @@ interval = 25
 idle_interval = 300
 
 # Son et discretion (oui/non, true/false, 1/0)
+sound_for = om=~/sons/om.wav, ucl=~/sons/hymne.mp3
 volume = 0.55
 no_sound = non
 no_overlay = non
@@ -2245,7 +2332,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1024 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1073 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

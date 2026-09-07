@@ -255,14 +255,45 @@ def sound_context(args, event):
                          clubs=sound_clubs(args))
 
 
+def sound_assignments(args) -> list:
+    """Les paires de --sound-for, relues a chaque appel.
+
+    Relues et non gardees : main() a deja refuse une paire fautive, et analyser
+    trois mots coute moins cher qu'un etat de plus a trainer dans `args` - que
+    les tests, `--status` et le daemon devraient tous penser a poser.
+
+    Une paire qui ne veut rien dire rend une liste vide plutot que de lever :
+    le demarrage l'a deja dite, et ce n'est pas au moment de jouer un son qu'on
+    arrete tout.
+    """
+    try:
+        return sound.parse_assignments(getattr(args, "sound_for", None))
+    except sound.Invalid:
+        return []
+
+
+def sound_gone(args):
+    """Que faire d'un son nomme qui s'est evapore : le noter, et continuer.
+
+    Une cle USB debranchee ou un fichier renomme ne vaut pas le silence : le
+    dossier, puis le son fourni, prennent le relais. Le journal, lui, garde de
+    quoi comprendre pourquoi le cri du club n'est pas sorti ce soir-la.
+    """
+    def note(assignment, problem):
+        log("son nomme pour {} indisponible ({}) : {} -- le son par defaut "
+            "prend le relais".format(assignment.token, problem,
+                                     assignment.path), quiet=args.quiet)
+    return note
+
+
 def resolve_sound(args, event=None):
     """(chemin du son, duree d'affichage). Relu a chaque but.
 
     Tu peux deposer un mp3 dans <data>/sound pendant que le daemon tourne : il
     le prendra au but suivant, sans redemarrage. `event` est ce qui permet au
-    nom des fichiers de designer une equipe, une competition ou un but
-    encaisse ; il reste facultatif, faute de quoi --test et les cartes muettes
-    n'auraient plus de son du tout.
+    nom des fichiers - et aux paires de --sound-for - de designer une equipe,
+    une competition ou un but encaisse ; il reste facultatif, faute de quoi
+    --test et les cartes muettes n'auraient plus de son du tout.
     """
     p = paths()
 
@@ -270,7 +301,9 @@ def resolve_sound(args, event=None):
     if not args.no_sound:
         try:
             chosen = sound.pick_sound(p["wav"], p["sound"], args.volume,
-                                      context=sound_context(args, event))
+                                      context=sound_context(args, event),
+                                      assigned=sound_assignments(args),
+                                      on_missing=sound_gone(args))
         except Exception as exc:
             log("son indisponible : {}".format(exc), quiet=args.quiet)
 
@@ -340,13 +373,30 @@ def spoiler_filter(args):
     return chosen if chosen.active else None
 
 
+def sound_teams(args):
+    """Les mots de --sound-for qui visent une equipe, en filtre verifiable.
+
+    Une competition se reconnait hors ligne, une equipe non : elle passe donc
+    par le meme catalogue que --teams, et une faute de frappe y merite le meme
+    refus. Sans ca, `--sound-for marseile=cri.wav` serait un cri qui ne sort
+    jamais, sans que rien ne le dise - la faute exacte que check_teams() a ete
+    ecrite pour attraper.
+    """
+    tokens = [one.token for one in sound_assignments(args)
+              if not sound.is_conceded_word(one.token)
+              and leagues.designates(one.token) is None]
+    chosen = teams.Filter(",".join(tokens))
+    return chosen if chosen.active else None
+
+
 def _team_filters(args) -> list:
     """Tous les filtres par equipe en vigueur, dans l'ordre de decision.
 
-    Sert a la verification des mots au demarrage : les trois listes puisent
+    Sert a la verification des mots au demarrage : les quatre listes puisent
     dans le meme vocabulaire, une faute de frappe y coute aussi cher.
     """
-    return [f for f in (checked_filter(args), spoiler_filter(args)) if f is not None]
+    return [f for f in (checked_filter(args), spoiler_filter(args),
+                        sound_teams(args)) if f is not None]
 
 
 def check_teams(args, selection) -> int:
@@ -355,7 +405,8 @@ def check_teams(args, selection) -> int:
     Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
     le dire tout de suite que de laisser le daemon rester muet pour toujours.
     Un mot fautif dans --spoiler-free est encore plus sournois : il ne rend pas
-    le daemon muet, il le laisse spoiler le match qu'on voulait proteger.
+    le daemon muet, il le laisse spoiler le match qu'on voulait proteger. Les
+    equipes nommees a --sound-for suivent le meme chemin.
     """
     chosen = _team_filters(args)
     if not chosen:
@@ -1590,6 +1641,38 @@ def _sound_arming(sounds, args, selection=()) -> list:
     return rows
 
 
+def _named_arming(assigned, args, selection=()) -> list:
+    """Ce que chaque paire de --sound-for arme, et ce qui cloche s'il y a lieu.
+
+    Plus sur que _sound_arming() : le mot a ete donne, il n'y a rien a deviner
+    dans un nom de fichier. Le chemin, lui, est reverifie a chaque --status -
+    le demarrage remonte parfois a des semaines, et un disque externe se
+    debranche.
+    """
+    followed = team_filter(args)
+    watched = bool(followed is not None and followed.wanted)
+    slugs = {league.slug for league in selection}
+
+    rows = []
+    for one in assigned:
+        target = leagues.designates(one.token)
+        if sound.is_conceded_word(one.token):
+            label = tr("quand une equipe suivie encaisse")
+            if not watched:
+                label += tr("  (jamais : aucune equipe suivie, voir --teams)")
+        elif target is not None:
+            label = tr("les buts de {}", target.name)
+            if target.slug not in slugs:
+                label += tr("  (competition non suivie)")
+        else:
+            label = tr("quand cette equipe marque")
+        problem = sound.unusable(one.path)
+        if problem is not None:
+            label += tr("  ({})", problem)
+        rows.append(("{} -> {}".format(one.token, one.path.name), label))
+    return rows
+
+
 def _announced_cadence(data):
     key = "interval" if data.get("matches") else "idle_interval"
     return data.get(key, "?")
@@ -2158,6 +2241,13 @@ def do_status(args) -> int:
         print(tr("  son         : {} ({})", fallback.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
 
+    named = sound_assignments(args)
+    if named:
+        print(tr("  son nomme   : {} paire(s), le plus precis l'emporte",
+                 len(named)))
+        for pair, label in _named_arming(named, args, selection):
+            print("                {:<22} {}".format(pair, label))
+
     cached = crest_cache(args).cached()
     print(tr("  ecussons    : {}",
              tr("desactives (--no-logos)") if args.no_logos
@@ -2492,6 +2582,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("mode muet"))
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
                         help=tr("volume de la corne synthetisee, 0.0 a 1.0"))
+    parser.add_argument("--sound-for", default=None, dest="sound_for",
+                        metavar=tr("PAIRES"),
+                        help=tr("un son a soi pour une equipe ou une "
+                             "competition, sous forme de paires nom=chemin "
+                             "separees par des virgules. Les noms sont ceux de "
+                             "--teams et de --leagues, et l'equipe l'emporte "
+                             "sur sa competition. Un chemin fautif est refuse "
+                             "au demarrage. Ex : --sound-for om=~/sons/om.wav"))
     parser.add_argument("--regen-sound", action="store_true", dest="regen_sound",
                         help=tr("regenere la corne synthetisee"))
     parser.add_argument("--quiet", action="store_true", help=tr("n'ecrit que dans le journal"))
@@ -2579,6 +2677,23 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
 
+    # Un son nomme se verifie ici et maintenant, comme un nom d'equipe : un
+    # chemin fautif qui ne se dirait qu'au premier but laisserait quelqu'un
+    # attendre trois heures un cri qui ne viendra pas, et chercher du cote du
+    # volume ou des haut-parleurs. Les paires sont lues au meme endroit, pour
+    # que la ligne de commande et le fichier de configuration se trompent de la
+    # meme facon et l'apprennent dans les memes termes.
+    try:
+        named = sound.parse_assignments(args.sound_for)
+    except sound.Invalid as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+    problems = sound.check_assignments(named)
+    if problems:
+        for message in problems:
+            print(tr("butbutbut : {}", message), file=sys.stderr)
+        return 2
+
 
     try:
         leagues.resolve(args.leagues, args.exclude)
@@ -2603,8 +2718,8 @@ def main(argv=None) -> int:
         return do_list(args)
     if args.list_teams:
         return do_list_teams(args)
-    if ((args.teams or args.exclude_teams or args.pin
-         or args.spoiler_free) and not args.replay):
+    if ((args.teams or args.exclude_teams or args.pin or args.spoiler_free
+         or args.sound_for) and not args.replay):
         failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
         if failed:
             return failed
