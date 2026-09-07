@@ -2093,6 +2093,15 @@ tromper, mais le journal garde la trace du but probablement manque :
 
 Le son, lui, part comme d'habitude.
 
+**Elle ne sort personne de son plein ecran, en revanche.** Une carte n'est
+jamais activee et n'a pas de bouton dans la barre des taches
+(`WS_EX_NOACTIVATE` et `WS_EX_TOOLWINDOW`, poses **avant** le premier
+affichage). Sans eux, Windows donnerait le premier plan a la carte a l'instant
+ou elle apparait ; et s'il refuse le vol, il fait clignoter son bouton a la
+place - un bouton qui clignote fait remonter la barre des taches par-dessus le
+jeu, et le plein ecran est perdu pour un but. L'ordre compte autant que les
+styles : poses apres l'affichage, ils arrivent une fois le mal fait.
+
 ```bash
 butbutbut --retry-fullscreen        # repasser la carte plus tard (120 s au plus)
 butbutbut --retry-fullscreen 300    # ... pendant 5 minutes

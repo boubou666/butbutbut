@@ -752,6 +752,138 @@ class TestStackFullscreen(unittest.TestCase):
         overlay.Stack(on_log=broken)._log("note")
 
 
+class _FakeCanvas:
+    """Le canvas de tkinter, reduit a ce que _draw lui demande."""
+
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    def pack(self, **_kwargs):
+        pass
+
+    def delete(self, *_args):
+        pass
+
+    def configure(self, **_kwargs):
+        pass
+
+    def bbox(self, *_args):
+        return (0, 0, 10, 10)
+
+    def __getattr__(self, _name):
+        # create_text, create_rectangle, create_image... : le dessin ne nous
+        # interesse pas ici, seul l'ordre des appels a la fenetre compte.
+        return lambda *args, **kwargs: 1
+
+
+class _FakeWindow:
+    """Une fenetre qui note ce qu'on lui fait, dans l'ordre."""
+
+    def __init__(self, log):
+        self.log = log
+        self.alpha = 0.0
+
+    def withdraw(self):
+        self.log.append("withdraw")
+
+    def overrideredirect(self, _flag):
+        self.log.append("overrideredirect")
+
+    def wm_attributes(self, name, *value):
+        if not value:
+            return self.alpha
+        if name == "-alpha":
+            self.alpha = float(value[0])
+        return None
+
+    def deiconify(self):
+        self.log.append("deiconify")
+
+    def geometry(self, _spec):
+        pass
+
+    def config(self, **_kwargs):
+        pass
+
+    def after(self, _ms, _callback):
+        # Les rappels ne partent pas : la carte reste au moment ou on l'a vue.
+        return "timer"
+
+    def winfo_exists(self):
+        return True
+
+    def winfo_id(self):
+        return 1
+
+    def update_idletasks(self):
+        pass
+
+    def destroy(self):
+        self.log.append("destroy")
+
+
+class _FakeStack:
+    """De la pile, _Panel ne lit que ces trois choses."""
+
+    def __init__(self, log):
+        self.log = log
+        self.opacity = 1.0
+        self.fonts = fake_fonts()
+        self.root = None
+        self.tk = self
+
+    def Toplevel(self, _root):                       # noqa: N802 - nom tkinter
+        return _FakeWindow(self.log)
+
+    def Canvas(self, *args, **kwargs):               # noqa: N802 - nom tkinter
+        return _FakeCanvas(*args, **kwargs)
+
+    def PhotoImage(self, **_kwargs):                 # noqa: N802 - nom tkinter
+        return None
+
+
+class TestACardNeverStealsTheScreen(unittest.TestCase):
+    """Les styles Win32 se posent avant l'affichage, jamais apres.
+
+    C'est tout ce qui separe une carte discrete d'une carte qui sort un jeu de
+    son plein ecran : Windows tranche l'activation quand la fenetre apparait.
+    Poses apres `deiconify`, WS_EX_NOACTIVATE et WS_EX_TOOLWINDOW arrivent une
+    fois le premier plan reclame et le bouton de barre des taches cree.
+    """
+
+    def setUp(self):
+        self.log = []
+        self.stack = _FakeStack(self.log)
+        self.card = overlay.Card.demo(LIGUE1, None)
+        patch = mock.patch.object(overlay, "_make_click_through",
+                                  lambda _window: self.log.append("styles"))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def test_they_are_set_while_the_window_is_still_hidden(self):
+        overlay._Panel(self.stack, self.card)
+        self.assertIn("styles", self.log)
+        self.assertNotIn("deiconify", self.log)
+        self.assertLess(self.log.index("withdraw"), self.log.index("styles"))
+
+    def test_a_goal_card_shows_itself_only_afterwards(self):
+        toast = overlay._Toast(self.stack, self.card, 6.0)
+        toast.start()
+        self.assertLess(self.log.index("styles"), self.log.index("deiconify"))
+
+    def test_the_pinned_card_too(self):
+        panel = overlay._Panel(self.stack, self.card)
+        panel.reveal()
+        self.assertLess(self.log.index("styles"), self.log.index("deiconify"))
+
+    def test_once_is_enough(self):
+        # Les styles tiennent jusqu'a la fin de la fenetre : les reposer a
+        # chaque affichage ne ferait que masquer l'ordre qui compte.
+        toast = overlay._Toast(self.stack, self.card, 6.0)
+        toast.start()
+        self.assertEqual(self.log.count("styles"), 1)
+
+
 def one_match(**kwargs):
     """Un Match, tel que le tableau de bord le donnerait."""
     kwargs.setdefault("state", "in")
