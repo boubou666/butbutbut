@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import ctypes
+import io
+import json
 import os
 import queue
 import signal
@@ -417,7 +420,7 @@ def _team_filters(args) -> list:
                         sound_teams(args)) if f is not None]
 
 
-def check_teams(args, selection) -> int:
+def check_teams(args, selection, stream=None) -> int:
     """Confronte --teams / --exclude-teams / --pin / --spoiler-free au catalogue.
 
     Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
@@ -429,6 +432,10 @@ def check_teams(args, selection) -> int:
     chosen = _team_filters(args)
     if not chosen:
         return 0
+    # `stream` : ou vont les lignes de confirmation. La sortie standard pour
+    # tout le monde, sauf pour une commande dont la sortie standard est un
+    # fichier de donnees (--export).
+    stream = stream or sys.stdout
 
     catalogue = []
     for league in selection:
@@ -452,7 +459,8 @@ def check_teams(args, selection) -> int:
     for token in sorted(found):
         clubs = found[token]
         extra = "" if len(clubs) == 1 else "  ({} clubs)".format(len(clubs))
-        print(tr("  {:<16} -> {}{}", token, ", ".join(clubs), extra))
+        print(tr("  {:<16} -> {}{}", token, ", ".join(clubs), extra),
+              file=stream)
     if orphans:
         print(tr("butbutbut : aucune equipe ne correspond a {} dans {}. "
               "Voir 'butbutbut --list-teams'.", 
@@ -2263,6 +2271,350 @@ def _print_survey(found) -> None:
                  found.untimed))
 
 
+# ---------------------------------------------------------------- export -----
+
+# Les champs de --export, dans l'ordre des colonnes du CSV et des cles du JSON.
+#
+# Ils sortent tous de ce que le journal porte VRAIMENT : rien ici ne se devine
+# ni ne se complete aupres de la source. Les noms sont en anglais et ne passent
+# PAS par le catalogue de traduction, contrairement a toute la prose du
+# programme : un en-tete de colonne n'est pas une phrase, c'est un contrat. Un
+# tableur ouvert sur une machine anglaise et un script lance sur une machine
+# francaise doivent lire le meme fichier, et une colonne qui changerait de nom
+# avec la langue casserait le second a chaque voyage.
+EXPORT_FIELDS = (
+    "timestamp",    # 2026-09-06T18:43:27, tel que le journal l'a ecrit
+    "evening",      # la soiree du but, qui n'est pas toujours son jour
+    "kind",         # goal | cancellation : la forme de la ligne du journal
+    "nature",       # goal, own_goal, penalty, try, drop_goal, cancelled...
+    "standing",     # le but tient-il encore, une fois la VAR passee ?
+    "league",
+    "home",
+    "away",
+    "home_score",
+    "away_score",
+    "team",         # l'equipe qui marque, ou celle dont le score est revenu
+    "scorer",       # vide quand la source n'avait pas encore publie l'action
+    "minute",       # la minute de jeu, en nombre ; nulle si illisible
+    "stoppage",     # le temps additionnel, en nombre ; nul si illisible
+    "clock",        # la minute telle qu'ecrite : "90+3'", ou l'horloge du hockey
+    "detail",       # la phrase du journal : "But de M. Odegaard"
+)
+
+EXPORT_FORMATS = ("json", "csv")
+
+# Le prefixe des cles de titre du catalogue. Retire, il laisse le mot qui
+# nomme la nature d'un but ("title_own_goal" -> "own_goal") : stable d'une
+# langue a l'autre, contrairement au libelle que journal.label_of() rend.
+_TITLE_PREFIX = "title_"
+
+
+def _mute_stdout() -> None:
+    """Rebranche la sortie standard sur le trou noir, apres un tuyau referme.
+
+    Sans quoi Python, en s'arretant, vide lui-meme sys.stdout - dans ce meme
+    tuyau ferme - et imprime "Exception ignored while flushing sys.stdout"
+    par-dessus le message qu'on venait d'ecrire proprement a cote. C'est la
+    recette de la documentation Python pour un programme qui parle dans un
+    tuyau : reouvrir le descripteur sur /dev/null (NUL sous Windows) avant de
+    rendre la main.
+
+    Tout echoue en silence ici, et c'est voulu : on est deja sur le chemin de
+    sortie d'une erreur, et une sortie detournee en memoire - ce que fait
+    n'importe quel test - n'a meme pas de descripteur a rebrancher.
+    """
+    try:
+        target = sys.stdout.fileno()
+    except Exception:
+        return
+    try:
+        black_hole = os.open(os.devnull, os.O_WRONLY)
+    except Exception:
+        return
+    try:
+        os.dup2(black_hole, target)
+    except Exception:
+        pass
+    finally:
+        os.close(black_hole)
+
+
+class _Utf8Writer:
+    """Un objet-fichier texte qui pose ses octets en UTF-8 sur un flux binaire.
+
+    Vingt lignes de moins auraient suffi avec io.TextIOWrapper, et c'est ce
+    qu'on avait ecrit. Mais un TextIOWrapper ferme le flux qu'il habille en se
+    detruisant : il faut donc le detacher, et son detach() commence par un
+    flush. Sur un tuyau referme (`--export csv | head`) ce flush echoue, le
+    detachement n'a jamais lieu, et le finaliseur vient fermer la sortie
+    standard du programme en imprimant sa propre trace par-dessus le message
+    qu'on venait d'ecrire proprement a cote.
+
+    Un objet sans finaliseur et sans etat n'a pas ce probleme : le tuyau casse
+    remonte de write(), la ou on l'attend et ou on sait quoi en dire.
+
+    Le module csv et json.dump n'ont besoin que de write().
+    """
+
+    __slots__ = ("_raw",)
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def write(self, text):
+        return self._raw.write(text.encode("utf-8"))
+
+    def flush(self):
+        self._raw.flush()
+
+
+@contextmanager
+def _data_stream():
+    """La sortie standard, garantie en UTF-8 et sans traduction de fin de ligne.
+
+    Deux pieges, et ils ne se voient qu'a l'arrivee. Le premier est l'encodage :
+    le journal est en UTF-8 et un nom d'equipe accentue s'y trouve, alors qu'une
+    console Windows annonce volontiers du cp1252 - l'export mourrait sur
+    "Bayer 04 Leverkusen" le jour ou il croise un accent. Le second est le
+    retour a la ligne : en mode texte, Windows change chaque "\\n" en "\\r\\n",
+    ce qui donnerait "\\r\\r\\n" aux lignes que le module csv termine deja
+    lui-meme.
+
+    On repasse donc par le flux d'octets quand il existe. Quand il n'existe pas
+    - une sortie deja habillee en texte, ce que fait n'importe quelle
+    redirection en memoire - on ecrit dedans tel quel : c'est l'appelant qui
+    a choisi son encodage, ce n'est pas a nous de le defaire.
+    """
+    stream = sys.stdout
+    raw = getattr(stream, "buffer", None)
+    if raw is None:
+        yield stream
+        stream.flush()
+        return
+    yield _Utf8Writer(raw)
+    raw.flush()
+
+
+def _export_row(entry, standing: bool) -> dict:
+    """Un but du journal, en donnees.
+
+    La date et l'heure sortent en ISO 8601 parce que c'est la seule forme
+    qu'une machine relit sans qu'on lui explique. Sans fuseau : le journal
+    ecrit l'heure de la machine et ne dit pas laquelle, et coller un "Z" ou un
+    decalage inventerait une precision que personne n'a.
+
+    La minute de jeu sort en trois champs plutot qu'un, parce qu'elle repond a
+    trois questions differentes : `minute` pour ranger un but dans un
+    histogramme, `stoppage` pour savoir s'il est tombe dans le temps
+    additionnel, et `clock` pour ne pas jeter ce que le journal a ecrit quand
+    ce n'etait pas une minute de football - l'horloge d'un match de hockey n'est
+    lisible ni comme un nombre ni comme rien.
+    """
+    clock = entry.clock
+    key = entry.key
+    return {
+        "timestamp": "{}T{}".format(entry.day, entry.time),
+        "evening": journal.evening_of(entry),
+        "kind": "goal" if entry.goal else "cancellation",
+        "nature": key[len(_TITLE_PREFIX):] if key.startswith(_TITLE_PREFIX)
+                  else key,
+        "standing": standing,
+        "league": entry.league,
+        "home": entry.home,
+        "away": entry.away,
+        "home_score": entry.home_score,
+        "away_score": entry.away_score,
+        "team": entry.team,
+        "scorer": entry.scorer,
+        # None et pas "" : le JSON a un `null` pour dire "on ne sait pas", et
+        # une case de CSV vide dit la meme chose. Mettre un 0 la ferait entrer
+        # tous les buts sans minute a la premiere minute de match.
+        "minute": clock[0] if clock is not None else None,
+        "stoppage": clock[1] if clock is not None else None,
+        "clock": entry.minute,
+        "detail": entry.detail,
+    }
+
+
+def _export_rows(entries) -> tuple:
+    """([lignes], buts debout, annulations orphelines).
+
+    Toutes les lignes de la fenetre sortent, buts ET annulations, et chacune
+    porte en plus `standing`. C'est l'arbitrage central de l'export, et il se
+    joue en deux temps parce que la question est double.
+
+    Taire les annulations mentirait : la ligne "BUT ANNULE" a bien existe, elle
+    a son horodatage, et c'est elle qui explique pourquoi un score recule. Un
+    export qui l'efface rend un journal que personne n'a vecu.
+
+    Les melanger aux buts mentirait tout autant : un but repris par la VAR
+    n'est pas un but, et un tableur qui compterait ses lignes trouverait un
+    total que ni `--stats` ni `--top-scorers` ne rendent. D'ou `standing`, pose
+    sur chaque ligne : garder celles ou il est vrai donne exactement les buts
+    que le reste du programme compte, en une ligne de filtre, sans avoir a
+    rejouer le rattachement positionnel de son cote.
+
+    Ce rattachement est justement celui de journal.settle(), repris tel quel :
+    une annulation retire le dernier but encore debout de la meme equipe dans
+    le meme match. Pas un second chemin a cote, sans quoi l'export finirait par
+    ne plus dire la meme chose que le classement des buteurs.
+    """
+    kept, orphans = journal.settle(entries)
+    # settle() rend les buts eux-memes et non leurs rangs : on repere donc les
+    # objets. Chaque ligne relue donne une entree distincte, l'identite suffit.
+    standing = {id(entry) for entry in kept}
+    rows = [_export_row(entry, id(entry) in standing) for entry in entries]
+    return rows, len(kept), orphans
+
+
+def _write_json(handle, rows) -> None:
+    """Un seul grand tableau, et non un objet par ligne.
+
+    `--record` ecrit du JSON par lignes, et pour une bonne raison : c'est un
+    flux sans fin, ecrit au fil de l'eau pendant qu'un match se joue, et une
+    coupure au milieu doit laisser tout ce qui precede lisible. L'export est
+    exactement l'inverse - une reponse finie a une question posee - et
+    l'arbitrage se retourne avec lui :
+
+      - une fenetre du journal tient en memoire sans y penser (des mois de buts
+        font quelques milliers d'objets), donc `json.load(open(...))` en une
+        ligne suffit, ce que le JSON par lignes interdit ;
+      - un fichier coupe en route ne parse plus, et c'est ce qu'on veut : en
+        JSON par lignes il parserait encore, en silence, avec les derniers buts
+        en moins. Mieux vaut un export qui refuse de s'ouvrir qu'un export qui
+        ment de trois lignes.
+
+    `ensure_ascii=False` : le flux est en UTF-8 et l'annonce, un nom accentue
+    n'a donc aucune raison de ressortir en `\\u00e9`. L'indentation, elle, est
+    pour l'oeil : un export se regarde souvent une premiere fois a la main.
+    """
+    json.dump(rows, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+
+
+def _csv_cell(value):
+    """Une valeur, telle qu'une case de CSV peut la porter.
+
+    Le CSV n'a qu'un type, le texte : `None` y devient une case vide et le
+    booleen un mot. En minuscules, parce que c'est ce que lisent les
+    bibliotheques de tableaux qui devinent les types - "True" de Python leur
+    reste du texte.
+    """
+    if value is None:
+        return ""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return value
+
+
+def _write_csv(handle, rows) -> None:
+    """Un en-tete, puis une seule forme de ligne. Separateur : la virgule.
+
+    La virgule plutot que le point-virgule, alors qu'un tableur francais
+    attend le second : ce fichier est fait pour etre relu par un programme
+    (`csv.reader`, un tableau de donnees, un tableur configure), et la virgule
+    est ce que tous supposent par defaut. Le point-virgule ne plairait qu'a une
+    locale, celle du lecteur, que le fichier ne peut pas connaitre au moment ou
+    on l'ecrit. Un tableur qui n'en veut pas le demande a l'import ; un script
+    a qui on donne du point-virgule, lui, ne demande rien et lit tout de
+    travers.
+
+    Une virgule, un guillemet ou un retour a la ligne dans un nom d'equipe ne
+    sont pas un cas rare a plaindre : c'est le travail du module csv, qui
+    protege la case comme il faut, et de csv.reader qui la rend intacte. Rien
+    n'est echappe a la main ici, exactement pour cette raison.
+
+    La fin de ligne est un simple "\\n" et non le "\\r\\n" que le module met par
+    defaut : cette sortie part dans un tuyau aussi souvent que dans un fichier,
+    et tout ce qui relit du CSV accepte les deux.
+    """
+    writer = csv.writer(handle, lineterminator="\n")
+    writer.writerow(EXPORT_FIELDS)
+    for row in rows:
+        writer.writerow([_csv_cell(row[name]) for name in EXPORT_FIELDS])
+
+
+def _export_note(shape, window, rows, confirmed, orphans, log_path) -> None:
+    """Le compte rendu de l'export, sur la sortie d'erreur. Toujours.
+
+    Rien de tout cela ne peut partir avec les donnees : une phrase au milieu
+    d'un CSV le rend illisible, et un `> buts.json` doit rendre un fichier, pas
+    un fichier plus un commentaire. Mais un export muet serait le seul chemin
+    du journal qui ne dit rien - `--today`, `--stats` et le classement
+    expliquent tous ce qu'ils viennent de compter. Ces lignes-la vont donc a
+    cote, la ou elles restent visibles dans un terminal et invisibles dans un
+    tuyau.
+    """
+    signalled = sum(1 for row in rows if row["kind"] == "goal")
+    cancelled = len(rows) - signalled
+    print(tr("butbutbut : export {} {}", shape, window.describe()),
+          file=sys.stderr)
+    if not rows:
+        print(_empty_note(window, log_path).strip(), file=sys.stderr)
+    else:
+        print(tr("{} ligne(s) : {} but(s) signale(s) dont {} debout, "
+                 "{} annulation(s).", len(rows), signalled, confirmed,
+                 cancelled), file=sys.stderr)
+        if signalled != confirmed:
+            print(tr("Le champ 'standing' dit lesquels la VAR a repris."),
+                  file=sys.stderr)
+        if orphans:
+            print(tr("{} annulation(s) sans but a retirer dans cette fenetre "
+                     "(le but est tombe avant).", orphans), file=sys.stderr)
+    print(tr("Journal : {}", log_path), file=sys.stderr)
+
+
+def do_export(args) -> int:
+    """Le journal en donnees, sur la sortie standard.
+
+    `--on-goal` couvre l'amont : au moment du but, on peut declencher ce qu'on
+    veut. Rien ne couvrait l'aval. Des mois de buts dorment dans le journal, et
+    tout ce qui les en sortait jusqu'ici etait mis en page pour un oeil humain -
+    colonnes alignees, barres de pourcentage, rangs partages. Un tableur, un
+    carnet de notes, un graphe : tout cela demande des donnees.
+
+    Meme fenetre et memes filtres que `--stats` et `--top-scorers`, et surtout
+    la meme et unique lecture (journal.goals_between) : un deuxieme analyseur
+    finirait par ne plus compter comme le premier, et un export qui contredit
+    `--stats` sur le meme journal ne vaut rien.
+
+    Les donnees vont sur la sortie standard et rien d'autre n'y va, pour que
+    `butbutbut --export csv > buts.csv` rende un fichier valide meme le jour ou
+    le journal est absent, ou la source injoignable, ou la fenetre vide. Un
+    consommateur n'a pas a distinguer "rien" de "casse" : un tableau vide et un
+    CSV reduit a son en-tete restent des reponses.
+    """
+    try:
+        window = window_of(args, whole_by_default=True)
+    except ValueError as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+
+    p = paths()
+    shape = (args.export or "").strip().lower()
+    entries = _window_goals(args, window)
+    rows, confirmed, orphans = _export_rows(entries)
+
+    try:
+        with _data_stream() as handle:
+            if shape == "csv":
+                _write_csv(handle, rows)
+            else:
+                _write_json(handle, rows)
+    except Exception as exc:
+        # Un tuyau referme en cours de route (`--export csv | head`), une
+        # console qui refuse un octet : on le dit a cote et on s'en va. Une
+        # trace d'erreur irait se coller a la fin des donnees deja ecrites.
+        _mute_stdout()
+        print(tr("butbutbut : export interrompu : {}", exc), file=sys.stderr)
+        return 1
+
+    _export_note(shape, window, rows, confirmed, orphans, p["log"])
+    return 0
+
+
 def do_status(args) -> int:
     p = paths()
     pid = running_pid()
@@ -2522,6 +2874,13 @@ def build_parser() -> argparse.ArgumentParser:
                              "par minute de match (histogramme), par "
                              "competition, les soirees les plus prolifiques. "
                              "Meme fenetre et memes filtres que --top-scorers"))
+    parser.add_argument("--export", default=None, choices=EXPORT_FORMATS,
+                        metavar="json|csv",
+                        help=tr("ecrit les buts du journal en donnees sur la "
+                                "sortie standard, pour un tableur ou un "
+                                "script. Memes fenetres et memes filtres que "
+                                "--stats. Ex : butbutbut --export csv --month "
+                                "> buts.csv"))
     parser.add_argument("--stop", action="store_true", help=tr("arrete le daemon en cours"))
     parser.add_argument("--paths", action="store_true", help=tr("affiche les chemins utilises"))
     parser.add_argument("--screens", action="store_true", help=tr("liste les ecrans detectes"))
@@ -2840,7 +3199,13 @@ def main(argv=None) -> int:
 
     if args.regen_sound:
         sound.ensure_wav(p["wav"], args.volume, force=True)
-        print(tr("butbutbut : corne regeneree -> {}", p["wav"]))
+        # Meme regle que pour la confirmation des equipes plus bas : sous
+        # --export, la sortie standard ne porte que des donnees. Cette ligne-la
+        # n'y arriverait d'ailleurs meme pas dans l'ordre - l'export ecrit sous
+        # la couche texte de sys.stdout, dont le tampon ne se vide qu'a la fin
+        # du programme, donc elle se collerait DERRIERE les donnees.
+        print(tr("butbutbut : corne regeneree -> {}", p["wav"]),
+              file=sys.stderr if args.export else sys.stdout)
 
     if args.list_leagues:
         return do_list(args)
@@ -2848,7 +3213,11 @@ def main(argv=None) -> int:
         return do_list_teams(args)
     if ((args.teams or args.exclude_teams or args.pin or args.spoiler_free
          or args.sound_for) and not args.replay):
-        failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
+        # --export n'ecrit que des donnees sur la sortie standard : la
+        # confirmation des noms d'equipe est de la prose, elle part a cote
+        # avec le reste, sans quoi le fichier produit commencerait par elle.
+        failed = check_teams(args, leagues.resolve(args.leagues, args.exclude),
+                             stream=sys.stderr if args.export else None)
         if failed:
             return failed
 
@@ -2864,6 +3233,11 @@ def main(argv=None) -> int:
         return do_stop(args)
     if args.status:
         return do_status(args)
+    # Avant les recapitulatifs : --export dit COMMENT les buts sortent, les
+    # fenetres ne disent que LESQUELS. `--export json --month` est un export,
+    # pas un mois de listes.
+    if args.export:
+        return do_export(args)
     if args.top_scorers:
         return do_top_scorers(args)
     # Avant le recapitulatif : `--stats --week` demande les formes de la

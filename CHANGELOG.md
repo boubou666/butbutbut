@@ -204,6 +204,64 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - `--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
   sons nommes.
 
+### Ajoute
+
+- **`butbutbut --export json|csv` : le journal en donnees.** `--on-goal`
+  couvrait l'amont, au moment du but ; rien ne couvrait l'aval. Des mois de
+  buts dormaient dans le journal, et tout ce qui les en sortait etait mis en
+  page pour un oeil humain - colonnes alignees, barres, rangs partages. Un
+  tableur, un carnet de notes, un graphe veulent des donnees : `--export` les
+  ecrit sur la **sortie standard**, pour que ca se redirige et que ca se pipe.
+- `--export` prend les memes fenetres et les memes filtres que `--stats` et
+  `--top-scorers` : `--week`, `--month`, `--since`, `--teams`,
+  `--exclude-teams`. Sans fenetre, tout le journal. Et c'est la meme et unique
+  lecture (`journal.goals_between`) : un second analyseur finirait par ne plus
+  compter comme le premier.
+- **Seize champs, tous tires de ce que le journal porte vraiment** : le moment
+  (`timestamp`, en ISO 8601), la soiree, la competition, les deux equipes, le
+  score, l'equipe qui marque, le buteur, la minute de jeu en nombre et son
+  temps additionnel, la minute telle qu'ecrite, et la phrase du journal. Rien
+  n'est complete aupres de la source au moment de l'export, et aucun champ que
+  le journal ne sait pas remplir n'a ete invente. Les noms de colonnes sont en
+  anglais et **ne se traduisent pas** : un en-tete n'est pas une phrase, c'est
+  un contrat, et une colonne qui change de nom avec la langue casse tous les
+  scripts en voyage.
+- **La VAR sort en deux temps.** Toutes les lignes du journal sortent, buts
+  **et** annulations - taire une annulation rendrait un journal que personne
+  n'a vecu - et chacune porte en plus `standing`, qui dit si le but tient
+  encore. Garder les lignes ou il vaut `true` rend exactement ce que comptent
+  `--stats` et `--top-scorers` : le rattachement positionnel de
+  `journal.settle` est repris tel quel, pas recrit a cote.
+- Le CSV a un en-tete, une seule forme de ligne et la **virgule** pour
+  separateur (le point-virgule ne plairait qu'a la locale du lecteur, que le
+  fichier ne peut pas connaitre). Il survit a une virgule, a un guillemet et a
+  un accent dans un nom d'equipe : la protection des cases est celle du module
+  `csv`, rien n'est echappe a la main. Le JSON, lui, est **un seul grand
+  tableau** et non du JSON par lignes comme `--record` : l'export est une
+  reponse finie, pas un flux, et un fichier coupe doit refuser de s'ouvrir
+  plutot que de mentir de trois lignes en silence.
+- **La sortie standard ne recoit que des donnees.** La fenetre, les totaux, les
+  avertissements, le chemin du journal, la confirmation des noms passes a
+  `--teams` et jusqu'a la ligne de `--regen-sound` partent tous sur la sortie
+  d'erreur : `--export csv > buts.csv` doit rendre un fichier, pas un fichier
+  plus un commentaire. `--regen-sound` merite sa mention parce qu'elle se
+  declenche AVANT l'export et que sa ligne ne se serait meme pas collee au bon
+  endroit : l'export ecrit sous la couche texte de `sys.stdout`, dont le tampon
+  n'est vide qu'a la fin du programme, donc elle serait ressortie derriere les
+  donnees.
+- Un journal absent, vide, ou une fenetre sans le moindre but restent des
+  **reponses valides** - un tableau JSON vide, un CSV reduit a son en-tete - et
+  l'explication va a cote. Un consommateur n'a jamais a distinguer "rien" de
+  "casse". Un tuyau referme en cours de route (`--export csv | head`) ne remonte
+  pas non plus : ni comme trace, ni comme les deux lignes que Python imprime en
+  s'arretant quand il ne peut plus vider une sortie standard qu'on lui a fermee
+  au nez. L'export n'habille donc pas le flux d'octets d'un `TextIOWrapper` -
+  celui-ci ferme ce qu'il habille en se detruisant, et son `detach()` commence
+  par un `flush()` qui echoue justement sur un tuyau casse.
+- La sortie est ecrite en **UTF-8 quoi qu'annonce la console** : une console
+  Windows revendique volontiers du cp1252, et l'export mourrait sur le premier
+  accent s'il la croyait.
+
 ## [1.8.0] - 2026-09-07
 
 ### Ajoute
