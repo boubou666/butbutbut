@@ -418,8 +418,10 @@ class OneShot:
 class FakeStack:
     """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
 
-    def __init__(self, state_path):
+    def __init__(self, state_path, guard=None):
         self.state_path = state_path
+        # Le watcher, pour savoir quand son passage est fini. Voir run().
+        self.guard = guard
         self.cards = []
         # La carte epinglee est tenue a part, comme dans la vraie pile : elle
         # ne s'empile pas, elle se remplace.
@@ -432,10 +434,19 @@ class FakeStack:
         self.drain = callback
 
     def run(self):
-        # Le fil de surveillance travaille : on l'attend a son premier etat
-        # publie, puis on vide la file comme le ferait la boucle tkinter.
+        """Attend la fin du passage du fil, puis vide la file une fois.
+
+        Surtout pas "attendre le premier etat publie" : la boucle ecrit
+        l'etat AVANT de deposer ses evenements dans la file, et vider entre
+        les deux rendait zero carte une fois sur cent - un echec sur une
+        seule machine de la CI, jamais en local. La boucle annonce son
+        attente (plan_wait) une fois tout depose : c'est ce moment-la qu'on
+        guette.
+        """
         deadline = time.time() + 10
-        while time.time() < deadline and not self.state_path.exists():
+        while time.time() < deadline and not (
+                getattr(self.guard, "planned", False)
+                if self.guard is not None else self.state_path.exists()):
             time.sleep(0.01)
         self.stopping.set()
         self.drain()
@@ -497,7 +508,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_card_loop_publishes_the_state_too(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin(""))
@@ -510,7 +521,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_without_pin_nothing_is_pinned_anywhere(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin(""))
@@ -522,7 +533,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_the_card_loop_pins_the_followed_match(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin("angers"))
@@ -561,12 +572,12 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         # Le point de l'option : une carte au reveil, et surtout pas la corne
         # pour un but vieux d'une heure.
         stopping = threading.Event()
-        stack = FakeStack(self.paths["state"])
+        guard = self.catch_up_event(stopping)
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         with mock.patch.object(cli, "play_goal_sound") as horn:
-            cli._watch_with_cards(self.catch_up_event(stopping), self.args,
-                                  stopping, stack, self.reporter(),
-                                  pinned.Pin(""))
+            cli._watch_with_cards(guard, self.args, stopping, stack,
+                                  self.reporter(), pinned.Pin(""))
 
         self.assertEqual(len(stack.cards), 1)
         # La duree du trou plutot qu'une minute de jeu : c'est bien le resume.
@@ -710,7 +721,7 @@ class TestSpoilerFreeLoops(unittest.TestCase):
     def run_with_cards(self, spoiler_free):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping, spoiler_free)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         with mock.patch.object(cli, "play_goal_sound") as horn:
             with mock.patch.object(cli, "log") as journal:
