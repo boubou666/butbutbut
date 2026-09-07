@@ -7,6 +7,51 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **`butbutbut --stats` : ce que le journal savait deja et ne disait pas.**
+  `--today`, `--week`, `--month`, `--since` et `--top-scorers` relisent tous le
+  journal, mais tous les cinq rendent une liste - un but, une ligne. `--stats`
+  regarde les memes lignes en tas : un histogramme ASCII des buts par minute de
+  match (la bosse de fin de match se voit a l'oeil nu), la repartition par
+  competition, les soirees les plus prolifiques, le nombre de matchs, la
+  moyenne de buts par match et la part des penaltys et des csc. Tout tient dans
+  80 colonnes, sans couleur, et rien ne demande le reseau : c'etait deja dans
+  le fichier.
+- `--stats` prend les memes fenetres et les memes filtres que `--top-scorers` :
+  `--week`, `--month`, `--since`, `--teams`, `--exclude-teams`. Sans fenetre,
+  c'est tout le journal - une forme se voit sur la duree. Une seule lecture du
+  journal (`journal.goals_between`), comme toutes les autres relectures.
+- Le rattachement positionnel des buts annules par la VAR est **repris tel
+  quel** (`journal.settle`, arrive en 1.7.0) : un but efface ne compte ni dans
+  l'histogramme, ni dans sa competition, ni dans sa soiree, et les annulations
+  dont le but est tombe avant l'ouverture de la fenetre sont annoncees a part
+  plutot que deduites de quelqu'un au hasard.
+- **Une soiree n'est plus un jour de calendrier.** Le journal change de jour a
+  minuit, une soiree de football non : le but de 23h50 et celui de 00h12 sont
+  de la meme soiree, et compter par date en faisait deux demi-soirees dont
+  aucune n'a existe. Six heures du matin coupe la nuit (`journal.evening_of`).
+- L'analyseur du journal retient desormais **l'en-tete** de chaque ligne
+  (`Entry.key`) : c'est la seule chose qui dise la nature d'un but, et c'est de
+  la que sort la part des penaltys, des csc, des essais et des drops. Il sait
+  aussi lire une minute de jeu et son temps additionnel (`Entry.clock`) - un
+  but a `90+3'` reste un but de la 90e.
+- 44 tests de plus : les tranches de l'histogramme, un match a cheval sur
+  minuit, une minute qu'aucune version ne sait lire, une fenetre vide, une
+  fenetre ou la VAR a tout repris, une egalite dans le classement des soirees,
+  et une garantie que rien ne deborde des 80 colonnes.
+
+### Note
+
+- `--stats` ne compte que ce que le journal permet honnetement de compter. Un
+  0-0 n'y laisse aucune ligne : la moyenne annoncee est celle des matchs **ou
+  un but est tombe**, plus haute qu'une moyenne de saison, et le pied de sortie
+  le dit. La part des penaltys est un plancher, pas un total : quand la source
+  publie l'action trop tard, le but est ecrit `BUT` et compte comme tel.
+- La prose de `--stats` n'est pas encore dans les catalogues de traduction :
+  elle sort en francais dans les cinq langues, comme `--next` et
+  `--top-scorers`. Degradee, jamais cassee.
+
 ## [1.7.0] - 2026-09-07
 
 ### Ajoute

@@ -109,6 +109,7 @@ butbutbut --week              # les 7 derniers jours
 butbutbut --month             # les 30 derniers jours
 butbutbut --since 2026-09-01  # depuis cette date
 butbutbut --top-scorers       # le classement des buteurs vus passer
+butbutbut --stats             # les formes cachees dans le journal
 butbutbut --record m.jsonl    # surveille, et met les releves bruts en boite
 butbutbut --replay m.jsonl    # rejoue un enregistrement, cartes et sons compris
 butbutbut --stop              # arrete le daemon
@@ -1677,6 +1678,109 @@ dans le total, jamais dans le classement, et le pied de sortie les annonce.
 
 ---
 
+## Les formes du journal
+
+Le journal accumule des mois de buts. `--today`, `--week`, `--month`, `--since`
+et `--top-scorers` les relisent, mais tous les cinq rendent une **liste** : un
+but, une ligne, dans l'ordre ou ils sont tombes. Or un tas de buts a des formes
+qu'aucune liste ne montre. Est-ce qu'on marque vraiment plus en fin de match ?
+Quelle competition remplit le journal ? Quelle a ete la meilleure soiree de
+l'ete ? `--stats` regarde les memes lignes en tas.
+
+```bash
+butbutbut --stats                     # tout le journal
+butbutbut --stats --week              # sur les 7 derniers jours
+butbutbut --stats --since 2026-08-09  # depuis cette date
+butbutbut --stats --teams om          # seulement les matchs de l'OM
+```
+
+```
+butbutbut : ce que le journal raconte du dim. 09/08/2026 au lun. 07/09/2026
+
+Par minute de match
+    1-10  #######                                 6   4%
+   11-20  #####                                   4   3%
+   21-30  ##############                         12   8%
+   31-40  ######################                 18  13%
+   41-50  #########################              21  15%
+   51-60  ###################                    16  11%
+   61-70  ##############                         12   8%
+   71-80  #############################          24  17%
+   81-90  ####################################   30  21%
+
+Par competition
+  Ligue 1              ####################################   43  30%
+  Premier League       ################################       38  27%
+  LaLiga               ######################                 26  18%
+  Bundesliga           ##################                     22  15%
+  Serie A              #######                                 8   6%
+  Ligue des champions  #####                                   6   4%
+
+Les soirees les plus prolifiques
+  mer. 19/08/2026    15 but(s)
+  ven. 21/08/2026    14 but(s)
+  mer. 12/08/2026    12 but(s)
+
+Nature des buts
+  But                       113  79%
+  But contre son camp        11   8%
+  Penalty                    19  13%
+
+143 but(s) confirme(s) sur 144 signale(s), dans 6 competition(s).
+53 match(s) avec au moins un but signale, 2.7 but(s) par match.
+Un 0-0 ne laisse aucune trace dans le journal, ni dans cette moyenne.
+1 but(s) retire(s) par la VAR, deduit(s) de tout ce qui precede.
+17 but(s) dans le temps additionnel, comptes dans la tranche de leur minute.
+```
+
+**Des tranches de dix minutes**, parce que c'est la maille ou le football se
+raconte : "juste avant la mi-temps", "dans le dernier quart d'heure". A la
+minute pres il faudrait quatre-vingt-dix lignes pour ne montrer que du bruit.
+Un but a `90+3'` reste un but de la 90e et va dans la tranche `81-90` : le
+sortir ailleurs aplatirait justement la bosse qu'on vient voir. Et
+l'histogramme couvre toujours les quatre-vingt-dix minutes, meme quand la
+fenetre n'a que trois buts a la 12e : une tranche vide est une forme elle
+aussi, et s'arreter au dernier but l'effacerait. Une prolongation, elle,
+allonge le cadre jusqu'a la 120e.
+
+**Une soiree n'est pas un jour de calendrier.** Le journal change de jour a
+minuit, une soiree de football non : un coup d'envoi a 21h qui part en
+prolongation, une affiche sud-americaine, un match de NHL vu depuis l'Europe.
+Le but de 23h50 et celui de 00h12 sont de la meme soiree, et compter par date
+en ferait deux demi-soirees dont aucune n'a existe. Six heures du matin coupe
+la nuit. A egalite, les soirees ex aequo sont toutes nommees plutot que
+departagees au hasard.
+
+**Un but refuse par la VAR ne compte nulle part**, exactement comme dans
+[le classement des buteurs](#le-classement-des-buteurs) : le rattachement
+positionnel est le meme code, pas un second. Ni dans l'histogramme, ni dans la
+competition, ni dans la soiree. Les annulations dont le but est tombe avant
+l'ouverture de la fenetre sont annoncees a part.
+
+**La nature d'un but sort de l'en-tete de sa ligne**, la seule chose qui la
+porte : `BUT SUR PENALTY`, `BUT CONTRE SON CAMP`, `ESSAI`, `PENALITE`, `DROP`.
+Quand la source publie l'action trop tard, le but est ecrit `BUT` et compte
+comme tel : cette part est un plancher, pas un total exact. Une seule nature
+dans la fenetre n'a pas droit a son tableau - "143 buts sur 143 sont des buts"
+n'apprend rien.
+
+**Et ce qui n'est pas la n'y est pas par honnetete.** Le journal n'ecrit que ce
+qui bouge : un 0-0 n'y laisse pas une ligne, donc `--stats` ne connait aucun
+match sans but, et sa moyenne est celle des matchs **ou un but est tombe** -
+mecaniquement plus haute que celle d'une saison, ce que le pied de sortie dit
+en toutes lettres. Le passeur, le pied, la distance, la possession : la source
+ne les publie pas, personne ne peut donc les compter ici. Une minute que le
+journal n'ecrit pas comme une minute de jeu - l'horloge d'un match de hockey,
+un libelle de phase, une ligne d'une version qu'on ne sait plus lire - reste
+hors de l'histogramme, et le pied de sortie la compte plutot que de la faire
+entrer de travers.
+
+Tout se lit **hors reseau** : c'est deja dans le fichier. Un journal absent,
+vide, ou dont aucune ligne ne tombe dans la fenetre le dit en toutes lettres,
+comme `--today`.
+
+---
+
 ## Journal
 
 ```
@@ -1792,7 +1896,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**896 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**940 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

@@ -648,8 +648,263 @@ class TestRecaps(unittest.TestCase):
 
     def test_the_new_commands_are_reachable_from_main(self):
         help_text = cli.build_parser().format_help()
-        for option in ("--week", "--month", "--since", "--top-scorers"):
+        for option in ("--week", "--month", "--since", "--top-scorers",
+                       "--stats"):
             self.assertIn(option, help_text)
+
+
+class TestStats(unittest.TestCase):
+    """--stats : les formes du journal, sur des journaux fabriques."""
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+
+    def write_log(self, *rows):
+        lines = ["{} {}  {}".format(day, clock, text)
+                 for day, clock, text in rows]
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def run_cli(self, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    @staticmethod
+    def goal(minute, league="Ligue 1", home="Angers", away="Stade Rennais",
+             scorer="C. Arcus", head="BUT"):
+        return "{} [{}] {} 1 - 0 {} pour {} - But de {} ({}')".format(
+            head, league, home, away, home, scorer, minute)
+
+    # -------------------------------------------------------- histogramme --
+
+    def test_the_histogram_shows_the_shape_of_a_match(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(88)),
+            (days_ago(1), "20:05:00", self.goal(89, home="Nice", away="Lens")),
+            (days_ago(1), "20:10:00", self.goal(12, home="Lille",
+                                                away="Brest")),
+        )
+        code, printed, _err = self.run_cli(["--stats"])
+        self.assertEqual(code, 0)
+        self.assertIn("Par minute de match", printed)
+        rows = {text.split()[0]: text for text in printed.splitlines()
+                if text.startswith("  ") and "-" in text.split()[0]}
+        self.assertIn("81-90", rows)
+        self.assertIn("11-20", rows)
+        # La bosse de fin de match est la plus haute barre.
+        self.assertGreater(rows["81-90"].count("#"), rows["11-20"].count("#"))
+        # Une tranche vide reste affichee : c'est une forme, elle aussi.
+        self.assertIn("31-40", rows)
+        self.assertEqual(rows["31-40"].count("#"), 0)
+
+    def test_a_lonely_goal_still_gets_a_bar(self):
+        """Arrondir a rien effacerait la minute qu'on vient justement lire."""
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(5)),
+            *[(days_ago(1), "20:{:02d}:00".format(index),
+               self.goal(85, home="Nice", away="Lens"))
+              for index in range(1, 30)])
+        _code, printed, _err = self.run_cli(["--stats"])
+        row = [text for text in printed.splitlines()
+               if text.strip().startswith("1-10")][0]
+        self.assertIn("#", row)
+
+    def test_an_unreadable_minute_is_owned_up_to(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(50)),
+            (days_ago(1), "20:05:00", "BUT [Ligue 1] Nice 1 - 0 Lens pour "
+                                      "Nice - But de G. Laborde (Mi-temps)"),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        self.assertIn("1 but(s) sans minute de jeu lisible", printed)
+
+    def test_added_time_is_counted_and_said(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", "BUT [Ligue 1] Angers 1 - 0 Stade "
+                                      "Rennais pour Angers - But de C. Arcus "
+                                      "(90+4')"),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        self.assertIn("1 but(s) dans le temps additionnel", printed)
+        row = [text for text in printed.splitlines()
+               if text.strip().startswith("81-90")][0]
+        self.assertIn("#", row)                 # un but a la 90e reste a la 90e
+
+    # ------------------------------------------------ competitions, nature --
+
+    def test_competitions_are_ranked(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(10)),
+            (days_ago(1), "20:05:00", self.goal(20, home="Nice", away="Lens")),
+            (days_ago(1), "20:10:00", self.goal(30, league="LaLiga",
+                                                home="Girona",
+                                                away="Real Madrid")),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        lines = printed.splitlines()
+        first = lines.index("Par competition")
+        self.assertIn("Ligue 1", lines[first + 1])
+        self.assertIn("LaLiga", lines[first + 2])
+
+    def test_penalties_and_own_goals_are_told_apart(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(10)),
+            (days_ago(1), "20:05:00", self.goal(20, head="BUT SUR PENALTY")),
+            (days_ago(1), "20:10:00", self.goal(30,
+                                                head="BUT CONTRE SON CAMP")),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        self.assertIn("Nature des buts", printed)
+        self.assertIn("Penalty", printed)
+        self.assertIn("But contre son camp", printed)
+
+    def test_one_nature_alone_does_not_deserve_a_table(self):
+        self.write_log((days_ago(1), "20:00:00", self.goal(10)))
+        _code, printed, _err = self.run_cli(["--stats"])
+        self.assertNotIn("Nature des buts", printed)
+
+    # -------------------------------------------------------------- soirees --
+
+    def test_the_best_evening_comes_first(self):
+        self.write_log(
+            (days_ago(3), "20:00:00", self.goal(10)),
+            (days_ago(2), "20:00:00", self.goal(10, home="Nice", away="Lens")),
+            (days_ago(2), "20:05:00", self.goal(20, home="Nice", away="Lens")),
+            (days_ago(2), "20:10:00", self.goal(30, home="Nice", away="Lens")),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        lines = printed.splitlines()
+        first = lines.index("Les soirees les plus prolifiques")
+        self.assertIn("3 but(s)", lines[first + 1])
+        self.assertIn("1 but(s)", lines[first + 2])
+
+    def test_a_match_across_midnight_stays_one_evening(self):
+        self.write_log(
+            (days_ago(2), "23:50:00", self.goal(88)),
+            (days_ago(1), "00:12:00", self.goal(90)),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        lines = printed.splitlines()
+        first = lines.index("Les soirees les plus prolifiques")
+        self.assertIn("2 but(s)", lines[first + 1])
+        # Une seule soiree, donc une seule ligne avant la suivante.
+        self.assertFalse(lines[first + 2].strip())
+        self.assertIn("1 match(s) avec au moins un but", printed)
+
+    def test_evenings_tied_at_the_top_are_all_named(self):
+        """Annoncer une seule meilleure soiree quand quatre se valent
+        serait faux : on les nomme, puis on compte celles qui debordent."""
+        self.write_log(*[
+            (days_ago(index), "20:00:00", self.goal(10))
+            for index in range(1, 5)])
+        _code, printed, _err = self.run_cli(["--stats"])
+        lines = printed.splitlines()
+        first = lines.index("Les soirees les plus prolifiques")
+        self.assertEqual(len([text for text in lines[first + 1:first + 4]
+                              if "1 but(s)" in text]), 3)
+        self.assertIn("... et 1 autre(s) soiree(s) a 1 but(s).", printed)
+
+    # ------------------------------------------------- fenetres et filtres --
+
+    def test_stats_takes_the_whole_journal_by_default(self):
+        self.write_log(
+            (days_ago(40), "20:00:00", self.goal(10, league="LaLiga",
+                                                 home="Girona",
+                                                 away="Real Madrid")),
+            (days_ago(0), "20:00:00", self.goal(20)),
+        )
+        _code, whole, _err = self.run_cli(["--stats"])
+        self.assertIn("depuis le debut du journal", whole)
+        self.assertIn("LaLiga", whole)
+        _code, week, _err = self.run_cli(["--stats", "--week"])
+        self.assertNotIn("LaLiga", week)
+        self.assertIn("Ligue 1", week)
+
+    def test_stats_obeys_the_team_filter(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(10, home="Nice", away="Lens")),
+            (days_ago(0), "20:00:00", self.goal(20, league="Premier League",
+                                                home="Arsenal",
+                                                away="Chelsea")),
+        )
+        catalogue = [("Nice",), ("Lens",), ("Arsenal",), ("Chelsea",)]
+        with mock.patch.object(espn, "catalogue", return_value=catalogue):
+            with mock.patch.object(time, "sleep"):
+                _code, printed, _err = self.run_cli(
+                    ["--stats", "--teams", "nice"])
+        self.assertIn("Ligue 1", printed)
+        self.assertNotIn("Premier League", printed)
+
+    def test_an_unreadable_since_is_an_error_not_a_traceback(self):
+        code, _printed, err = self.run_cli(["--stats", "--since", "hier"])
+        self.assertEqual(code, 2)
+        self.assertIn("date illisible", err)
+
+    # ------------------------------------------------------- les cas vides --
+
+    def test_a_missing_journal_says_so(self):
+        code, printed, _err = self.run_cli(["--stats"])
+        self.assertEqual(code, 0)
+        self.assertIn("aucun but", printed)
+        self.assertIn(str(self.paths["log"]), printed)
+
+    def test_an_empty_journal_says_so(self):
+        self.paths["log"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["log"].write_text("", encoding="utf-8")
+        code, printed, _err = self.run_cli(["--stats"])
+        self.assertEqual(code, 0)
+        self.assertIn("journal vide", printed)
+
+    def test_a_window_without_a_single_goal_says_so(self):
+        self.write_log((days_ago(40), "20:00:00", self.goal(10)))
+        code, printed, _err = self.run_cli(["--stats", "--week"])
+        self.assertEqual(code, 0)
+        self.assertIn("aucun but sur cette periode", printed)
+        self.assertNotIn("Par minute de match", printed)
+
+    def test_a_window_where_the_var_took_everything_back_says_so(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", self.goal(10)),
+            (days_ago(1), "20:02:00", "BUT ANNULE [Ligue 1] Angers 0 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (11')"),
+        )
+        code, printed, _err = self.run_cli(["--stats"])
+        self.assertEqual(code, 0)
+        self.assertIn("aucun but debout dans cette fenetre", printed)
+        self.assertNotIn("Par minute de match", printed)
+
+    def test_a_cancellation_without_its_goal_is_owned_up_to(self):
+        self.write_log(
+            (days_ago(1), "20:00:00", "BUT ANNULE [Ligue 1] Angers 0 - 0 "
+                                      "Stade Rennais pour Angers - Score "
+                                      "corrige (11')"),
+            (days_ago(1), "20:30:00", self.goal(40, home="Nice", away="Lens")),
+        )
+        _code, printed, _err = self.run_cli(["--stats"])
+        self.assertIn("1 annulation(s) sans but a retirer", printed)
+
+    def test_every_line_fits_in_eighty_columns(self):
+        """Un histogramme qui deborde du terminal ne se lit plus."""
+        self.write_log(*[
+            (days_ago(1), "20:{:02d}:00".format(index),
+             self.goal(85, league="Championnat national de tres loin",
+                       home="Bayer 04 Leverkusen", away="Bayern"))
+            for index in range(0, 40)])
+        _code, printed, _err = self.run_cli(["--stats"])
+        # Le chemin du journal fait la longueur qu'il fait : c'est la seule
+        # ligne dont on ne decide pas la largeur.
+        long_lines = [text for text in printed.splitlines()
+                      if len(text) > 80 and str(self.paths["log"]) not in text]
+        self.assertEqual(long_lines, [])
 
 
 class OneShot:

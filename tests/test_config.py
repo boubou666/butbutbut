@@ -366,7 +366,7 @@ class TestNoOptionIsForgotten(unittest.TestCase):
     # samedis soirs partent sur le disque parce que la cle est restee la.
     ACTIONS = {
         "test", "test_hook", "scores", "next", "status", "stop", "paths",
-        "screens", "today", "week", "month", "since", "top_scorers",
+        "screens", "today", "week", "month", "since", "top_scorers", "stats",
         "list_leagues", "list_teams", "regen_sound", "write_config",
         "config", "update", "check_update", "dev", "record", "replay", "speed",
     }

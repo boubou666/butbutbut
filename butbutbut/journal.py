@@ -28,22 +28,38 @@ avant l'analyseur, ligne par ligne.
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import i18n, watcher
 
-# Les cles de titre que log_line() peut poser devant un score qui bouge. Le
-# journal est toujours ecrit en francais, mais on prend les libelles dans le
-# catalogue plutot qu'en dur : une reformulation ne doit pas rendre muet
-# `--today` sans que rien ne le dise.
+# Les cles de titre que log_line() peut poser devant un score qui bouge, et le
+# mot court qui les nomme quand il en existe un. Le journal est toujours ecrit
+# en francais, mais on prend les libelles dans le catalogue plutot qu'en dur :
+# une reformulation ne doit pas rendre muet `--today` sans que rien ne le dise.
 #
 # Le rugby en apporte quatre (essai, transformation, penalite, drop) et le
 # hockey aucune : un but de hockey se dit "but", comme au football.
-_GOAL_KEYS = ("title_goal", "title_own_goal", "title_penalty", "title_points",
-              "title_try", "title_conversion", "title_penalty_goal",
-              "title_drop_goal")
+#
+# L'en-tete est la SEULE chose qui dise la nature d'un but : la ligne ne porte
+# pas de drapeau "penalty" ou "csc", elle porte "BUT SUR PENALTY". C'est donc
+# de lui que `survey()` tire la part des penaltys et des csc, et c'est pour ca
+# que l'analyseur retient la cle qui a mordu au lieu de la jeter.
+_NATURES = (
+    ("title_goal", "goal"),
+    ("title_own_goal", "own_goal"),
+    ("title_penalty", "penalty"),
+    # "POINTS !" est le titre generique du rugby : aucune action ne le porte,
+    # donc le catalogue n'a pas de mot court a lui opposer.
+    ("title_points", ""),
+    ("title_try", "try"),
+    ("title_conversion", "conversion"),
+    ("title_penalty_goal", "penalty_goal"),
+    ("title_drop_goal", "drop_goal"),
+)
+_GOAL_KEYS = tuple(key for key, _short in _NATURES)
 _CANCELLED_KEYS = ("title_cancelled", "title_points_cancelled")
+_SHORT_KEYS = dict(_NATURES)
 
 
 def _heads() -> tuple:
@@ -54,30 +70,52 @@ def _heads() -> tuple:
     a l'abri d'un futur libelle qui serait prefixe d'un autre.
     """
     found = []
+    seen = set()
     for keys, kind in ((_CANCELLED_KEYS, watcher.CANCELLED),
                        (_GOAL_KEYS, watcher.GOAL)):
         for key in keys:
             head = i18n.text(key, lang=i18n.FALLBACK).rstrip(" !")
-            if head and (head, kind) not in found:
-                found.append((head, kind))
+            if head and (head, kind) not in seen:
+                seen.add((head, kind))
+                found.append((head, kind, key))
     return tuple(sorted(found, key=lambda row: -len(row[0])))
 
 
 HEADS = _heads()
 
+
+def label_of(key) -> str:
+    """Le nom lisible d'une nature de but : "But", "Penalty", "Essai".
+
+    Le titre de carte ("BUT SUR PENALTY !") crie : il est fait pour etre lu de
+    l'autre bout de la piece. Dans une colonne de tableau on prend donc le mot
+    court du catalogue, et a defaut le titre calme.
+    """
+    short = _SHORT_KEYS.get(key)
+    if short:
+        return i18n.text(short, lang=i18n.FALLBACK)
+    return i18n.text(key, lang=i18n.FALLBACK).rstrip(" !").capitalize()
+
+
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\s\s+(.+)$")
 _SCORE = re.compile(r"^(?P<home>.+?) (?P<home_score>\d+) - (?P<away_score>\d+) "
                     r"(?P<away>.+)$")
+# La minute de jeu telle que le journal l'ecrit : 50', 90+3', ou 45 tout sec.
+# Tout le reste - l'horloge d'un match de hockey (12:34), un libelle de phase,
+# une ligne d'une version dont on ne connait plus la forme - n'est pas une
+# minute de jeu : mieux vaut l'avouer que la faire entrer de travers dans un
+# histogramme dont c'est justement la precision qui fait tout l'interet.
+_MINUTE = re.compile(r"^(\d{1,3})\s*(?:\+\s*(\d{1,3}))?\s*'?$")
 
 
 class Entry:
     """Un but relu dans le journal."""
 
     __slots__ = ("day", "time", "kind", "league", "home", "away", "home_score",
-                 "away_score", "team", "detail", "minute")
+                 "away_score", "team", "detail", "minute", "key")
 
     def __init__(self, day, time, kind, league, home, away, home_score,
-                 away_score, team, detail, minute):
+                 away_score, team, detail, minute, key=""):
         self.day = day                # 2026-09-06
         self.time = time              # 18:43:27
         self.kind = kind              # watcher.GOAL ou watcher.CANCELLED
@@ -89,10 +127,31 @@ class Entry:
         self.team = team              # equipe qui marque
         self.detail = detail          # "But de M. Odegaard", "Score corrige"
         self.minute = minute          # 50', ou vide
+        self.key = key                # title_penalty, title_own_goal...
 
     @property
     def goal(self) -> bool:
         return self.kind == watcher.GOAL
+
+    @property
+    def match(self) -> tuple:
+        """De quel match vient ce but : (competition, recevant, visiteur).
+
+        La competition en fait partie : deux equipes se croisent en
+        championnat et en coupe, et ce ne sont pas les memes matchs.
+        """
+        return (self.league, self.home, self.away)
+
+    @property
+    def clock(self):
+        """(minute, temps additionnel) du but, ou None si ce n'est pas lisible.
+
+        Voir _MINUTE : le journal n'ecrit pas que des minutes de football.
+        """
+        found = _MINUTE.match(self.minute.strip())
+        if found is None:
+            return None
+        return int(found.group(1)), int(found.group(2) or 0)
 
     @property
     def scorer(self) -> str:
@@ -119,7 +178,7 @@ def parse_line(line: str):
         return None
     day, clock, body = stamp.group(1), stamp.group(2), stamp.group(3)
 
-    for head, kind in HEADS:
+    for head, kind, key in HEADS:
         if body.startswith(head + " ["):
             body = body[len(head) + 1:]
             break
@@ -156,7 +215,8 @@ def parse_line(line: str):
                  home=found.group("home"), away=found.group("away"),
                  home_score=int(found.group("home_score")),
                  away_score=int(found.group("away_score")),
-                 team=team.strip(), detail=detail.strip(), minute=minute.strip())
+                 team=team.strip(), detail=detail.strip(),
+                 minute=minute.strip(), key=key)
 
 
 def goals_between(path, since=None, until=None) -> list:
@@ -318,3 +378,159 @@ def scoreboard(entries) -> Board:
     return Board(rows=rows, signalled=len(entries) - cancelled,
                  confirmed=len(kept), cancelled=cancelled, unknown=unknown,
                  orphans=orphans)
+
+
+# La soiree commence a 6h du matin. Un but tombe avant appartient a la veille :
+# voir evening_of(), qui explique pourquoi.
+EVENING_HOUR = 6
+# L'histogramme des minutes : des tranches de dix, et jamais moins que les
+# quatre-vingt-dix minutes d'un match. Une tranche vide dit quelque chose -
+# "aucun but dans le dernier quart d'heure" est une forme, exactement comme un
+# baton qui deborde - et s'arreter au dernier but l'effacerait.
+MINUTE_SLICE = 10
+MINUTE_FLOOR = 90
+
+
+def evening_of(entry) -> str:
+    """La soiree d'un but : son jour, sauf quand il tombe apres minuit.
+
+    Le journal change de jour a minuit, une soiree de football non. Un coup
+    d'envoi a 21h qui part en prolongation, une affiche sud-americaine, un
+    match de NHL vu depuis l'Europe : le but de 00h12 et celui de 23h50
+    appartiennent a la meme soiree, et compter par jour de calendrier en
+    ferait deux demi-soirees dont aucune n'a existe.
+
+    Six heures du matin coupe la nuit : aucun match ne commence a 5h, et
+    personne ne parle du but de 00h40 comme du match du lendemain. Un
+    horodatage illisible garde son jour tel quel plutot que de disparaitre.
+    """
+    try:
+        hour = int(entry.time[:2])
+    except (TypeError, ValueError, IndexError):
+        return entry.day
+    if hour >= EVENING_HOUR:
+        return entry.day
+    try:
+        moment = datetime.strptime(entry.day, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return entry.day
+    return "{:%Y-%m-%d}".format(moment - timedelta(days=1))
+
+
+class Survey:
+    """Les formes qu'une fenetre du journal cache : de quoi nourrir --stats.
+
+    Tout est compte sur les buts que la VAR a laisses debout (settle()) : un
+    but efface ne doit pas gonfler un histogramme plus qu'il ne gonfle un
+    classement de buteurs. Les lignes d'annulation, elles, restent comptees a
+    part, et servent aussi a savoir qu'un match a bien ete suivi.
+    """
+
+    __slots__ = ("signalled", "confirmed", "cancelled", "orphans", "buckets",
+                 "timed", "untimed", "added", "leagues", "evenings", "natures",
+                 "matches")
+
+    def __init__(self, signalled, confirmed, cancelled, orphans, buckets,
+                 timed, untimed, added, leagues, evenings, natures, matches):
+        self.signalled = signalled  # lignes "BUT", annulations non comprises
+        self.confirmed = confirmed  # ce qu'il en reste une fois la VAR passee
+        self.cancelled = cancelled  # lignes "BUT ANNULE" de la fenetre
+        self.orphans = orphans      # annulations sans but a retirer
+        self.buckets = buckets      # [(premiere minute, derniere, buts)]
+        self.timed = timed          # buts dont la minute etait lisible
+        self.untimed = untimed      # ... et ceux dont elle ne l'etait pas
+        self.added = added          # buts dans le temps additionnel
+        self.leagues = leagues      # [(competition, buts)], du plus fourni
+        self.evenings = evenings    # [(soiree, buts)], de la plus prolifique
+        self.natures = natures      # [(cle de titre, buts)], ordre du catalogue
+        self.matches = matches      # matchs ou quelque chose a ete signale
+
+    @property
+    def per_match(self) -> float:
+        """Buts confirmes par match. 0.0 quand rien n'a ete vu.
+
+        A lire pour ce que c'est : la moyenne des matchs OU UN BUT EST TOMBE.
+        Un 0-0 ne laisse aucune ligne dans le journal, donc aucune trace ici,
+        et cette moyenne est mecaniquement plus haute que celle d'une saison.
+        C'est le prix d'un journal qui n'ecrit que ce qui bouge, et il vaut
+        mieux le dire que publier un chiffre qu'on croirait comparable.
+        """
+        return (self.confirmed / float(self.matches)) if self.matches else 0.0
+
+    def __repr__(self):
+        return "<Survey {} but(s) {} match(s)>".format(self.confirmed,
+                                                       self.matches)
+
+
+def _slices(minutes) -> list:
+    """Les tranches de dix minutes couvrant `minutes`. [(debut, fin, buts)].
+
+    La minute 10 va dans la tranche 1-10 et la 11 dans la suivante : on compte
+    comme un commentateur, pas comme une machine. La minute 0 - un but signale
+    avant que l'horloge ne parte - rejoint la premiere tranche, faute de mieux.
+    """
+    top = max([MINUTE_FLOOR] + list(minutes))
+    count = (top + MINUTE_SLICE - 1) // MINUTE_SLICE
+    tally = [0] * count
+    for minute in minutes:
+        tally[max(0, minute - 1) // MINUTE_SLICE] += 1
+    return [(index * MINUTE_SLICE + 1, (index + 1) * MINUTE_SLICE, tally[index])
+            for index in range(count)]
+
+
+def _ranked(tally) -> list:
+    """[(valeur, compte)] du plus fourni au moins fourni, puis alphabetique.
+
+    L'ordre alphabetique a egalite, comme pour le classement des buteurs : le
+    meme journal doit rendre deux fois la meme liste, ce qu'aucun dictionnaire
+    ne promet.
+    """
+    return sorted(tally.items(), key=lambda row: (-row[1], row[0]))
+
+
+def survey(entries) -> Survey:
+    """Ce que la fenetre a de remarquable, une fois la VAR passee.
+
+    Un seul parcours des entrees pour tout : les minutes, les competitions,
+    les soirees, la nature des buts. Rien ici ne retourne au journal, et rien
+    ne demande le reseau - tout etait deja dans le fichier.
+    """
+    kept, orphans = settle(entries)
+    cancelled = sum(1 for entry in entries if not entry.goal)
+
+    minutes = []
+    untimed = 0
+    added = 0
+    leagues = {}
+    evenings = {}
+    natures = {}
+    for entry in kept:
+        clock = entry.clock
+        if clock is None:
+            untimed += 1
+        else:
+            minutes.append(clock[0])
+            if clock[1]:
+                added += 1
+        leagues[entry.league] = leagues.get(entry.league, 0) + 1
+        evening = evening_of(entry)
+        evenings[evening] = evenings.get(evening, 0) + 1
+        natures[entry.key] = natures.get(entry.key, 0) + 1
+
+    # Le match compte des qu'une ligne le concerne, but confirme ou annulation :
+    # une annulation prouve qu'on regardait ce match-la, meme si le score est
+    # revenu ou il etait. La soiree entre dans la cle pour qu'un match a cheval
+    # sur minuit n'en fasse pas deux, et pour que deux confrontations des memes
+    # equipes a des dates differentes n'en fassent pas qu'une.
+    matches = {(evening_of(entry),) + entry.match for entry in entries}
+
+    return Survey(
+        signalled=len(entries) - cancelled, confirmed=len(kept),
+        cancelled=cancelled, orphans=orphans, buckets=_slices(minutes),
+        timed=len(minutes), untimed=untimed, added=added,
+        leagues=_ranked(leagues), evenings=_ranked(evenings),
+        # L'ordre du catalogue, pas celui des comptes : "But" avant "Penalty"
+        # avant "But contre son camp" se lit comme une phrase, et ne bouge pas
+        # d'une fenetre a l'autre.
+        natures=[(key, natures[key]) for key in _GOAL_KEYS if natures.get(key)],
+        matches=len(matches))
