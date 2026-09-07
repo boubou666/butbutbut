@@ -572,5 +572,133 @@ class TestLesTroisNumerosSeSuivent(unittest.TestCase):
         self.assertIn("## [{}] - ".format(__version__), texte)
 
 
+class TestLIntervalleDePythonEstLeMemePartout(unittest.TestCase):
+    """L'intervalle de versions supportees est ecrit partout, et jamais relie.
+
+    Le plancher est dit en toutes lettres : `requires-python`, le badge et les
+    prerequis des deux README, et les deux installeurs qui refusent un
+    interpreteur trop vieux. Le plafond, lui, n'est ecrit nulle part - il se
+    deduit des classifiers et de la matrice de CI. Rien ne relie ces endroits,
+    et c'est ainsi que la 3.14 a pu devenir la version de tous les jours sans
+    jamais etre essayee : la matrice s'arretait a la 3.13, les classifiers
+    aussi, et tout restait vert. Une matrice qui ne dit plus la verite est pire
+    qu'une matrice absente, parce qu'elle rassure.
+    """
+
+    # Chaque motif rend le chiffre mineur du plancher. Deux par fichier la ou
+    # le plancher y est ecrit deux fois : une prose qui vieillit a cote d'une
+    # comparaison qui, elle, marche encore est le mensonge le plus courant.
+    PLANCHERS = (
+        ("pyproject.toml", r'^requires-python = ">=3\.(\d+)"'),
+        ("README.md", r"badge/python-3\.(\d+)%2B"),
+        ("README.md", r"\*\*Python 3\.(\d+)\+\*\*"),
+        ("README.en.md", r"badge/python-3\.(\d+)%2B"),
+        ("README.en.md", r"\*\*Python 3\.(\d+)\+\*\*"),
+        ("install.sh", r"sys\.version_info >= \(3, (\d+)\)"),
+        ("install.sh", r"Python 3\.(\d+)\+ est introuvable"),
+        ("install.ps1", r"\[version\]'3\.(\d+)'"),
+        ("install.ps1", r"Python 3\.(\d+)\+ est introuvable"),
+    )
+
+    # Les recettes de `recipes/` annoncent le meme plancher dans leur en-tete,
+    # et elles ne sont PAS listees ci-dessus : elles se decouvrent. Une liste
+    # ecrite a la main aurait exactement le defaut que cette classe denonce -
+    # elle vieillirait a la premiere recette ajoutee, et resterait verte
+    # pendant que le nouveau fichier annoncerait un plancher perime.
+    RECETTES = re.compile(r"Python 3\.(\d+)\+")
+
+    def texte(self, chemin):
+        return (RACINE / chemin).read_text(encoding="utf-8")
+
+    def recettes(self):
+        """(chemin, plancher) pour chaque mention trouvee sous recipes/."""
+        trouves = []
+        dossier = RACINE / "recipes"
+        for fichier in sorted(dossier.rglob("*")):
+            if not fichier.is_file() or fichier.suffix not in (".py", ".md",
+                                                               ".sh", ".ps1"):
+                continue
+            texte = fichier.read_text(encoding="utf-8")
+            for marque in self.RECETTES.finditer(texte):
+                trouves.append((fichier.name, (3, int(marque.group(1)))))
+        return trouves
+
+    def couple(self, version):
+        """"3.14" -> (3, 14) : se compare comme un numero, pas comme un mot.
+
+        En chaines, "3.14" passe avant "3.9" - de quoi croire que la matrice
+        plafonne a la 3.9 juste au moment ou on lui demande son plus haut.
+        """
+        return tuple(int(morceau) for morceau in version.split("."))
+
+    def matrice(self):
+        """Les versions que la CI essaye, celle de l'`include` comprise.
+
+        Seules les versions entre guillemets comptent : les commentaires du
+        fichier en citent aussi, au fil de la phrase, et ce ne sont pas des
+        cases de la matrice.
+        """
+        bloc = self.texte(".github/workflows/ci.yml")
+        bloc = bloc.split("matrix:", 1)[1].split("steps:", 1)[0]
+        return {self.couple(trouve)
+                for trouve in re.findall(r'"(3\.\d+)"', bloc)}
+
+    def classifiers(self):
+        """Les versions que le paquet annonce a PyPI."""
+        return {self.couple(trouve) for trouve in re.findall(
+            r'"Programming Language :: Python :: (3\.\d+)"',
+            self.texte("pyproject.toml"))}
+
+    def test_le_plancher_est_le_meme_partout(self):
+        trouves = {}
+        for chemin, motif in self.PLANCHERS:
+            marque = re.search(motif, self.texte(chemin), re.M)
+            self.assertIsNotNone(marque, "{} : {}".format(chemin, motif))
+            trouves["{} ({})".format(chemin, motif)] = (3, int(marque.group(1)))
+        self.assertEqual(len(set(trouves.values())), 1, trouves)
+
+    def test_les_recettes_annoncent_le_meme_plancher(self):
+        """Sept fichiers de plus le disent, et rien ne les regardait.
+
+        C'est le trou exact que cette classe denonce ailleurs : le plancher
+        monte a 3.9, les neuf endroits ci-dessus suivent, le test reste vert -
+        et `recipes/` continue d'annoncer 3.8 a qui vient copier une recette.
+        Ils se decouvrent plutot que de se lister, pour que la recette ecrite
+        demain soit tenue elle aussi.
+        """
+        plancher = re.search(r'^requires-python = ">=3\.(\d+)"',
+                             self.texte("pyproject.toml"), re.M)
+        self.assertIsNotNone(plancher)
+        attendu = (3, int(plancher.group(1)))
+        trouves = self.recettes()
+        self.assertTrue(trouves, "aucune recette ne dit son plancher")
+        for nom, dit in trouves:
+            self.assertEqual(dit, attendu, nom)
+
+    def test_la_ci_essaye_le_plancher_annonce(self):
+        """Promettre un plancher sans jamais l'essayer, c'est le perdre."""
+        plancher = re.search(r'^requires-python = ">=(3\.\d+)"',
+                             self.texte("pyproject.toml"), re.M)
+        self.assertIsNotNone(plancher)
+        self.assertEqual(min(self.matrice()), self.couple(plancher.group(1)))
+
+    def test_la_ci_essaye_la_derniere_version_annoncee(self):
+        """Le classifier le plus haut est une promesse, pas un souhait.
+
+        C'est ce test qui aurait parle plus tot : le depot s'ecrivait en 3.14
+        et n'annoncait rien au-dela de la 3.13.
+        """
+        self.assertEqual(max(self.classifiers()), max(self.matrice()))
+
+    def test_chaque_version_essayee_est_annoncee(self):
+        """L'inverse n'est pas vrai : on annonce plus large qu'on n'essaye.
+
+        Les versions du milieu (3.10, 3.11) sont tenues sans etre essayees -
+        c'est un pari assume. Essayer une version sans l'annoncer, en revanche,
+        ne serait qu'un oubli.
+        """
+        self.assertEqual(sorted(self.matrice() - self.classifiers()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

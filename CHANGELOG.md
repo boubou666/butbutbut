@@ -67,6 +67,36 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   laissees en francais. C'est ce qui aurait arrete la dette a la premiere
   livraison plutot qu'a la huitieme.
 
+### Interne
+
+- **Python 3.14 entre dans la matrice de CI**, sur les trois systemes comme les
+  autres versions recentes. Elle etait la seule a n'y pas figurer, et c'est
+  celle sur laquelle le depot s'ecrit tous les jours : la CI validait donc
+  scrupuleusement quatre versions que personne n'utilise pour developper, et
+  taisait la seule dont une rupture se serait vue en premier. La suite passe
+  sous 3.14 sans une correction : rien dans le depot ne comparait un message
+  d'exception mot pour mot, aucun module de la bibliotheque standard qu'il
+  importe n'a change de comportement sous lui, et `-W error::DeprecationWarning`
+  ne fait rien lever. Le chantier etait bien aussi petit qu'il en avait l'air,
+  et c'est ce qui le rendait facile a repousser.
+- **Le paquet annonce enfin la 3.14** : le classifier PyPI manquait, lui aussi.
+  `requires-python` (`>=3.8`), les badges, les prerequis et les deux
+  installeurs, eux, disaient deja la meme chose - le plancher n'avait pas
+  bouge, c'est le plafond qui avait glisse sans que rien ne le dise.
+- **Un test confronte les seize endroits qui parlent de versions de Python.**
+  C'est la vraie lecon du chantier : la matrice n'avait pas menti d'un coup,
+  elle avait vieilli, et rien ne pouvait le signaler puisque chacun de ces
+  fichiers est seul chez lui. Le test verifie que le plancher est le meme
+  partout (`requires-python`, les deux badges, les deux listes de prerequis,
+  la comparaison et le message de chaque installeur, et les en-tetes de
+  `recipes/` - ceux-la decouverts et non listes, pour que la recette ecrite
+  demain soit tenue elle aussi), que la CI l'essaye
+  vraiment, et que la version la plus haute des classifiers est bien celle que
+  la matrice va jusqu'a essayer. L'inverse n'est volontairement pas exige : le
+  paquet annonce 3.10 et 3.11 sans les essayer, un pari assume - ce qui casse
+  d'une version a l'autre casse rarement au milieu seul.
+- 1222 -> **1227 tests**.
+
 ## [1.9.0] - 2026-09-07
 
 ### Corrige
