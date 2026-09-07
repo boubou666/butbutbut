@@ -363,6 +363,30 @@ class Match:
     def plays_for(self, team_id) -> list:
         return [play for play in self.plays if play.team_id == team_id]
 
+    def red_card_tally(self) -> tuple:
+        """(domicile, exterieur) : les expulsions publiees jusqu'ici.
+
+        Compte les actions deja lues, pas un etat que la source donnerait : il
+        n'y a nulle part de "cette equipe joue a dix". Une expulsion dont on ne
+        sait pas de quel camp elle vient n'est comptee nulle part - la mettre
+        d'un cote au hasard ferait dire a la carte une chose fausse sur une
+        equipe nommee, ce qui est pire que de n'en rien dire.
+
+        Un sport sans carton rouge rend (0, 0) sans meme regarder : le hockey
+        ne publie aucune action, et compter le vide est une facon de croire
+        qu'on a compte.
+        """
+        if not self.sport.red_cards:
+            return (0, 0)
+        home = away = 0
+        for play in self.red_cards:
+            side = self.side_of(play.team_id)
+            if side == "home":
+                home += 1
+            elif side == "away":
+                away += 1
+        return (home, away)
+
     def side_of(self, team_id) -> str:
         """"home", "away", ou "" quand la source ne nomme pas l'equipe."""
         if team_id and team_id == self.home_id:

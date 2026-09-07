@@ -1397,6 +1397,47 @@ It does not depend on `--no-phase-cards`: switching off a match's key moments
 must not switch off what you have explicitly asked for. `--red-cards` turns it
 on, and nothing else turns it off.
 
+#### One red rectangle per sending-off, on every card
+
+A sending-off card comes and goes; the team stays down to ten until the final
+whistle. So every card of that match says it, not only the one for the card
+itself: **one red rectangle per sending-off**, set against the score of the
+team that took it.
+
+```
+BUT !   PREMIER LEAGUE                                            74'
+Arsenal  []  1 - 2  Chelsea
+But de C. Palmer
+```
+
+That is what explains the goal that follows. A 1-2 with eleven against ten does
+not read like an ordinary 1-2, and until now that fact only lived in a card
+seen for six seconds, twenty minutes earlier.
+
+Three details, all for the same reason: the card must not move just because the
+match falls apart.
+
+- **Room is reserved on both sides**, sized on the more punished team. The
+  score stays in the middle of the card, where the eye looks for it; reserving
+  per side would slide it at every sending-off.
+- **The rectangles line up on the score**, not on the name: two cards on one
+  side and one on the other still fall in the same column, each against the
+  digit it concerns.
+- **They do not depend on `--red-cards`.** The option opens a card for the
+  sending-off, with its title and the player's name; the rectangles are there
+  without asking. They cost no request: sendings-off arrive in the same table
+  of events as the goals.
+
+They follow `--scale` like the rest of the row, and are drawn on the pinned
+card as on any other. A sport that has no sending-off never shows one:
+**hockey** punishes with two minutes in the box, not with a card (and the
+source publishes no events at all for it anyway). **Rugby** does - but its
+yellow card is a ten-minute temporary exclusion, and is not counted.
+
+```bash
+butbutbut --test --leagues eng.1     # a demo card shows one
+```
+
 ### The pre-match announcement
 
 ```bash

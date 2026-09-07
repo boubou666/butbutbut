@@ -659,6 +659,195 @@ class TestCrestGeometry(unittest.TestCase):
         self.assertGreater(box["away_logo_x"], box["score_x"] + box["score_w"])
 
 
+class _RedCanvas:
+    """Un canvas reduit aux rectangles : de quoi compter les cartons dessines."""
+
+    def __init__(self):
+        self.rectangles = []
+
+    def create_rectangle(self, x0, y0, x1, y1, **options):
+        self.rectangles.append((x0, y0, x1, y1, options.get("fill")))
+        return 1
+
+    def bbox(self, *_args):
+        return (0, 0, 10, 10)
+
+    def __getattr__(self, _name):
+        # create_text, create_image, create_polygon : rien a en tirer ici.
+        return lambda *args, **kwargs: 1
+
+
+def _reds_block(box, side, count):
+    """(gauche, droite) du bloc de cartons d'un camp, tel que _draw le posera."""
+    left = box[side + "_reds_x"]
+    return (left, left + overlay._red_span(box["red_w"], count))
+
+
+class TestRedCardsOnTheCard(unittest.TestCase):
+    """Un rectangle rouge par expulsion, sur toutes les cartes du match."""
+
+    def test_an_expulsion_is_counted_for_the_team_that_took_it(self):
+        card = overlay.Card.from_event(one_red_card(team_id="A1"))
+        self.assertEqual((card.home_reds, card.away_reds), (0, 1))
+
+    def test_a_goal_card_still_shows_an_earlier_expulsion(self):
+        """C'est tout l'interet : le carton explique le but qui suit."""
+        card = overlay.Card.from_event(one_goal(
+            side="home",
+            details=(red_card_detail("A1", "20'", "J. Lefort", index=1),
+                     goal_detail("H1", "35'", "C. Arcus", index=2))))
+        self.assertEqual((card.home_reds, card.away_reds), (0, 1))
+
+    def test_two_expulsions_in_the_same_camp_are_two_cards(self):
+        card = overlay.Card.from_event(one_goal(
+            side="home",
+            details=(red_card_detail("A1", "20'", "J. Lefort", index=1),
+                     red_card_detail("A1", "44'", "P. Gueye", index=2),
+                     goal_detail("H1", "35'", "C. Arcus", index=3))))
+        self.assertEqual((card.home_reds, card.away_reds), (0, 2))
+
+    def test_the_pinned_card_carries_them_too(self):
+        """Une carte epinglee tient toute la soiree : elle doit suivre."""
+        match = espn.parse(payload(event(
+            home_score=1, away_score=0,
+            details=(red_card_detail("H1", "62'", "M. Sylla"),))), LIGUE1)[0]
+        card = overlay.Card.pinned(match)
+        self.assertEqual((card.home_reds, card.away_reds), (1, 0))
+
+    def test_a_card_made_by_hand_draws_nothing(self):
+        card = _card()
+        self.assertEqual((card.home_reds, card.away_reds), (0, 0))
+
+    def test_the_demo_shows_the_feature_without_repeating_it(self):
+        shown = [(overlay.Card.demo(league).home_reds,
+                  overlay.Card.demo(league).away_reds)
+                 for league in leagues.LEAGUES]
+        self.assertIn((1, 0), shown)
+        # Un carton sur toutes les cartes de --test ne demontrerait plus rien.
+        self.assertIn((0, 0), shown)
+
+
+class TestRedCardGeometry(unittest.TestCase):
+    """Les cartons entrent dans la carte sans deplacer le score."""
+
+    def card(self, home_reds=0, away_reds=0, **kwargs):
+        return overlay.Card(
+            title="BUT !", league="LIGUE 1", minute="35'",
+            home=kwargs.pop("home", "Angers"),
+            away=kwargs.pop("away", "Stade Rennais"),
+            home_score=1, away_score=2, side="home",
+            detail=[("But de ", False), ("C. Arcus", True)], accent="#f2e34c",
+            home_reds=home_reds, away_reds=away_reds, **kwargs)
+
+    def test_no_expulsion_costs_nothing(self):
+        """Une carte sans carton doit rester au pixel pres celle d'avant."""
+        fonts = fake_fonts()
+        box = overlay._layout(self.card(), fonts)
+        self.assertEqual((box["red_w"], box["red_h"]), (0, 0))
+        self.assertEqual(overlay._red_span(box["red_w"], 0), 0)
+        self.assertEqual(box["home_x"], box["score_x"] - overlay.GAP)
+        self.assertEqual(box["away_x"],
+                         box["score_x"] + box["score_w"] + overlay.GAP)
+
+    def test_the_cards_widen_the_card(self):
+        fonts = fake_fonts()
+        without = overlay._layout(self.card(), fonts)
+        with_one = overlay._layout(self.card(home_reds=1), fonts)
+        with_two = overlay._layout(self.card(home_reds=2), fonts)
+        self.assertGreater(with_one["width"], without["width"])
+        self.assertGreater(with_two["width"], with_one["width"])
+
+    def test_the_place_is_reserved_on_both_sides(self):
+        """Sinon le score glisserait d'un cote a chaque expulsion."""
+        fonts = fake_fonts()
+        both = overlay._layout(self.card(home_reds=2, away_reds=2), fonts)
+        one_side = overlay._layout(self.card(home_reds=2), fonts)
+        self.assertEqual(one_side["width"], both["width"])
+        self.assertEqual(one_side["score_x"], both["score_x"])
+        self.assertEqual(one_side["home_x"], both["home_x"])
+        self.assertEqual(one_side["away_x"], both["away_x"])
+
+    def test_the_score_stays_centred(self):
+        fonts = fake_fonts()
+        for card in (self.card(), self.card(home_reds=1),
+                     self.card(away_reds=3), self.card(home_reds=2, away_reds=1)):
+            box = overlay._layout(card, fonts)
+            middle = overlay.BAR_WIDTH + (box["width"] - overlay.BAR_WIDTH) / 2.0
+            self.assertAlmostEqual(box["score_x"] + box["score_w"] / 2.0, middle)
+
+    def test_they_never_land_on_the_score_nor_on_a_name(self):
+        fonts = fake_fonts()
+        for home_reds, away_reds in ((1, 0), (0, 1), (2, 3), (4, 4)):
+            box = check_inside(self, self.card(home_reds, away_reds), fonts)
+            left, right = _reds_block(box, "home", home_reds)
+            self.assertGreaterEqual(round(left, 3), round(box["home_x"], 3))
+            self.assertLessEqual(round(right, 3), box["score_x"])
+
+            left, right = _reds_block(box, "away", away_reds)
+            self.assertGreaterEqual(round(left, 3), box["score_x"] + box["score_w"])
+            self.assertLessEqual(round(right, 3), round(box["away_x"], 3))
+
+    def test_they_stay_inside_the_card_with_crests_and_long_names(self):
+        box = check_inside(self, self.card(
+            2, 1, home="Eintracht Frankfurt", away="Borussia Monchengladbach",
+            home_logo=CREST, away_logo=CREST))
+        self.assertLessEqual(box["width"], overlay.MAX_WIDTH)
+
+    def test_a_pile_of_expulsions_shortens_the_names_it_cannot_fit(self):
+        """Le plafond de largeur tient : ce sont les noms qui cedent."""
+        box = check_inside(self, self.card(
+            5, 5, home="Club Athletique et Sportif de la Vallee du Rhone",
+            away="Association Sportive des Amis Reunis du Nord de la France"))
+        self.assertLessEqual(box["width"], overlay.MAX_WIDTH)
+        self.assertTrue(box["home"].endswith("..."))
+
+    def test_a_carton_is_never_too_small_to_be_seen(self):
+        box = overlay._layout(self.card(home_reds=1),
+                              fake_fonts(team=1))
+        self.assertGreaterEqual(box["red_w"], 3)
+        self.assertGreaterEqual(box["red_h"], 3)
+
+    def test_one_rectangle_is_drawn_per_expulsion(self):
+        """La mise en page reserve, le dessin pose : les deux doivent coller."""
+        card = self.card(home_reds=2, away_reds=1)
+        fonts = fake_fonts()
+        box = overlay._layout(card, fonts)
+        canvas = _RedCanvas()
+        overlay._draw(canvas, card, fonts, box, overlay.CARD_BG)
+
+        drawn = [rect for rect in canvas.rectangles
+                 if rect[-1] == overlay.RED_CARD]
+        self.assertEqual(len(drawn), 3)
+        for x0, y0, x1, y1, _fill in drawn:
+            self.assertEqual(x1 - x0, box["red_w"])
+            self.assertEqual(y1 - y0, box["red_h"])
+        # Deux du cote du chiffre de gauche, un du cote de celui de droite, et
+        # aucun sur le score.
+        left = sorted(x0 for x0, _top, x1, _bottom, _fill in drawn
+                      if x1 <= box["score_x"])
+        self.assertEqual(len(left), 2)
+        self.assertEqual(left[1] - left[0], box["red_w"] + overlay.RED_GAP)
+
+    def test_a_card_without_expulsion_draws_no_red_at_all(self):
+        card = self.card()
+        fonts = fake_fonts()
+        canvas = _RedCanvas()
+        overlay._draw(canvas, card, fonts, overlay._layout(card, fonts),
+                      overlay.CARD_BG)
+        self.assertEqual([rect for rect in canvas.rectangles
+                          if rect[-1] == overlay.RED_CARD], [])
+
+    def test_the_cards_follow_the_scale_of_the_row(self):
+        small = overlay._layout(self.card(home_reds=1), fake_fonts())
+        big = fake_fonts()
+        for font in big.values():
+            font.line = 48
+        large = overlay._layout(self.card(home_reds=1), big)
+        self.assertGreater(large["red_h"], small["red_h"])
+        # Et la ligne reste assez haute pour eux.
+        self.assertLessEqual(large["red_h"], large["score_y"] * 2)
+
+
 class TestStackPositions(unittest.TestCase):
     """L'empilement, teste sans tkinter : ce n'est que de la geometrie."""
 

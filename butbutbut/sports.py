@@ -77,6 +77,9 @@ Le strict necessaire pour que le reste du programme n'ait jamais a demander
     vocabulaire du football ;
   - `unit_score` : vrai quand un score ne monte que de 1. Faux au rugby, ou la
     carte doit dire de combien de points le score a bouge ;
+  - `red_cards` : vrai quand le sport expulse a la carte rouge. Le hockey ne
+    le fait pas - il a des penalites, pas des expulsions - et la source ne
+    publie de toute facon aucune action pour lui ;
   - `table` : les colonnes du classement, parce qu'un classement de hockey et
     un classement de football ne comptent pas les memes choses.
 
@@ -163,11 +166,11 @@ class Sport:
     """Un sport d'ESPN : son segment d'URL et ses quelques particularites."""
 
     __slots__ = ("code", "name", "aliases", "plays", "breaks", "shootout",
-                 "unit_score", "logo_pattern", "table", "_titles")
+                 "unit_score", "red_cards", "logo_pattern", "table", "_titles")
 
     def __init__(self, code, name, aliases=(), plays=PLAYS_FLAGS, breaks=(),
                  shootout=(), unit_score=True, logo_pattern="", titles=None,
-                 table=TABLE_SOCCER):
+                 table=TABLE_SOCCER, red_cards=True):
         self.code = code                  # "soccer", "hockey", "rugby"
         self.name = name                  # "football", en francais, pour le journal
         self.aliases = tuple(aliases)     # ce qu'on peut taper a --leagues
@@ -180,6 +183,10 @@ class Sport:
         # pas, et aucune carte ne parlera jamais de tirs au but chez lui.
         self.shootout = tuple(shootout)
         self.unit_score = bool(unit_score)
+        # Faux quand le sport ne connait pas l'expulsion : la carte n'a alors
+        # aucun carton a compter, et un compteur a zero qui ne bougera jamais
+        # vaut moins que rien du tout.
+        self.red_cards = bool(red_cards)
         # De quoi reconstruire l'URL d'un ecusson a partir du seul numero
         # d'equipe. Ne sert qu'aux cartes de demonstration : partout ailleurs
         # l'URL vient de la source. Le hockey range ses ecussons sous
@@ -240,6 +247,9 @@ HOCKEY = Sport(
     # taire, jamais a mettre des tirs de cote - il n'y en a pas a mettre, la
     # source ne publie aucune action pour le hockey.
     shootout=SHOOTOUT_HOCKEY,
+    # Pas de carton rouge au hockey : une faute y coute deux minutes sur le
+    # banc des penalites, et l'exclusion de match ne se dit pas par un carton.
+    red_cards=False,
     logo_pattern="https://a.espncdn.com/i/teamlogos/nhl/500/{id}.png",
     table=TABLE_HOCKEY,
     titles={

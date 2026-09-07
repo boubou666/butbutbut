@@ -57,6 +57,13 @@ class TestSports(unittest.TestCase):
         self.assertTrue(sports.SOCCER.unit_score)
         self.assertTrue(sports.HOCKEY.unit_score)
 
+    def test_only_the_sports_that_send_off_carry_red_cards(self):
+        # Le hockey punit par deux minutes de banc, pas par un carton : la
+        # carte n'a rien a compter chez lui.
+        self.assertTrue(sports.SOCCER.red_cards)
+        self.assertTrue(sports.RUGBY.red_cards)
+        self.assertFalse(sports.HOCKEY.red_cards)
+
     def test_the_declined_sports_say_why(self):
         for token in ("basketball", "basket", "nba"):
             self.assertTrue(sports.declined(token), token)
@@ -437,6 +444,8 @@ class TestRugbyPayload(unittest.TestCase):
         self.assertTrue(card.red_card)
         self.assertEqual(card.points, 0)
         self.assertEqual(card.summary(), "Carton rouge pour T. Latu (72')")
+        # Et il se compte du bon cote : c'est ce que la carte dessine.
+        self.assertEqual(match.red_card_tally(), (0, 1))
 
     def test_keys_stay_stable_across_two_reads(self):
         details = (rugby_detail("H1", "try", index=1),
