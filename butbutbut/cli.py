@@ -2498,7 +2498,39 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def utf8_output() -> None:
+    """Met la sortie standard en UTF-8, ou l'empeche au moins de casser.
+
+    Sous Windows, une sortie redirigee - '> matchs.txt', un pipe, le journal
+    d'un service - n'herite pas de l'UTF-8 de la console mais de la page de
+    code ANSI, qui ne connait qu'un caractere sur mille. Un buteur nomme
+    Zielinski, avec le vrai 'n' polonais, suffit alors a terminer la commande
+    sur une UnicodeEncodeError au lieu du score. Tous les fichiers du projet
+    sont deja ecrits en UTF-8 : la sortie fait desormais pareil.
+
+    Une console reste sur sa page de code, elle : c'est elle qui saura ou non
+    dessiner le caractere, et on ne gagne rien a lui envoyer autre chose. Elle
+    herite seulement du remplacement, parce qu'un accent approximatif vaut
+    mieux qu'une trace d'appels a la place des resultats.
+    """
+    for flux in (sys.stdout, sys.stderr):
+        try:
+            if flux.isatty():
+                flux.reconfigure(errors="replace")
+            else:
+                flux.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # Sortie capturee par un test, deja fermee, ou detournee vers autre
+            # chose qu'un flux texte : il n'y a rien a reconfigurer, et rien de
+            # grave non plus.
+            pass
+
+
 def main(argv=None) -> int:
+    # Avant le moindre print : un message d'erreur aussi a le droit de
+    # contenir le nom d'un club.
+    utf8_output()
+
     chosen = config.path_from(argv, paths()["config"])
 
     # La langue en tout premier : les aides d'argparse sont traduites a la
