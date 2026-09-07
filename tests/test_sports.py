@@ -749,6 +749,14 @@ class TestVocabulary(unittest.TestCase):
 # ------------------------------------------------------------ ligne de cmd ---
 
 class TestCommandLine(unittest.TestCase):
+    def setUp(self):
+        # cli.main() rappelle i18n.use() avec ce que dit le fichier de
+        # configuration de la machine : sur un poste francais il repose le
+        # francais, sur la CI il pose l'anglais. Sans ce rangement, la langue
+        # partirait avec lui et les classes suivantes affirmeraient des
+        # libelles francais dans la langue du hasard.
+        self.addCleanup(i18n.use, "fr")
+
     def test_the_listing_shows_the_other_sports(self):
         import io
         import contextlib
