@@ -48,6 +48,10 @@ MESSAGES = {
         "  goals today : {}  (details: butbutbut --today)",
     "  equipes     : {}": "  teams       : {}",
     "  epinglee    : {}": "  pinned      : {}",
+    "{} (etat inconnu : voir la ligne releve)":
+        "{} (state unknown: see the last poll line)",
+    "{} (aucun match en cours)":
+        "{} (no match under way)",
     "  sans spoiler: {}  (journal seulement : ni carte, ni son)":
         "  spoiler-free: {}  (log only: no card, no sound)",
     "  langue      : {}": "  language    : {}",

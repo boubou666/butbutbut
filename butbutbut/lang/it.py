@@ -204,6 +204,10 @@ MESSAGES = {
     '  equipes     : {}':
         '  squadre     : {}',
     '  epinglee    : {}': '  fissata     : {}',
+    '{} (etat inconnu : voir la ligne releve)':
+        '{} (stato ignoto: vedi la riga rilevamento)',
+    '{} (aucun match en cours)':
+        '{} (nessuna partita in corso)',
     '  sans spoiler: {}  (journal seulement : ni carte, ni son)':
         '  anti-spoiler: {}  (solo registro: niente scheda, niente suono)',
     '  silence     : {}': '  silenzio    : {}',

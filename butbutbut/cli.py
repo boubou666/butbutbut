@@ -1479,11 +1479,19 @@ def _table_name(name) -> str:
 
 
 def table_header(sport) -> str:
-    """La ligne d'en-tete du classement, colonnes du sport comprises."""
-    cells = "".join("{:>{}}".format(title, TABLE_CELL_WIDTH)
-                    for title, _keys in sport.table)
-    return "  {:>2}  {:<{}}{}".format("#", "Equipe", TABLE_NAME_WIDTH,
-                                      cells).rstrip()
+    """La ligne d'en-tete du classement, colonnes du sport comprises.
+
+    Les titres sont des CLES de catalogue et non des libelles : "G" veut dire
+    gagne, et ne dit rien a qui lit la page en anglais ou en allemand. Ils
+    passent donc par i18n.text() comme les libelles de carte, avec la
+    contrainte que ce sont des abreviations - elles doivent tenir dans une
+    colonne de TABLE_CELL_WIDTH signes, et un test le verifie langue par
+    langue. Le "#" du rang, lui, n'appartient a aucune langue.
+    """
+    cells = "".join("{:>{}}".format(i18n.text(key), TABLE_CELL_WIDTH)
+                    for key, _keys in sport.table)
+    return "  {:>2}  {:<{}}{}".format("#", i18n.text("table_team"),
+                                      TABLE_NAME_WIDTH, cells).rstrip()
 
 
 def table_row(row, sport, marked=False) -> str:
@@ -1494,7 +1502,7 @@ def table_row(row, sport, marked=False) -> str:
     que --scores emploie pour "en cours", et il ne coute rien a personne.
     """
     cells = "".join("{:>{}}".format(row.cell(keys), TABLE_CELL_WIDTH)
-                    for _title, keys in sport.table)
+                    for _key, keys in sport.table)
     return "{} {:>2}  {:<{}}{}".format(
         ">" if marked else " ", row.rank, _table_name(row.team),
         TABLE_NAME_WIDTH, cells).rstrip()
@@ -1686,10 +1694,10 @@ def pin_summary(token) -> str:
     """
     data = state.read(paths()["state"])
     if not data or state.is_stale(data):
-        return "{} (etat inconnu : voir la ligne releve)".format(token)
+        return tr("{} (etat inconnu : voir la ligne releve)", token)
     row = data.get("pinned")
     if not isinstance(row, dict):
-        return "{} (aucun match en cours)".format(token)
+        return tr("{} (aucun match en cours)", token)
     return "{} -> [{}] {} {} - {} {}  {}".format(
         token, row.get("league", "?"), row.get("home", "?"),
         row.get("home_score", "?"), row.get("away_score", "?"),

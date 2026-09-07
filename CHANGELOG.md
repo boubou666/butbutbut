@@ -14,10 +14,23 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   `--sound-for`, `--export` - portaient toutes la meme note de livraison : « la
   prose n'est pas encore dans les catalogues, elle sort en francais dans les
   cinq langues, degradee et jamais cassee ». Sept fois de suite, et personne
-  n'a compte avant la huitieme : 132 phrases sur 272 n'etaient traduites nulle
-  part. Elles le sont maintenant, dans les quatre langues. Ce qui reste en
-  francais est nomme phrase par phrase dans les deux README et dans
-  `tests/test_i18n.py`, avec la raison de l'y laisser.
+  n'a compte avant la huitieme : **131 phrases sur 272** n'etaient traduites
+  nulle part. Il en reste 16, toutes nommees phrase par phrase dans les deux
+  README et dans `tests/test_i18n.py`, avec la raison de l'y laisser. (Les deux
+  chiffres se comptent sur la meme base, celle d'avant ce chantier : apres lui
+  le programme donne 277 phrases a traduire, cinq metavariables ayant rejoint
+  `tr()` au passage.)
+- **Les en-tetes du classement de `--table` sortaient en francais**, et ce
+  n'etait pas un detail : `G`, `N`, `P` sont les initiales de gagne, nul et
+  perdu, et ne veulent rien dire pour qui lit la page en anglais. Le titre
+  d'une colonne devient une cle de catalogue, comme les libelles de carte, et
+  l'anglais lit `W D L`, l'allemand `S U N`. La seule contrainte est qu'une
+  abreviation tienne dans une colonne de six signes : un test la verifie langue
+  par langue, la ou seul l'oeil l'aurait vue.
+- **La ligne `epinglee` de `--status`** rendait ses deux valeurs en francais
+  (`etat inconnu`, `aucun match en cours`). Celle-la n'avait pas l'excuse des
+  autres - elle ne sert qu'a `--status`, jamais au journal - et elle est
+  traduite.
 - **Trois metavariables de `--help` sortaient en francais** au milieu d'une
   page par ailleurs entierement traduite : `--pin EQUIPE`, `--next
   EQUIPE|JOURS` et `--spoiler-free LISTE` ne passaient pas par `tr()`, la ou

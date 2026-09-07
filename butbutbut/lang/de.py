@@ -181,6 +181,10 @@ MESSAGES = {
         '{} = Tor vom VAR aberkannt ({}) : {} anerkannte(s) Tor(e).',
     '  equipes     : {}': '  Teams       : {}',
     '  epinglee    : {}': '  Angeheftet  : {}',
+    '{} (etat inconnu : voir la ligne releve)':
+        '{} (Zustand unbekannt: siehe Zeile Abfrage)',
+    '{} (aucun match en cours)':
+        '{} (kein Spiel im Gange)',
     '  sans spoiler: {}  (journal seulement : ni carte, ni son)':
         '  Ohne Spoiler: {}  (nur Logdatei : weder Karte noch Ton)',
     '  silence     : {}': '  Stille      : {}',

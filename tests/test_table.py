@@ -239,8 +239,9 @@ class TestStandingsRequest(unittest.TestCase):
 class TestTableColumns(unittest.TestCase):
     """Les colonnes viennent du sport, et de nulle part ailleurs."""
 
-    def headers(self, sport):
-        return [title for title, _keys in sport.table]
+    def headers(self, sport, lang="fr"):
+        """Les titres tels qu'ils s'afficheront, pas les cles qui les portent."""
+        return [i18n.text(key, lang=lang) for key, _keys in sport.table]
 
     def test_football_counts_draws(self):
         self.assertEqual(self.headers(sports.SOCCER),
@@ -256,6 +257,45 @@ class TestTableColumns(unittest.TestCase):
     def test_rugby_carries_its_bonus_points(self):
         self.assertIn("Bon", self.headers(sports.RUGBY))
         self.assertNotIn("Bon", self.headers(sports.SOCCER))
+
+    def test_every_column_title_is_translated_everywhere(self):
+        """Un titre de colonne est une cle : elle doit exister dans les cinq.
+
+        "G" veut dire gagne. Laisser ce mot-la en francais dans une page par
+        ailleurs entierement anglaise etait precisement le defaut : la
+        traduction se verifie donc ici, langue par langue, plutot que d'etre
+        supposee.
+        """
+        cles = {key for sport in sports.SPORTS for key, _ in sport.table}
+        cles.add("table_team")
+        for lang in i18n.LANGUAGES:
+            for cle in sorted(cles):
+                self.assertIn(cle, i18n.MESSAGES[lang],
+                              "{} manque au catalogue {}".format(cle, lang))
+
+    def test_a_translated_title_still_fits_its_column(self):
+        """Une abreviation qui deborde decale toute la colonne sous elle.
+
+        C'est la seule contrainte que la traduction doit respecter, et elle ne
+        se voit qu'a l'ecran - d'ou ce test, qui la tient a la place de l'oeil.
+        """
+        for lang in i18n.LANGUAGES:
+            for sport in sports.SPORTS:
+                for key, _keys in sport.table:
+                    titre = i18n.text(key, lang=lang)
+                    self.assertLessEqual(
+                        len(titre), cli.TABLE_CELL_WIDTH,
+                        "{} en {} : {!r} deborde de la colonne".format(
+                            key, lang, titre))
+            nom = i18n.text("table_team", lang=lang)
+            self.assertLessEqual(len(nom), cli.TABLE_NAME_WIDTH, lang)
+
+    def test_the_header_really_changes_with_the_language(self):
+        """Le defaut d'origine : une en-tete identique dans les cinq langues."""
+        rendus = {i18n.use(lang) or cli.table_header(sports.SOCCER)
+                  for lang in i18n.LANGUAGES}
+        i18n.use("fr")
+        self.assertEqual(len(rendus), len(i18n.LANGUAGES))
 
 
 class TestTableFormatting(unittest.TestCase):

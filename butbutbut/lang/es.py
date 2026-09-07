@@ -55,6 +55,10 @@ MESSAGES = {
         "  goles de hoy: {}  (el detalle: butbutbut --today)",
     "  equipes     : {}": "  equipos     : {}",
     "  epinglee    : {}": "  fijada      : {}",
+    "{} (etat inconnu : voir la ligne releve)":
+        "{} (estado desconocido: ver la linea sondeo)",
+    "{} (aucun match en cours)":
+        "{} (ningun partido en curso)",
     "  sans spoiler: {}  (journal seulement : ni carte, ni son)":
         "  sin spoiler : {}  (solo el registro: ni tarjeta, ni sonido)",
     "  silence     : {}": "  silencio    : {}",

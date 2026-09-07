@@ -112,6 +112,18 @@ MESSAGES = {
         "league_six_nations": "TOURNOI DES SIX NATIONS",
         "league_rwc": "COUPE DU MONDE DE RUGBY",
         "league_test_match": "MATCH INTERNATIONAL",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Equipe",
+        "table_played": "J",
+        "table_won": "G",
+        "table_drawn": "N",
+        "table_lost": "P",
+        "table_otl": "DP",
+        "table_bonus": "Bon",
+        "table_diff": "Diff",
+        "table_points": "Pts",
     },
     "en": {
         "title_goal": "GOAL!",
@@ -175,6 +187,18 @@ MESSAGES = {
         "league_six_nations": "SIX NATIONS",
         "league_rwc": "RUGBY WORLD CUP",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Team",
+        "table_played": "P",
+        "table_won": "W",
+        "table_drawn": "D",
+        "table_lost": "L",
+        "table_otl": "OTL",
+        "table_bonus": "BP",
+        "table_diff": "GD",
+        "table_points": "Pts",
     },
     "es": {
         "title_goal": "GOL!",
@@ -238,6 +262,18 @@ MESSAGES = {
         "league_six_nations": "SEIS NACIONES",
         "league_rwc": "MUNDIAL DE RUGBY",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Equipo",
+        "table_played": "PJ",
+        "table_won": "G",
+        "table_drawn": "E",
+        "table_lost": "P",
+        "table_otl": "DP",
+        "table_bonus": "Bon",
+        "table_diff": "Dif",
+        "table_points": "Pts",
     },
     "it": {
         "title_goal": "GOL!",
@@ -301,6 +337,18 @@ MESSAGES = {
         "league_six_nations": "SEI NAZIONI",
         "league_rwc": "COPPA DEL MONDO DI RUGBY",
         "league_test_match": "TEST MATCH",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Squadra",
+        "table_played": "G",
+        "table_won": "V",
+        "table_drawn": "N",
+        "table_lost": "P",
+        "table_otl": "SdS",
+        "table_bonus": "Bon",
+        "table_diff": "Diff",
+        "table_points": "Pti",
     },
     "de": {
         "title_goal": "TOR!",
@@ -364,6 +412,18 @@ MESSAGES = {
         "league_six_nations": "SIX NATIONS",
         "league_rwc": "RUGBY-WM",
         "league_test_match": "TESTSPIEL",
+        # Les en-tetes du classement de --table. Ce sont des
+        # abreviations : elles doivent tenir dans une colonne de six
+        # signes, et un test le verifie dans les cinq langues.
+        "table_team": "Team",
+        "table_played": "Sp",
+        "table_won": "S",
+        "table_drawn": "U",
+        "table_lost": "N",
+        "table_otl": "NV",
+        "table_bonus": "BP",
+        "table_diff": "Diff",
+        "table_points": "Pkt",
     },
 }
 
