@@ -301,10 +301,18 @@ class TestWomenCatalogue(unittest.TestCase):
             self.assertTrue([a for a in league.aliases if a.endswith("f")],
                             league.slug)
 
-    def test_the_source_publishes_no_italian_or_german_equivalent(self):
-        # Ce n'est pas un oubli : `ita.w.1` et `ger.w.1` n'existent pas chez
-        # la source, alors que la Serie A et la Bundesliga sont au catalogue.
-        # Le jour ou ils apparaitront, ce test dira de les ajouter.
+    def test_two_slugs_that_answer_nothing_stay_out_of_the_catalogue(self):
+        """L'Italie et l'Allemagne n'ont pas d'equivalent feminin chez la source.
+
+        Ce test garde le catalogue, pas la source : il ne fait pas de reseau et
+        n'en fera jamais, la suite entiere tourne hors ligne. Il empeche donc
+        qu'on inscrive ces deux slugs sur la foi du miroir masculin, sans les
+        avoir essayes - ce qui donnerait une competition "injoignable" a chaque
+        releve. Il ne dira PAS quand la source se mettra a les publier : rien
+        ici ne le saura, et c'est le geste manuel qui repond, en une ligne :
+
+            python -m butbutbut --scores --leagues ita.w.1
+        """
         for slug in ("ita.w.1", "ger.w.1"):
             self.assertNotIn(slug, leagues.BY_SLUG)
 

@@ -254,9 +254,19 @@ butbutbut --leagues aus.w.1,can.w.nsl     # A-League Women, Northern Super Leagu
 ```
 
 Two gaps, however, are not ours: **Italy and Germany have no women's
-equivalent at the source**. `ita.w.1` and `ger.w.1` answer 404, while Serie A
+equivalent at the source**. `ita.w.1` and `ger.w.1` answer 400, while Serie A
 and the Bundesliga have been in the catalogue since day one. We do not follow
-what is not published; the day they show up, a test will say so.
+what is not published.
+
+And nothing here will tell you when they show up: the test suite never touches
+the network, and the test guarding those two slugs guards the CATALOGUE - it
+stops anyone from adding them untried, which would give an unreachable
+competition on every poll. So it is a manual check that answers, and it fits on
+one line:
+
+```bash
+butbutbut --scores --leagues ita.w.1
+```
 
 `--scores`, `--next` and `--table` work on them like anywhere else. The table
 does have a per-sport notion of columns (see "The columns follow the sport"):

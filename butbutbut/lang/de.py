@@ -235,6 +235,8 @@ MESSAGES = {
     'les 5 grands championnats': 'die 5 Topligen',
     'tout le catalogue ({} competitions)':
         'der ganze Katalog ({} Wettbewerbe)',
+    'tout le football feminin ({} competitions)':
+        'der ganze Frauenfussball ({} Wettbewerbe)',
     '{} et {} autres': '{} und {} weitere',
     'Les 5 grands (defaut)': 'Die 5 Topligen (Standard)',
     # 'Ausserdem verfuegbar' demanderait deux tremas et un eszett.

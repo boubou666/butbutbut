@@ -63,10 +63,12 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 ### Note
 
 - **L'Italie et l'Allemagne n'ont pas d'equivalent feminin chez la source.**
-  `ita.w.1` et `ger.w.1` repondent 404, alors que la Serie A et la Bundesliga
+  `ita.w.1` et `ger.w.1` repondent 400, alors que la Serie A et la Bundesliga
   sont au catalogue depuis le premier jour. Ce n'est pas un oubli et on ne
-  peut rien en faire : on ne suit pas ce qui n'est pas publie. Un test le
-  constate, et dira de les ajouter le jour ou elles apparaitront.
+  peut rien en faire : on ne suit pas ce qui n'est pas publie. Un test garde le
+  catalogue de leur inscription a l'aveugle, mais **rien ne surveille la
+  source** : la suite ne fait pas de reseau, et c'est `butbutbut --scores
+  --leagues ita.w.1` qui repondra le jour venu.
 - **Une equipe feminine porte le nom de son club** : la source ecrit « Paris
   Saint-Germain » dans `fra.w.1` comme dans `fra.1`. Le rapprochement des noms
   travaillant sur les libelles, `--teams psg` attrape les deux equipes du club

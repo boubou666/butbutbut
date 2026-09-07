@@ -57,6 +57,8 @@ MESSAGES = {
     "les 5 grands championnats": "las 5 grandes ligas",
     "tout le catalogue ({} competitions)":
         "todo el catalogo ({} competiciones)",
+    "tout le football feminin ({} competitions)":
+        "todo el futbol femenino ({} competiciones)",
     "{} et {} autres": "{} y {} mas",
     "  source      : ESPN scoreboard (public, sans cle)":
         "  fuente      : ESPN scoreboard (publico, sin clave)",

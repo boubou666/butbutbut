@@ -86,6 +86,8 @@ MESSAGES = {
     # Rendu par leagues.describe(), affiche sur la ligne "suivi" de --status.
     "les 5 grands championnats": "the big five leagues",
     "tout le catalogue ({} competitions)": "the whole catalogue ({} leagues)",
+    "tout le football feminin ({} competitions)":
+        "all of women's football ({} leagues)",
     "{} et {} autres": "{} and {} others",
 
     # ------------------------------------------------------------ --scores --

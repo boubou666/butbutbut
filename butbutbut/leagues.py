@@ -49,9 +49,10 @@ feminine dont l'homologue masculin y est deja. C'est ce qui explique les
 absences sans avoir a les justifier une par une - il n'y a pas d'Euro feminin
 ici parce qu'il n'y a pas d'Euro tout court, et la W Gold Cup attendra la Gold
 Cup. Deux trous ne viennent pas de nous : l'Italie et l'Allemagne n'ont **pas
-d'equivalent feminin chez la source** (`ita.w.1` et `ger.w.1` repondent 404)
+d'equivalent feminin chez la source** (`ita.w.1` et `ger.w.1` repondent 400)
 alors que la Serie A et la Bundesliga sont la depuis le premier jour. On ne
-suit pas ce qui n'est pas publie.
+suit pas ce qui n'est pas publie - et rien ne surveille leur arrivee, la suite
+de tests ne faisant pas de reseau : c'est --scores qui repondra le jour venu.
 
 **Les alias : un `f` a la fin, et rien d'autre a retenir.** `l1f`, `plf`,
 `ligaf`, `uclf`, `cdmf`, `facupf`. Aucun mot deja pris ne change de sens -

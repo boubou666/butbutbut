@@ -300,6 +300,8 @@ MESSAGES = {
         'i 5 grandi campionati',
     'tout le catalogue ({} competitions)':
         'tutto il catalogo ({} competizioni)',
+    'tout le football feminin ({} competitions)':
+        'tutto il calcio femminile ({} competizioni)',
     '{} et {} autres':
         '{} e altre {}',
     'Les 5 grands (defaut)':

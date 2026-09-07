@@ -257,9 +257,18 @@ butbutbut --leagues aus.w.1,can.w.nsl     # A-League Women, Northern Super Leagu
 
 Deux trous, en revanche, ne viennent pas de nous : **l'Italie et l'Allemagne
 n'ont pas d'equivalent feminin chez la source**. `ita.w.1` et `ger.w.1`
-repondent 404, alors que la Serie A et la Bundesliga sont au catalogue depuis
-le premier jour. On ne suit pas ce qui n'est pas publie ; le jour ou elles
-apparaitront, un test le dira.
+repondent 400, alors que la Serie A et la Bundesliga sont au catalogue depuis
+le premier jour. On ne suit pas ce qui n'est pas publie.
+
+Et rien ici ne dira quand elles apparaitront : la suite de tests ne touche
+jamais au reseau, et le test qui garde ces deux slugs garde le CATALOGUE - il
+empeche qu'on les inscrive sans les avoir essayes, ce qui donnerait une
+competition injoignable a chaque releve. C'est donc un geste manuel qui
+repond, et il tient en une ligne :
+
+```bash
+butbutbut --scores --leagues ita.w.1
+```
 
 `--scores`, `--next` et `--table` marchent dessus comme partout ailleurs. Le
 classement, lui, a une notion de colonnes par sport (voir « Les colonnes
