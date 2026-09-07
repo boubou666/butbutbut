@@ -182,6 +182,14 @@ MESSAGES = {
     "--list-teams'.":
         "butbutbut : nessuna squadra corrisponde a {} in {}. Vedi 'butbutbut "
         "--list-teams'.",
+    "butbutbut : aucune competition ne correspond au prefixe de {}. Voir "
+    "'butbutbut --list'.":
+        "butbutbut : nessuna competizione corrisponde al prefisso di {}. Vedi "
+        "'butbutbut --list'.",
+    "butbutbut : {} vise une competition qui n'est pas suivie : ajoute-la a "
+    "--leagues, ou retire le prefixe.":
+        "butbutbut : {} punta a una competizione non seguita: aggiungila a "
+        "--leagues, oppure togli il prefisso.",
     '{} - {} equipe(s)':
         '{} - {} squadre',
     "'*' = suivie, '-' = exclue.":
@@ -325,11 +333,17 @@ MESSAGES = {
     'liste les competitions surveillables et leurs noms':
         'elenca le competizioni sorvegliabili e i loro nomi',
     'ne signaler que les matchs de ces equipes, separees par des virgules. '
-    "Un match compte des qu'une des deux equipes y est. Ex : --teams om,psg":
+    "Un match compte des qu'une des deux equipes y est, et un mot prefixe ne "
+    'vaut que dans sa competition. Ex : --teams om,psg ou --teams '
+    'ligue2:sochaux':
         'segnala solo le partite di queste squadre, separate da virgole. Una '
-        'partita conta se compare una delle due squadre. Es: --teams om,psg',
-    'ne rien signaler des matchs de ces equipes':
-        'non segnalare nulla delle partite di queste squadre',
+        'partita conta se compare una delle due squadre, e una parola con '
+        'prefisso vale solo nella sua competizione. Es: --teams om,psg o '
+        '--teams ligue2:sochaux',
+    'ne rien signaler des matchs de ces equipes, prefixe compris '
+    '(ligue2:metz)':
+        'non segnalare nulla delle partite di queste squadre, prefisso '
+        'compreso (ligue2:metz)',
     "garde a l'ecran une carte qui suit les matchs de cette equipe : elle "
     "apparait au coup d'envoi, se met a jour a chaque releve et s'en va "
     'quelques minutes apres la fin. Une seule equipe, et jamais de son. Ex : '

@@ -480,6 +480,41 @@ competitions ou il a ete cherche : une faute de frappe ne se traduit pas par un
 daemon muet pendant trois semaines. `butbutbut --list-teams --teams om` montre
 d'ailleurs ce que chaque mot attrape (`*` suivie, `-` exclue).
 
+#### Un club dans une seule competition
+
+```bash
+butbutbut --leagues big5,ligue2 --teams ligue2:sochaux
+```
+
+Ajouter une deuxieme division pour **un seul club** ne marchait pas : la liste
+d'equipes vaut pour toutes les competitions a la fois, donc `--teams sochaux`
+faisait taire les cinq grands championnats du meme coup. Un mot **prefixe d'une
+competition** ne vaut, et surtout ne restreint, que celle-la :
+
+| On ecrit | Ce que ca donne |
+| --- | --- |
+| `--teams sochaux` | plus rien nulle part, sauf Sochaux |
+| `--teams ligue2:sochaux` | les championnats suivis continuent entiers, et la Ligue 2 se reduit a Sochaux |
+| `--teams om,ligue2:sochaux` | l'OM partout, plus Sochaux en Ligue 2 |
+| `--exclude-teams ligue2:metz` | Metz disparait de la Ligue 2, et de nulle part ailleurs |
+
+Le prefixe s'ecrit **comme a `--leagues`** : `l1:`, `ligue2:`, un code ESPN
+(`por.1:`), un groupe entier (`feminines:lyon`), et le `/` marche aussi. Pour un
+autre sport, la competition garde son propre prefixe et le club vient apres :
+`hockey:nhl:rangers` - la coupe se fait au dernier deux-points. `--pin` et
+`--spoiler-free` acceptent la meme ecriture.
+
+Trois fautes sont refusees au demarrage, et les deux premieres **sans la moindre
+requete**, parce qu'elles rendraient toutes le mot inoperant sans jamais le
+dire :
+
+- un prefixe qui ne designe aucune competition : `ligu2:sochaux` ;
+- un prefixe qui en designe une qui n'est pas suivie : `ligue2:sochaux` sans
+  `ligue2` dans `--leagues` ;
+- un club absent de la competition qu'on lui donne : `ligue2:om`, verifie
+  contre le catalogue de la Ligue 2 seule et pas contre toutes les competitions
+  mises bout a bout.
+
 ### Le mode sans spoiler
 
 Il y a un moment ou butbutbut se retourne contre toi : tu regardes le match en
@@ -1360,6 +1395,10 @@ exclude = seriea
 teams = om,psg
 exclude_teams = psg
 spoiler_free = om
+
+# Un club dans une seule competition : le reste continue entier.
+# leagues = big5,ligue2
+# teams = ligue2:sochaux
 
 # La carte qui reste a l'ecran pendant le match (une seule equipe)
 pin = om

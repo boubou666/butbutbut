@@ -235,7 +235,9 @@ def sound_clubs(args) -> list:
     ne joue pas, et donc ne pas le verser dans le fond sonore des autres buts.
     """
     chosen = teams.Filter(args.teams, args.exclude_teams)
-    return list(teams.ALIASES) + chosen.wanted_tokens + chosen.excluded_tokens
+    # `team_words()` et non les jetons bruts : un fichier son porte un nom de
+    # club (`sochaux.mp3`), jamais le prefixe de competition qui le borne.
+    return list(teams.ALIASES) + chosen.team_words()
 
 
 def sound_context(args, event):
@@ -445,9 +447,16 @@ def check_teams(args, selection, stream=None) -> int:
     # fichier de donnees (--export).
     stream = stream or sys.stdout
 
-    catalogue = []
+    # Les prefixes de competition se verifient sans reseau : autant refuser
+    # 'ligu2:sochaux' tout de suite, avant trente-six requetes.
+    failed = check_scopes(chosen, selection)
+    if failed:
+        return failed
+
+    by_league, catalogue = {}, []
     for league in selection:
-        catalogue.extend(espn.catalogue(league))
+        by_league[league.ref] = espn.catalogue(league)
+        catalogue.extend(by_league[league.ref])
         time.sleep(0.15)
 
     if not catalogue:
@@ -458,7 +467,7 @@ def check_teams(args, selection, stream=None) -> int:
 
     found, orphans = {}, []
     for one in chosen:
-        hits, missed = one.resolve(catalogue)
+        hits, missed = one.resolve(catalogue, by_league)
         found.update(hits)
         # Un meme mot peut figurer dans deux listes : il n'est signale qu'une
         # fois, sans quoi --teams om --spoiler-free omm sortirait deux lignes.
@@ -470,12 +479,59 @@ def check_teams(args, selection, stream=None) -> int:
         print(tr("  {:<16} -> {}{}", token, ", ".join(clubs), extra),
               file=stream)
     if orphans:
-        print(tr("butbutbut : aucune equipe ne correspond a {} dans {}. "
-              "Voir 'butbutbut --list-teams'.", 
-                  ", ".join(repr(o) for o in orphans),
-                  leagues.describe(selection)), file=sys.stderr)
+        for tokens, where in orphan_groups(orphans, selection):
+            print(tr("butbutbut : aucune equipe ne correspond a {} dans {}. "
+                  "Voir 'butbutbut --list-teams'.", tokens, where),
+                  file=sys.stderr)
         return 2
     return 0
+
+
+def orphan_groups(orphans, selection) -> list:
+    """Les mots introuvables, ranges avec les competitions ou on a cherche.
+
+    Les mots libres tiennent en un seul message, comme avant. Un mot borne, lui,
+    emmene la sienne : il n'a ete cherche que la, et un refus qui nommerait les
+    trente-six autres enverrait corriger la mauvaise chose.
+    """
+    free, groups = [], []
+    for raw in orphans:
+        scope = teams.Word(raw).scope
+        if not scope:
+            free.append(raw)
+            continue
+        where = [league for league in selection if league.ref in scope]
+        groups.append((repr(raw), leagues.describe(where)))
+    if free:
+        groups.insert(0, (", ".join(repr(one) for one in free),
+                          leagues.describe(selection)))
+    return groups
+
+
+def check_scopes(chosen, selection) -> int:
+    """Les prefixes de competition de --teams et compagnie tiennent-ils ?
+
+    Deux fautes, aussi muettes l'une que l'autre si on les laisse passer : un
+    prefixe qui ne designe aucune competition ('ligu2:sochaux'), et un prefixe
+    qui en designe une qu'on ne suit pas ('ligue2:sochaux' sans Ligue 2 dans
+    --leagues). Dans les deux cas le mot ne s'appliquerait jamais, et le daemon
+    resterait muet sans jamais dire pourquoi - exactement ce que la
+    verification des noms d'equipe existe pour eviter.
+    """
+    unknown, outside = [], []
+    for one in chosen:
+        unknown.extend(w for w in one.bad_scopes() if w not in unknown)
+        outside.extend(w for w in one.outside(selection) if w not in outside)
+
+    if unknown:
+        print(tr("butbutbut : aucune competition ne correspond au prefixe de "
+                 "{}. Voir 'butbutbut --list'.",
+                 ", ".join(repr(word) for word in unknown)), file=sys.stderr)
+    if outside:
+        print(tr("butbutbut : {} vise une competition qui n'est pas suivie : "
+                 "ajoute-la a --leagues, ou retire le prefixe.",
+                 ", ".join(repr(word) for word in outside)), file=sys.stderr)
+    return 2 if (unknown or outside) else 0
 
 
 def do_list_teams(args) -> int:
@@ -494,15 +550,18 @@ def do_list_teams(args) -> int:
         for names in catalogue:
             mark = " "
             if chosen is not None:
-                if chosen.team_excluded(names):
+                # La competition est passee : un mot borne ailleurs ne doit pas
+                # marquer une equipe ici, sans quoi la liste promettrait un
+                # suivi qui n'aura pas lieu.
+                if chosen.team_excluded(names, league):
                     mark = "-"
-                elif chosen.team_matches(names):
+                elif chosen.team_matches(names, league):
                     mark = "*"
             # Le sans-spoiler passe apres l'exclusion (un match exclu n'existe
             # deja plus) mais devant le suivi : c'est la nuance qu'on est venu
             # verifier ici.
             if mark != "-" and quiet_teams is not None \
-                    and quiet_teams.team_matches(names):
+                    and quiet_teams.team_matches(names, league):
                 mark = "?"
             print(tr("  {} {:<30} {}", mark, names[0], names[-1]))
         time.sleep(0.15)
@@ -517,6 +576,7 @@ def do_list_teams(args) -> int:
     print("  butbutbut --teams \"real madrid\" --leagues liga,ucl")
     print("  butbutbut --exclude-teams psg")
     print("  butbutbut --spoiler-free om")
+    print("  butbutbut --teams ligue2:sochaux --leagues big5,ligue2")
     return 0
 
 
@@ -2956,10 +3016,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--teams", default=None, metavar=tr("LISTE"),
                         help=tr("ne signaler que les matchs de ces equipes, "
                              "separees par des virgules. Un match compte des "
-                             "qu'une des deux equipes y est. Ex : --teams om,psg"))
+                             "qu'une des deux equipes y est, et un mot prefixe "
+                             "ne vaut que dans sa competition. "
+                             "Ex : --teams om,psg ou --teams ligue2:sochaux"))
     parser.add_argument("--exclude-teams", default=None, metavar=tr("LISTE"),
                         dest="exclude_teams",
-                        help=tr("ne rien signaler des matchs de ces equipes"))
+                        help=tr("ne rien signaler des matchs de ces equipes, "
+                             "prefixe compris (ligue2:metz)"))
     parser.add_argument("--pin", default=None, metavar=tr("EQUIPE"),
                         help=tr("garde a l'ecran une carte qui suit les matchs "
                              "de cette equipe : elle apparait au coup d'envoi, "

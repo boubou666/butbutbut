@@ -14,7 +14,8 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from butbutbut import (cli, espn, hook, i18n, journal, leagues, pinned,
-                       presenting, silence, sound, speech, state, watcher)
+                       presenting, silence, sound, speech, state, teams,
+                       watcher)
 
 from helpers import at_local_hour, event, goal_detail, in_minutes, payload
 
@@ -2930,6 +2931,56 @@ class TestUtf8Output(unittest.TestCase):
         flux.close()
         with mock.patch.object(cli.sys, "stdout", flux):
             cli.utf8_output()   # ne leve pas
+
+
+class TestScopeChecking(unittest.TestCase):
+    """Un prefixe de competition se verifie sans reseau, donc avant tout.
+
+    Les deux fautes valent un refus au demarrage parce qu'elles ont le meme
+    effet : le mot ne s'applique jamais, et rien ne le dit.
+    """
+
+    def check(self, wanted, selection):
+        erreur = io.StringIO()
+        with redirect_stderr(erreur):
+            code = cli.check_scopes([teams.Filter(wanted=wanted)], selection)
+        return code, erreur.getvalue()
+
+    def test_a_known_prefix_of_a_followed_competition_passes(self):
+        code, sortie = self.check("ligue2:sochaux",
+                                  leagues.resolve("big5,ligue2"))
+        self.assertEqual(code, 0)
+        self.assertEqual(sortie, "")
+
+    def test_a_prefix_that_names_no_competition_is_refused(self):
+        code, sortie = self.check("ligu2:sochaux", leagues.resolve("big5"))
+        self.assertEqual(code, 2)
+        self.assertIn("ligu2:sochaux", sortie)
+
+    def test_a_prefix_outside_the_selection_is_refused(self):
+        # Ligue 2 existe, mais elle n'est pas suivie : ce mot ne servirait
+        # jamais, et le daemon resterait muet sur Sochaux sans rien dire.
+        code, sortie = self.check("ligue2:sochaux", leagues.resolve("big5"))
+        self.assertEqual(code, 2)
+        self.assertIn("--leagues", sortie)
+
+    def test_words_without_prefix_are_none_of_its_business(self):
+        code, sortie = self.check("om,psg", leagues.resolve("big5"))
+        self.assertEqual(code, 0)
+        self.assertEqual(sortie, "")
+
+    def test_an_unfound_bounded_word_only_names_its_own_competition(self):
+        # 'ligue2:om' n'a ete cherche qu'en Ligue 2 : lui reprocher les cinq
+        # grands championnats enverrait corriger la mauvaise chose.
+        selection = leagues.resolve("big5,ligue2")
+        groupes = cli.orphan_groups(["ligue2:om"], selection)
+        self.assertEqual(groupes, [("'ligue2:om'", "Ligue 2")])
+
+    def test_free_words_keep_the_whole_selection_in_one_message(self):
+        selection = leagues.resolve("l1,ligue2")
+        groupes = cli.orphan_groups(["marseile", "ligue2:om"], selection)
+        self.assertEqual(groupes[0], ("'marseile'", leagues.describe(selection)))
+        self.assertEqual(groupes[1], ("'ligue2:om'", "Ligue 2"))
 
 
 if __name__ == "__main__":

@@ -166,6 +166,14 @@ MESSAGES = {
      "--list-teams'."):
         ("butbutbut : {} passt zu keinem Team in {}. Siehe 'butbutbut "
          "--list-teams'."),
+    ("butbutbut : aucune competition ne correspond au prefixe de {}. Voir "
+     "'butbutbut --list'."):
+        ("butbutbut : kein Wettbewerb passt zum Prefix von {}. Siehe "
+         "'butbutbut --list'."),
+    ("butbutbut : {} vise une competition qui n'est pas suivie : ajoute-la a "
+     "--leagues, ou retire le prefixe."):
+        ("butbutbut : {} zielt auf einen Wettbewerb, der nicht verfolgt wird: "
+         "nimm ihn in --leagues auf, oder lass das Prefix weg."),
     '{} - {} equipe(s)': '{} - {} Team(s)',
     "'*' = suivie, '-' = exclue.": "'*' = verfolgt, '-' = ausgeschlossen.",
     "'?' = suivie sans spoiler : journal seulement, ni carte ni son.":
@@ -304,11 +312,17 @@ MESSAGES = {
     'liste les competitions surveillables et leurs noms':
         'listet die verfolgbaren Wettbewerbe und ihre Namen',
     ('ne signaler que les matchs de ces equipes, separees par des virgules. '
-     "Un match compte des qu'une des deux equipes y est. Ex : --teams om,psg"):
+     "Un match compte des qu'une des deux equipes y est, et un mot prefixe ne "
+     'vaut que dans sa competition. Ex : --teams om,psg ou --teams '
+     'ligue2:sochaux'):
         ('nur Spiele dieser Teams melden, mit Komma getrennt. Ein Spiel gilt '
-         'schon, wenn eines der beiden Teams dabei ist. Bsp : --teams om,psg'),
-    'ne rien signaler des matchs de ces equipes':
-        'nichts aus Spielen dieser Teams melden',
+         'schon, wenn eines der beiden Teams dabei ist ; ein Wort mit Prefix '
+         'gilt nur in seinem Wettbewerb. Bsp : --teams om,psg oder --teams '
+         'ligue2:sochaux'),
+    ('ne rien signaler des matchs de ces equipes, prefixe compris '
+     '(ligue2:metz)'):
+        'nichts aus Spielen dieser Teams melden, Prefix eingeschlossen '
+        '(ligue2:metz)',
     "garde a l'ecran une carte qui suit les matchs de cette equipe : elle "
     "apparait au coup d'envoi, se met a jour a chaque releve et s'en va "
     'quelques minutes apres la fin. Une seule equipe, et jamais de son. Ex : '

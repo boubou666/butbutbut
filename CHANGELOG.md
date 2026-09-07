@@ -73,6 +73,39 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - 1402 -> **1426 tests**, dont quatre qui deplacent une constante d'`overlay`
   de deux pixels et exigent que le plan bouge : une reference qu'aucun decalage
   ne fait broncher est un fichier mort.
+- **Une equipe peut se borner a une competition** : `--teams ligue2:sochaux`
+  suit Sochaux en Ligue 2 et ne dit rien des autres competitions, qui
+  continuent entieres. La liste d'equipes valait jusqu'ici pour tout ce qu'on
+  suit a la fois : ajouter un club de deuxieme division revenait a faire taire
+  les cinq grands championnats du meme coup, et rien ne permettait d'ecrire
+  "celui-la, et seulement chez lui". La regle tient en une phrase - **un mot
+  sans prefixe vaut partout, un mot prefixe ne vaut, et surtout ne restreint,
+  que sa competition**.
+- Le prefixe s'ecrit **comme a `--leagues`** (`l1:`, `ligue2:`, `por.1:`, un
+  groupe entier comme `feminines:lyon`, et le `/` de l'URL marche aussi) : une
+  seule ponctuation a retenir pour les deux options. La coupe se fait au
+  **dernier** deux-points, pour qu'une competition d'un autre sport garde le
+  sien : `hockey:nhl:rangers`. `--exclude-teams`, `--pin` et `--spoiler-free`
+  prennent la meme ecriture, et `--list-teams` ne marque plus une equipe bornee
+  que dans sa competition - la liste ne promet plus un suivi qui n'aura pas
+  lieu.
+- **Trois fautes refusees au demarrage**, les deux premieres sans une seule
+  requete : un prefixe qui ne designe aucune competition (`ligu2:sochaux`), un
+  prefixe qui en designe une qui n'est pas suivie (`ligue2:sochaux` sans
+  `ligue2` dans `--leagues`), et un club absent de la competition qu'on lui
+  donne (`ligue2:om`), desormais confronte au catalogue de cette competition
+  seule et non a toutes mises bout a bout. Les trois laisseraient le mot
+  inoperant et le daemon muet, sans jamais dire pourquoi.
+- Le nom d'un fichier son continue de parler du club seul : `sochaux.mp3` sonne
+  pour `ligue2:sochaux`, le prefixe n'etant pas quelque chose qu'un fichier
+  saurait porter.
+- Le refus d'un club introuvable ne nomme plus que les competitions ou il a
+  vraiment ete cherche : `'ligue2:om' dans Ligue 2`, et non dans les six
+  competitions suivies ce soir-la, qui enverrait corriger la mauvaise chose.
+- 1426 -> **1446 tests** : la coupe au dernier separateur, la competition
+  bornee reduite a un club, celles qu'on laisse entieres, l'exclusion bornee,
+  une ligne de journal retrouvee par l'etiquette de sa carte, le club verifie
+  dans sa seule competition, les trois refus, et le message qui les porte.
 
 ### Modifie
 
