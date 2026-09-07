@@ -18,6 +18,7 @@ from helpers import standing_entry, standings_payload
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 NHL = leagues.BY_SLUG["nhl"]
 SIX_NATIONS = leagues.BY_SLUG["180659"]
+WSL = leagues.BY_SLUG["eng.w.1"]
 
 _LANGUE = {}
 
@@ -86,6 +87,19 @@ SIX_NATIONS_PAYLOAD = standings_payload(
                                                        lost=4, bonus=2,
                                                        diff="-82", points=6)]),
     name="Six Nations", season="2026")
+
+# Le football feminin : meme endpoint, memes cles, memes colonnes. C'est ce
+# qu'il fallait verifier plutot que supposer, --table ayant une notion de
+# classement par sport - et le sport, ici, est bien le football.
+WSL_PAYLOAD = standings_payload(
+    ("2026-27 English Women's Super League", [
+        soccer_row("Chelsea", 1, wins=3, ties=0, losses=0, diff="+8",
+                   points=9, note="Champions League"),
+        soccer_row("Arsenal", 2, wins=2, ties=1, losses=0, diff="+5",
+                   points=7),
+    ]),
+    name="English Women's Super League",
+    season="2026-27 English Women's Super League")
 
 
 def run_table(argv, answers, pause=0.0):
@@ -258,6 +272,14 @@ class TestTableColumns(unittest.TestCase):
         self.assertIn("Bon", self.headers(sports.RUGBY))
         self.assertNotIn("Bon", self.headers(sports.SOCCER))
 
+    def test_a_womens_competition_counts_like_any_football(self):
+        # Les colonnes viennent du sport, et une competition feminine EST du
+        # football : rien a declarer, mais ca se verifie plutot que ca ne se
+        # suppose - c'est le seul endroit du programme ou le classement
+        # change de forme d'un sport a l'autre.
+        self.assertIs(WSL.sport, sports.SOCCER)
+        self.assertEqual(self.headers(WSL.sport), self.headers(LIGUE1.sport))
+
     def test_every_column_title_is_translated_everywhere(self):
         """Un titre de colonne est une cle : elle doit exister dans les cinq.
 
@@ -420,6 +442,21 @@ class TestTableCommand(unittest.TestCase):
         _code, printed = run_table(["--table", "l1"],
                                    {"fra.1": LIGUE1_PAYLOAD})
         self.assertNotIn("French Ligue 1", printed)
+
+    def test_it_prints_the_table_of_a_womens_competition(self):
+        code, printed = run_table(["--table", "wsl"], {"eng.w.1": WSL_PAYLOAD})
+        self.assertEqual(code, 0)
+        self.assertIn("Women's Super League (2026-27)", printed)
+        self.assertIn("Chelsea", printed)
+        self.assertIn("N", printed)               # les colonnes du football
+        self.assertNotIn("Bon", printed)
+
+    def test_the_womens_keyword_asks_for_the_whole_group(self):
+        # `--table feminines` doit lire un mot de competition, pas chercher un
+        # club de ce nom : c'est _table_request qui tranche, et le mot-cle
+        # devait y entrer avec les autres.
+        picked, wanted = cli._table_request("feminines")
+        self.assertEqual((picked, wanted), ("feminines", ""))
 
     def test_rugby_shows_its_bonus_points(self):
         code, printed = run_table(["--table", "6nations"],

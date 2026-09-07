@@ -9,6 +9,8 @@ sports.py, qui dit lesquels et pourquoi).
     butbutbut --leagues l1,ligue2,ucl      # choix explicite
     butbutbut --exclude liga,seriea        # les 5 moins deux
     butbutbut --leagues all                # tout le catalogue de football
+    butbutbut --leagues l1f,wsl,uclf       # le meme, au feminin
+    butbutbut --leagues feminines          # tout le football feminin
     butbutbut --leagues nhl,top14          # hockey et rugby, a la demande
     butbutbut --leagues rugby              # tout le rugby du catalogue
     butbutbut --leagues all-sports         # vraiment tout
@@ -26,12 +28,46 @@ avant l'ouverture aux autres sports. Deux raisons, et la premiere suffit :
     suivre les coupes nationales ne doit pas se retrouver, apres une mise a
     jour, avec des cartes de hockey a deux heures du matin. Une mise a jour ne
     change pas ce qu'on suit ;
-  - `all`, c'est deja 36 endpoints. Y verser les autres sports en ferait 46
-    sans que ce soit un choix.
+  - `all`, c'est deja 36 endpoints. Y verser le reste en ferait 60 sans que ce
+    soit un choix.
 
-Les autres sports se demandent, donc : par competition (`nhl`, `top14`), par
-sport entier (`hockey`, `rugby`, et `foot` pour le football seul), ou d'un bloc
-avec `all-sports` / `tous-sports`, qui lui prend vraiment tout.
+Le reste se demande, donc : par competition (`nhl`, `top14`, `wsl`), par
+groupe entier (`hockey`, `rugby`, `feminines`, et `foot` pour le catalogue
+masculin de football), ou d'un bloc avec `all-sports` / `tous-sports`, qui lui
+prend vraiment tout.
+
+
+Le football feminin
+-------------------
+
+La source les publie par le meme endpoint, avec les memes cles : un but de
+Liga F se lit exactement comme un but de LaLiga, buteur et minute compris.
+Leur absence n'a donc jamais ete un arbitrage, c'etait un angle mort.
+
+**La regle d'entree est le miroir** : entre au catalogue la competition
+feminine dont l'homologue masculin y est deja. C'est ce qui explique les
+absences sans avoir a les justifier une par une - il n'y a pas d'Euro feminin
+ici parce qu'il n'y a pas d'Euro tout court, et la W Gold Cup attendra la Gold
+Cup. Deux trous ne viennent pas de nous : l'Italie et l'Allemagne n'ont **pas
+d'equivalent feminin chez la source** (`ita.w.1` et `ger.w.1` repondent 400)
+alors que la Serie A et la Bundesliga sont la depuis le premier jour. On ne
+suit pas ce qui n'est pas publie - et rien ne surveille leur arrivee, la suite
+de tests ne faisant pas de reseau : c'est --scores qui repondra le jour venu.
+
+**Les alias : un `f` a la fin, et rien d'autre a retenir.** `l1f`, `plf`,
+`ligaf`, `uclf`, `cdmf`, `facupf`. Aucun mot deja pris ne change de sens -
+`l1`, c'est la Ligue 1, hier comme demain - et le mot feminin se devine sans
+lire le README. C'est aussi le marqueur que tout le monde ecrit deja, des
+grilles de programmes ("France F") au nom officiel de la premiere division
+espagnole (Liga F). Une competition qui porte son propre nom repond en plus a
+ce nom-la : `wsl`, `nwsl`, `uwcl`, `reina`. L'etiquette de carte suit la meme
+regle, et pour la meme raison : "PREMIERE LIGUE F" plutot que "PREMIERE
+LIGUE", qui a une lettre pres est deja au catalogue.
+
+**Elles ne sont pas dans `all`**, pour la raison exacte qui en tient le hockey
+dehors : une mise a jour ne change pas ce qu'on suit. Elles se demandent d'un
+mot - `feminines`, `footf`, `women` - et `all-sports` les emporte comme il
+emporte tout le reste.
 
 
 L'echappatoire
@@ -228,6 +264,63 @@ EXTRA = (
 
 CATALOGUE = LEAGUES + EXTRA
 
+# --- Football feminin : a demander -------------------------------------------
+# Le miroir du catalogue ci-dessus, competition par competition, et rien de
+# plus : voir l'en-tete du module pour la regle d'entree et pour le `f` final
+# des alias. Tous ces codes ont ete verifies contre la source, un par un -
+# scoreboard, buteur, minute, csc, penalty, et classement la ou il y en a un.
+
+WOMEN = (
+    # Championnats
+    League("eng.w.1", "Women's Super League", "WSL", "#f06595",
+           ("wsl", "plf", "eplf", "engf")),
+    League("esp.w.1", "Liga F", "LIGA F", "#a9e34b",
+           ("ligaf", "laligaf", "espf")),
+    # "Premiere Ligue" tout court se lit "Premier League" sur une carte vue de
+    # loin, a deux heures du matin : le F n'est pas decoratif ici.
+    League("fra.w.1", "Premiere Ligue F", "PREMIERE LIGUE F", "#da77f2",
+           ("l1f", "ligue1f", "d1f", "fraf")),
+    League("ned.w.1", "Eredivisie F", "EREDIVISIE F", "#f76707",
+           ("eredivisief", "nedf", "vrouwen")),
+    League("usa.nwsl", "NWSL", "NWSL", "#0ca678", ("nwsl", "usaf")),
+    # Coupes d'Europe
+    League("uefa.wchampions", "Ligue des champions F", "LIGUE DES CHAMPIONS F",
+           "#be4bdb", ("uclf", "ldcf", "c1f", "uwcl"),
+           key="league_wucl"),
+    League("uefa.w.europa", "Coupe Europa F", "COUPE EUROPA F", "#eebefa",
+           ("uelf", "europaf", "c3f"),
+           key="league_wuel"),
+    # Selections
+    League("uefa.w.nations", "Ligue des nations F", "LIGUE DES NATIONS F",
+           "#91a7ff", ("nationsf", "ldnf"),
+           key="league_wnations"),
+    League("fifa.wwc", "Coupe du monde F", "COUPE DU MONDE F", "#bac8ff",
+           ("cdmf", "mondialf", "wwc"),
+           key="league_wwc"),
+    # Le nom complet ("Qualif. Coupe du monde F (UEFA)") depasse la colonne de
+    # --list d'un caractere et decale toute la ligne : l'abreviation, qui est
+    # deja celle de l'etiquette, dit la meme chose.
+    League("fifa.wworldq.uefa", "Qualif. CDM F (UEFA)",
+           "QUALIF. CDM F", "#868e96",
+           ("wcqf", "qualifsf", "eliminatoiresf"),
+           key="league_wwcq"),
+    # Coupes nationales
+    League("eng.w.fa", "FA Cup F", "FA CUP F", "#8ce99a", ("facupf", "faf")),
+    League("eng.w.league_cup", "League Cup F", "LEAGUE CUP F", "#99e9f2",
+           ("leaguecupf", "eflcupf")),
+    League("esp.copa_de_la_reina", "Copa de la Reina", "COPA DE LA REINA",
+           "#1c7ed6", ("reina", "copadelareina", "copaf")),
+    # Hors d'Europe
+    League("concacaf.w.champions_cup", "W Champions Cup", "W CHAMPIONS CUP",
+           "#e599f7", ("concacaff", "cccf", "wccc")),
+)
+
+# Tout le football, les deux catalogues ensemble. `CATALOGUE` reste le seul que
+# `all` designe ; `FOOTBALL` repond a une autre question - "ce mot parle-t-il
+# d'une competition de football ?" - et le nom d'un fichier son ne s'interesse
+# pas a ce que `all` veut dire.
+FOOTBALL = CATALOGUE + WOMEN
+
 # --- Hockey sur glace : a demander -------------------------------------------
 # La NHL, et elle seule. Les autres competitions que la source expose sous
 # `hockey` (championnats universitaires americains, tournois olympiques) sont
@@ -270,9 +363,9 @@ RUGBY_LEAGUES = (
 
 OTHER_SPORTS = HOCKEY_LEAGUES + RUGBY_LEAGUES
 
-# Tout ce qui existe. `CATALOGUE` reste le catalogue de football, parce que
-# c'est lui que designe `--leagues all` : voir l'en-tete du module.
-FULL_CATALOGUE = CATALOGUE + OTHER_SPORTS
+# Tout ce qui existe. `CATALOGUE` reste le catalogue masculin de football,
+# parce que c'est lui que designe `--leagues all` : voir l'en-tete du module.
+FULL_CATALOGUE = FOOTBALL + OTHER_SPORTS
 
 BY_SLUG = {league.slug: league for league in FULL_CATALOGUE}
 DEFAULT_SLUGS = tuple(league.slug for league in LEAGUES)
@@ -282,12 +375,16 @@ BY_SPORT = {sports.SOCCER: CATALOGUE,
             sports.HOCKEY: HOCKEY_LEAGUES,
             sports.RUGBY: RUGBY_LEAGUES}
 
-# Mots-cles de la ligne de commande. `_ALL` ne sort pas du football : voir
-# l'en-tete du module pour la raison.
+# Mots-cles de la ligne de commande. `_ALL` ne sort pas du catalogue masculin
+# de football : voir l'en-tete du module pour la raison.
 _ALL = ("all", "tout", "tous", "toutes", "*")
 _EVERYTHING = ("all-sports", "allsports", "tous-sports", "toussports",
                "tout-sport", "everything", "**")
 _BIG_FIVE = ("big5", "top5", "les5", "5", "grands")
+# Le mot qui ouvre le football feminin d'un bloc. `footf` s'y trouve parce que
+# c'est ce que la convention d'alias predit a partir de `foot` : la regle vaut
+# aussi pour les mots-cles, sinon ce n'est plus une regle.
+_WOMEN = ("feminines", "feminin", "footf", "women", "womens")
 
 
 class SelectionError(ValueError):
@@ -386,11 +483,15 @@ def designates(token):
     competition ? - et inscrire une competition parce qu'un fichier son porte
     son nom n'aurait aucun sens. Celles ouvertes par --leagues sont deja dans
     BY_SLUG, elles repondent donc quand meme.
+
+    La recherche porte sur tout le football, `FOOTBALL` et non `CATALOGUE` :
+    `wsl.mp3` doit sonner comme `l1.mp3` sonne. Ce que `all` emporte est une
+    question de surveillance, pas de nom de fichier.
     """
     lowered = str(token or "").strip().lower()
     if not lowered:
         return None
-    for league in CATALOGUE:
+    for league in FOOTBALL:
         if league.matches_token(lowered):
             return league
     return BY_SLUG.get(lowered)
@@ -413,7 +514,8 @@ def names_a_league(token) -> bool:
     lowered = str(token or "").strip().lower()
     if not lowered:
         return False
-    if lowered in _ALL or lowered in _EVERYTHING or lowered in _BIG_FIVE:
+    if (lowered in _ALL or lowered in _EVERYTHING or lowered in _BIG_FIVE
+            or lowered in _WOMEN):
         return True
     if sports.find(lowered) is not None or sports.declined(lowered):
         return True
@@ -447,6 +549,9 @@ def _expand(value, default=()) -> list:
             continue
         if lowered in _BIG_FIVE:
             found.extend(l for l in LEAGUES if l not in found)
+            continue
+        if lowered in _WOMEN:
+            found.extend(l for l in WOMEN if l not in found)
             continue
 
         # Un sport entier : "hockey", "rugby", "foot". Teste avant le
@@ -498,6 +603,8 @@ def describe(selection) -> str:
         return tr("les 5 grands championnats")
     if selection == list(CATALOGUE):
         return tr("tout le catalogue ({} competitions)", len(CATALOGUE))
+    if selection == list(WOMEN):
+        return tr("tout le football feminin ({} competitions)", len(WOMEN))
     if selection == list(FULL_CATALOGUE):
         return tr("tous les sports ({} competitions)",
                       len(FULL_CATALOGUE))
@@ -517,16 +624,19 @@ def sports_of(selection) -> list:
     return [sport for sport in sports.SPORTS if sport in chosen]
 
 
-def catalogue_lines(all_sports=False) -> list:
+def catalogue_lines(everything=False) -> list:
     """Le catalogue, pret a afficher : (groupe, nom, code, alias).
 
-    Sans argument, le catalogue de football : c'est celui que `--leagues all`
-    designe, et celui que le reste du programme entend par "le catalogue".
-    `all_sports=True` y ajoute les autres sports, dans leurs propres groupes -
-    c'est ce que `butbutbut --list` affiche.
+    Sans argument, le catalogue masculin de football : c'est celui que
+    `--leagues all` designe, et celui que le reste du programme entend par "le
+    catalogue". `everything=True` y ajoute tout ce qui se demande - le football
+    feminin d'abord, les autres sports ensuite, chacun dans son groupe. C'est
+    ce que `butbutbut --list` affiche, et le parametre dit bien ce qu'il fait :
+    montrer tout, et non passer a un autre sport.
     """
     rows = [(tr("Les 5 grands (defaut)"), LEAGUES), (tr("Aussi disponibles"), EXTRA)]
-    if all_sports:
+    if everything:
+        rows.append((tr("Football feminin (a demander)"), WOMEN))
         rows.append((tr("Hockey sur glace (a demander)"), HOCKEY_LEAGUES))
         rows.append((tr("Rugby a XV (a demander)"), RUGBY_LEAGUES))
     lines = []

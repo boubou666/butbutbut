@@ -125,6 +125,10 @@ MESSAGES = {
         '  butbutbut --leagues rugby              (das ganze Rugby im Katalog)',
     '  butbutbut --leagues all-sports         (vraiment tout)':
         '  butbutbut --leagues all-sports         (wirklich alles)',
+    '  butbutbut --leagues feminines          (tout le football feminin)':
+        '  butbutbut --leagues feminines          (der ganze Frauenfussball)',
+    '  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)':
+        '  butbutbut --leagues l1f,wsl,uclf       (dasselbe bei den Frauen: f am Ende)',
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         '  butbutbut --leagues por.1              (jeder ESPN-Code)',
     '  butbutbut --leagues hockey:nhl         (... y compris dans un autre '
@@ -504,6 +508,8 @@ MESSAGES = {
     'les 5 grands championnats': 'die 5 Topligen',
     'tout le catalogue ({} competitions)':
         'der ganze Katalog ({} Wettbewerbe)',
+    'tout le football feminin ({} competitions)':
+        'der ganze Frauenfussball ({} Wettbewerbe)',
     # "tout le {} ({} competitions)" n'a pas d'entree : le trou y recoit le nom
     # du sport, que sports.py garde en francais pour le journal. La traduire
     # ferait une phrase a moitie allemande ; celle-ci, non.
@@ -514,6 +520,8 @@ MESSAGES = {
     'Aussi disponibles': 'Weitere Wettbewerbe',
     'Hockey sur glace (a demander)': 'Eishockey (auf Wunsch)',
     'Rugby a XV (a demander)': 'Rugby Union (auf Wunsch)',
+    'Football feminin (a demander)':
+        'Frauenfussball (auf Anfrage)',
 
     # --- --top-scorers -------------------------------------------------------
     # Les buts repris par la VAR sont deduits : le compte affiche n'est pas

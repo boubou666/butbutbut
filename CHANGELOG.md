@@ -169,6 +169,79 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   c'est une deduction, pas une observation, et elle est ecrite dans le README
   pour que le jour ou quelqu'un verra une carte de trop, il sache ou regarder.
 
+### Ajoute
+
+- **Le football feminin entre au catalogue : 14 competitions.** La source les
+  publiait depuis toujours, par le meme endpoint et avec les memes cles - un
+  but de Liga F se lit exactement comme un but de LaLiga, buteur, minute, csc
+  et penalty compris. Il n'y avait donc rien a ecrire du cote de la lecture :
+  leur absence n'etait pas un arbitrage, c'etait un angle mort. Cinq
+  championnats (Women's Super League, Liga F, Premiere Ligue, Eredivisie,
+  NWSL), deux coupes d'Europe (Ligue des champions et Coupe Europa), trois
+  competitions de selections (Coupe du monde, Ligue des nations, qualifications
+  UEFA), trois coupes nationales (FA Cup, League Cup, Copa de la Reina) et la
+  W Champions Cup de la Concacaf. Chacune a ete interrogee une par une contre
+  la source, avec son nom, ses matchs et son classement.
+- **La regle d'entree est le miroir** : entre au catalogue la competition
+  feminine dont l'homologue masculin y est deja. Ce seul principe fait tout le
+  tri, et il explique les absences sans avoir a les justifier une par une - il
+  n'y a pas d'Euro feminin parce qu'il n'y a pas d'Euro tout court, et la W
+  Gold Cup attendra la Gold Cup. Toutes ont ete verifiees et restent ouvertes
+  par l'echappatoire (`--leagues uefa.weuro`, `fifa.w.olympics`, `aus.w.1`,
+  `can.w.nsl`, `usa.w.usl.1`...).
+- **Les alias : le mot masculin, plus un `f`.** `l1f`, `plf`, `ligaf`, `uclf`,
+  `cdmf`, `facupf`. C'etait le seul vrai arbitrage du chantier : un mot qui
+  change de sens selon la competition suivie ne se rattrape jamais, et
+  personne ne relit son fichier de configuration six mois plus tard. Aucun mot
+  deja pris ne bouge donc - `l1` reste la Ligue 1, `liga` LaLiga, `ucl` la C1
+  masculine -, et le mot feminin se devine sans lire le README. Le `f` est le
+  marqueur que tout le monde ecrit deja, des grilles de programmes
+  (« France F ») au nom officiel de la premiere division espagnole, Liga F.
+  Une competition qui porte un nom a elle repond en plus a ce nom-la : `wsl`,
+  `nwsl`, `uwcl`, `reina`.
+- **`--leagues all` ne les prend pas**, et c'est le second arbitrage. Meme
+  raison que pour le hockey, mot pour mot : une mise a jour ne change pas ce
+  qu'on suit, et quelqu'un qui tapait `all` hier ne doit pas recevoir demain
+  des cartes de matchs qu'il n'a pas demandes. Elles se demandent d'un mot -
+  `feminines`, `footf`, `women` - et `all-sports` les emporte comme il emporte
+  tout le reste. `all` reste 36 endpoints ; `all-sports` en fait 60.
+- L'etiquette de la carte suit la meme regle que les alias, et pour la meme
+  raison : « Premiere Ligue » affiche tel quel se lit « Premier League » a deux
+  heures du matin, la carte annonce donc **PREMIERE LIGUE F**. Cinq libelles
+  qui se traduisent (Ligue des champions, Coupe Europa, Ligue des nations,
+  Coupe du monde et ses qualifications) ont leurs cles dans les cinq langues.
+- `--scores`, `--next` et `--table` marchent dessus sans une ligne de plus.
+  Le classement a une notion de colonnes par sport : une competition feminine
+  est du football, elle compte donc les matchs nuls comme la Ligue 1 - verifie
+  contre la source plutot que suppose, en direct comme en test.
+- 1222 -> **1251 tests** : la resolution de chaque alias, le fait que les mots
+  masculins n'ont pas bouge, un controle deux a deux de **tout** ce qui
+  designe une competition dans le catalogue entier (codes, noms, etiquettes,
+  alias) plutot qu'une liste ecrite a la main, la convention `+ f` verifiee sur
+  les paires que la source elle-meme relie, l'unicite des couleurs, ce que
+  `all` emporte et n'emporte pas, une charge utile de WSL figee, et le
+  classement de la WSL avec les colonnes du football.
+
+### Note
+
+- **L'Italie et l'Allemagne n'ont pas d'equivalent feminin chez la source.**
+  `ita.w.1` et `ger.w.1` repondent 400, alors que la Serie A et la Bundesliga
+  sont au catalogue depuis le premier jour. Ce n'est pas un oubli et on ne
+  peut rien en faire : on ne suit pas ce qui n'est pas publie. Un test garde le
+  catalogue de leur inscription a l'aveugle, mais **rien ne surveille la
+  source** : la suite ne fait pas de reseau, et c'est `butbutbut --scores
+  --leagues ita.w.1` qui repondra le jour venu.
+- **Une equipe feminine porte le nom de son club** : la source ecrit « Paris
+  Saint-Germain » dans `fra.w.1` comme dans `fra.1`. Le rapprochement des noms
+  travaillant sur les libelles, `--teams psg` attrape les deux equipes du club
+  des qu'on suit les deux competitions. C'est la bonne reponse plutot qu'un
+  defaut a corriger, et rien dans le nom ne permettrait de trancher : ce qui
+  separe les deux cartes, c'est la competition, et l'en-tete l'annonce.
+- Un fichier son peut porter le nom d'une competition feminine (`wsl.mp3`,
+  `--sound-for uclf=corne.wav`) : `leagues.designates` interroge desormais
+  tout le football et non le seul catalogue masculin. Ce que `all` emporte est
+  une question de surveillance, pas de nom de fichier.
+
 ## [1.9.0] - 2026-09-07
 
 ### Corrige

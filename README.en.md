@@ -139,6 +139,7 @@ butbutbut --exclude liga,seriea           # the big 5 minus two
 butbutbut --leagues l1,ligue2,ucl,cdf     # Ligue 1 + Ligue 2 + UCL + Coupe de France
 butbutbut --leagues all                   # the whole football catalogue
 butbutbut --leagues big5                  # the big 5, explicitly
+butbutbut --leagues l1f,wsl               # women's football
 butbutbut --leagues nhl,top14             # and outside football
 butbutbut --leagues all-sports            # really everything
 ```
@@ -172,6 +173,120 @@ the first poll (`gre.1` becomes "GREEK SUPER LEAGUE").
 > The adaptive polling rate does most of the work (a competition with no
 > fixture is only re-read every 5 minutes), but do stay reasonable.
 
+### Women's football
+
+butbutbut follows **14 women's competitions**, served from the same place and
+in the same shape as the rest: a Liga F goal reads exactly like a LaLiga goal,
+scorer, minute, own goal and penalty included. Their absence until now was not
+a judgement call, it was a blind spot.
+
+```bash
+butbutbut --leagues l1f,wsl            # Premiere Ligue and the Women's Super League
+butbutbut --leagues uclf               # the Women's Champions League
+butbutbut --leagues feminines          # all 14 at once
+butbutbut --leagues l1,l1f             # both Ligue 1s, together
+```
+
+| Family | Accepted names |
+| --- | --- |
+| Leagues | `wsl`/`plf`, `ligaf`, `l1f`/`d1f`, `eredivisief`, `nwsl` |
+| European cups | `uclf`/`c1f`/`uwcl`, `uelf`/`europaf` |
+| National teams | `cdmf`/`mondialf`, `nationsf`, `qualifsf` |
+| Domestic cups | `facupf`, `leaguecupf`, `reina` |
+| Outside Europe | `concacaff` |
+
+#### The alias rule: an `f` at the end
+
+**The men's word, plus an `f`.** `l1` gives `l1f`, `pl` gives `plf`, `liga`
+gives `ligaf`, `ucl` gives `uclf`, `cdm` gives `cdmf`, `facup` gives `facupf`.
+There is nothing else to remember, and it is the one point of this piece of
+work that really called for a decision.
+
+What had to be avoided is **a word that changes meaning depending on what you
+follow**. `psg` already names a team, `l1` names Ligue 1: the day `l1` came to
+mean "both Ligue 1s", nobody would know what their own configuration file
+does - least of all six months later. Here, no word already taken moves. `l1`
+is Ligue 1, today and tomorrow.
+
+The `f` did not come out of nowhere: it is the marker everyone already writes,
+from TV listings ("France F") to the official name of the Spanish top flight,
+which is called **Liga F**. A competition with a name of its own answers to
+that name as well - `wsl`, `nwsl`, `uwcl`, `reina` - and that is usually the
+one you type first.
+
+The card label follows the same rule, for the same reason. The French women's
+top flight is officially called "Premiere Ligue"; shown as such, at two in the
+morning, it reads as "Premier League". So the card says **PREMIERE LIGUE F**.
+
+#### What `--leagues all` does not take
+
+**`all` is still the men's catalogue**, and it is the same judgement call as
+for hockey, word for word: someone who typed `--leagues all` yesterday must
+not find themselves, after a mere update, with cards for matches they never
+asked for. An update does not change what you follow. And `all` is already 36
+endpoints; pouring the rest into it would make 60 without that being a choice.
+
+So they are asked for, in a single word:
+
+```bash
+butbutbut --leagues all              # 36 competitions, the same as before
+butbutbut --leagues feminines        # the 14 women's ones (or footf, women)
+butbutbut --leagues all,feminines    # the 50
+butbutbut --leagues all-sports       # really everything, other sports included
+```
+
+`all-sports` takes them, just as it takes hockey and rugby: that is what it
+promises, and nobody types it by accident.
+
+#### What the source publishes, and what it does not
+
+The women's catalogue is **the mirror of the men's one**: a women's
+competition gets in when its men's counterpart is already there. That rule
+does all the sorting, and it explains the absences without having to justify
+them one by one - there is no women's Euro here because there is no Euro at
+all, and the W Gold Cup will wait for the Gold Cup. They do exist at the
+source, they were checked, and the escape hatch opens them anyway:
+
+```bash
+butbutbut --leagues uefa.weuro            # the Women's Euro
+butbutbut --leagues fifa.w.olympics       # the Olympic tournament
+butbutbut --leagues aus.w.1,can.w.nsl     # A-League Women, Northern Super League
+```
+
+Two gaps, however, are not ours: **Italy and Germany have no women's
+equivalent at the source**. `ita.w.1` and `ger.w.1` answer 400, while Serie A
+and the Bundesliga have been in the catalogue since day one. We do not follow
+what is not published.
+
+And nothing here will tell you when they show up: the test suite never touches
+the network, and the test guarding those two slugs guards the CATALOGUE - it
+stops anyone from adding them untried, which would give an unreachable
+competition on every poll. So it is a manual check that answers, and it fits on
+one line:
+
+```bash
+butbutbut --scores --leagues ita.w.1
+```
+
+`--scores`, `--next` and `--table` work on them like anywhere else. The table
+does have a per-sport notion of columns (see "The columns follow the sport"):
+a women's competition is football, so it counts draws just like Ligue 1 -
+checked, not assumed.
+
+#### A women's team carries its club's name
+
+The source writes "Paris Saint-Germain" in `fra.w.1` just as in `fra.1`,
+"Arsenal" in the WSL just as in the Premier League. Since name matching works
+on the labels, `--teams psg` therefore catches **both of the club's teams** as
+soon as you follow both competitions.
+
+That is the right answer rather than a defect: someone who follows PSG follows
+PSG. Nothing in the name would allow a distinction anyway, and wanting one
+would mean a hand-written list of women's teams, which would age badly. What
+separates the two cards is the competition, and the header is what announces
+it. When you only want one of the two, `--leagues` is already enough:
+following `l1f` alone does not bring up the men's goals.
+
 ---
 
 ## Sports
@@ -195,17 +310,21 @@ butbutbut --leagues rugby               # every rugby competition in the catalog
 
 ### What `all` means
 
-**`--leagues all` is still the whole football catalogue**, exactly what it
+**`--leagues all` is still the men's football catalogue**, exactly what it
 meant before. Two reasons, and the first one is enough:
 
 - **nobody asked for the NHL.** Someone who typed `--leagues all` to follow
   domestic cups must not find themselves, after a mere update, with hockey
   cards at two in the morning. An update does not change what you follow;
-- `all` is already 36 endpoints. Pouring the other sports into it would make
-  46 without that being a choice.
+- `all` is already 36 endpoints. Pouring the rest into it would make 60
+  without that being a choice.
+
+The same reasoning keeps women's football out of `all` (see "Women's
+football"): the rule is not about the sport, it is about the promise made to
+the word.
 
 For really everything: `--leagues all-sports` (or `tous-sports`). And
-`--leagues foot` means football alone, just like `all`.
+`--leagues foot` means the men's football catalogue, just like `all`.
 
 ### Why these sports, and not basketball
 
@@ -2779,7 +2898,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1269 tests**, with no network and no screen: the source is simulated by an
+**1298 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

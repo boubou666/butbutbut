@@ -1,8 +1,8 @@
 import unittest
 
-from butbutbut import espn, i18n, leagues
+from butbutbut import espn, i18n, leagues, sports
 
-from helpers import event, payload
+from helpers import event, goal_detail, payload
 
 
 def setUpModule():
@@ -183,6 +183,269 @@ class TestDesignates(unittest.TestCase):
         self.assertNotIn(slug, leagues.BY_SLUG)
         self.assertIsNone(leagues.designates(slug))
         self.assertNotIn(slug, leagues.BY_SLUG)
+
+
+# ------------------------------------------------------- football feminin ----
+
+def words_of(league) -> set:
+    """Tout ce qui, tape a --leagues, doit designer cette competition-la.
+
+    matches_token() accepte quatre choses en plus des alias : le code, la
+    reference prefixee du sport, le nom et l'etiquette. Un test des seuls
+    alias laisserait donc passer une collision sur un nom.
+    """
+    return ({league.slug, league.ref, league.name.lower(), league.label.lower()}
+            | set(league.aliases))
+
+
+def mirror_slugs(slug) -> list:
+    """Les codes masculins du catalogue que ce code feminin reflete.
+
+    La source marque le feminin d'un `w`, tantot segment a part ("eng.w.1"),
+    tantot colle au segment suivant ("uefa.wchampions", "fifa.wworldq.uefa").
+    On retire l'un ou l'autre et on garde ce que le catalogue reconnait :
+    aucune table ecrite a la main, donc rien a oublier le jour ou une entree
+    s'ajoute.
+    """
+    parts = slug.split(".")
+    candidates = []
+    for index, part in enumerate(parts):
+        rest = parts[index + 1:]
+        if part == "w":
+            candidates.append(".".join(parts[:index] + rest))
+        elif len(part) > 1 and part.startswith("w"):
+            candidates.append(".".join(parts[:index] + [part[1:]] + rest))
+    return [code for code in candidates if code in leagues.BY_SLUG]
+
+
+class TestWomenCatalogue(unittest.TestCase):
+    """Le miroir feminin du catalogue : voir l'en-tete de leagues.py."""
+
+    def test_they_are_football_like_the_others(self):
+        self.assertTrue(leagues.WOMEN)
+        for league in leagues.WOMEN:
+            self.assertIs(league.sport, sports.SOCCER, league.slug)
+            self.assertFalse(league.provisional, league.slug)
+            self.assertRegex(league.accent, r"^#[0-9a-f]{6}$", league.slug)
+            self.assertEqual(league.label, league.label.upper(), league.slug)
+            self.assertEqual(league.ref, league.slug, league.slug)
+
+    def test_football_is_the_two_catalogues_side_by_side(self):
+        self.assertEqual(list(leagues.FOOTBALL),
+                         list(leagues.CATALOGUE) + list(leagues.WOMEN))
+        for league in leagues.WOMEN:
+            self.assertIs(leagues.BY_SLUG[league.slug], league)
+
+    def test_no_word_designates_two_competitions(self):
+        """Deux a deux, sur tout le catalogue : aucun mot ne peut hesiter.
+
+        C'est le seul controle qui vaille pour une convention d'alias. Une
+        liste ecrite a la main dirait ce qu'on a pense a verifier ; celui-ci
+        dit ce qui est vrai, y compris pour les entrees ecrites demain.
+        """
+        seen = {}
+        for league in leagues.FULL_CATALOGUE:
+            for word in words_of(league):
+                self.assertNotIn(
+                    word, seen,
+                    "{!r} designe a la fois {} et {}".format(
+                        word, seen.get(word), league.slug))
+                seen[word] = league.slug
+
+    def test_no_keyword_is_shadowed_by_a_competition(self):
+        # _expand() lit les mots-cles AVANT le catalogue : un alias qui
+        # s'appellerait "feminines" ne serait jamais atteint.
+        words = set()
+        for league in leagues.FULL_CATALOGUE:
+            words |= words_of(league)
+        for keyword in (leagues._ALL + leagues._EVERYTHING
+                        + leagues._BIG_FIVE + leagues._WOMEN):
+            self.assertNotIn(keyword, words, keyword)
+
+    def test_every_colour_is_its_own(self):
+        # Une couleur partagee ferait deux competitions identiques sur la
+        # carte, la seule chose qui les distingue etant l'en-tete.
+        accents = [league.accent for league in leagues.FULL_CATALOGUE]
+        self.assertEqual(len(accents), len(set(accents)))
+
+    def test_the_mens_word_plus_an_f_opens_the_womens_competition(self):
+        """La convention, verifiee sur les paires que la source elle-meme relie.
+
+        Deux exigences, et la seconde compte autant que la premiere : au moins
+        un mot masculin suffixe d'un `f` ouvre la competition feminine, et
+        aucun n'ouvre autre chose. Sans elle, "plf" pourrait un jour designer
+        une competition sans rapport, et la regle ne serait plus une regle.
+        """
+        pairs = 0
+        for woman in leagues.WOMEN:
+            for slug in mirror_slugs(woman.slug):
+                pairs += 1
+                man = leagues.BY_SLUG[slug]
+                derived = [alias + "f" for alias in man.aliases]
+                opened = [word for word in derived
+                          if leagues.designates(word) is woman]
+                self.assertTrue(
+                    opened,
+                    "{} ne repond a aucun alias de {} suffixe d'un f".format(
+                        woman.slug, slug))
+                for word in derived:
+                    found = leagues.designates(word)
+                    self.assertIn(found, (None, woman),
+                                  "{!r} designe {}".format(word, found))
+        # Le garde-fou du garde-fou : si la derivation cessait de trouver quoi
+        # que ce soit, le test passerait sans rien avoir verifie.
+        self.assertGreaterEqual(pairs, 9)
+
+    def test_every_womens_competition_answers_to_an_f(self):
+        for league in leagues.WOMEN:
+            self.assertTrue([a for a in league.aliases if a.endswith("f")],
+                            league.slug)
+
+    def test_two_slugs_that_answer_nothing_stay_out_of_the_catalogue(self):
+        """L'Italie et l'Allemagne n'ont pas d'equivalent feminin chez la source.
+
+        Ce test garde le catalogue, pas la source : il ne fait pas de reseau et
+        n'en fera jamais, la suite entiere tourne hors ligne. Il empeche donc
+        qu'on inscrive ces deux slugs sur la foi du miroir masculin, sans les
+        avoir essayes - ce qui donnerait une competition "injoignable" a chaque
+        releve. Il ne dira PAS quand la source se mettra a les publier : rien
+        ici ne le saura, et c'est le geste manuel qui repond, en une ligne :
+
+            python -m butbutbut --scores --leagues ita.w.1
+        """
+        for slug in ("ita.w.1", "ger.w.1"):
+            self.assertNotIn(slug, leagues.BY_SLUG)
+
+
+class TestWomenSelection(unittest.TestCase):
+    def test_the_aliases_resolve(self):
+        for token, slug in (("wsl", "eng.w.1"), ("plf", "eng.w.1"),
+                            ("ligaf", "esp.w.1"), ("l1f", "fra.w.1"),
+                            ("d1f", "fra.w.1"), ("nwsl", "usa.nwsl"),
+                            ("uclf", "uefa.wchampions"),
+                            ("uwcl", "uefa.wchampions"),
+                            ("c1f", "uefa.wchampions"),
+                            ("uelf", "uefa.w.europa"),
+                            ("nationsf", "uefa.w.nations"),
+                            ("cdmf", "fifa.wwc"),
+                            ("qualifsf", "fifa.wworldq.uefa"),
+                            ("facupf", "eng.w.fa"),
+                            ("leaguecupf", "eng.w.league_cup"),
+                            ("reina", "esp.copa_de_la_reina"),
+                            ("concacaff", "concacaf.w.champions_cup")):
+            self.assertEqual([l.slug for l in leagues.resolve(token)], [slug],
+                             token)
+
+    def test_the_mens_words_have_not_moved(self):
+        # Le vrai piege du chantier : "l1" doit rester la Ligue 1, "liga"
+        # LaLiga, "ucl" la C1 masculine. Un mot qui change de sens selon la
+        # competition suivie ne se rattrape jamais.
+        for token, slug in (("l1", "fra.1"), ("liga", "esp.1"),
+                            ("pl", "eng.1"), ("ucl", "uefa.champions"),
+                            ("cdm", "fifa.world"), ("facup", "eng.fa"),
+                            ("copa", "esp.copa_del_rey"), ("mls", "usa.1"),
+                            ("concacaf", "concacaf.champions")):
+            self.assertEqual([l.slug for l in leagues.resolve(token)], [slug],
+                             token)
+
+    def test_the_keyword_takes_them_all(self):
+        for token in ("feminines", "feminin", "footf", "women", "womens"):
+            self.assertEqual(leagues.resolve(token), list(leagues.WOMEN), token)
+
+    def test_all_stays_the_mens_catalogue(self):
+        """L'arbitrage : `all` ne bouge pas d'une competition.
+
+        Une mise a jour ne change pas ce qu'on suit - c'est deja la raison
+        pour laquelle `all` ne prend pas le hockey.
+        """
+        for token in ("all", "tout", "foot"):
+            chosen = leagues.resolve(token)
+            self.assertEqual(chosen, list(leagues.CATALOGUE), token)
+            for league in leagues.WOMEN:
+                self.assertNotIn(league, chosen, token)
+
+    def test_all_sports_takes_them_like_the_rest(self):
+        chosen = leagues.resolve("all-sports")
+        self.assertEqual(chosen, list(leagues.FULL_CATALOGUE))
+        for league in leagues.WOMEN:
+            self.assertIn(league, chosen)
+
+    def test_they_mix_with_the_mens_catalogue(self):
+        chosen = leagues.resolve("l1,l1f,ucl,uclf")
+        self.assertEqual([l.slug for l in chosen],
+                         ["fra.1", "fra.w.1", "uefa.champions",
+                          "uefa.wchampions"])
+
+    def test_exclusion_works_on_the_group(self):
+        chosen = leagues.resolve("all-sports", exclude="feminines")
+        self.assertEqual(chosen, list(leagues.CATALOGUE)
+                         + list(leagues.OTHER_SPORTS))
+
+    def test_describe_names_the_group(self):
+        self.assertEqual(leagues.describe(leagues.resolve("feminines")),
+                         "tout le football feminin ({} competitions)".format(
+                             len(leagues.WOMEN)))
+
+    def test_the_keyword_is_a_competition_word_for_table(self):
+        # --table trie ses jetons en "competition" et "equipe" : sans ca,
+        # `--table feminines` chercherait un club de ce nom.
+        for token in ("feminines", "footf", "wsl", "l1f"):
+            self.assertTrue(leagues.names_a_league(token), token)
+
+    def test_a_sound_file_may_be_named_after_them(self):
+        # designates() est ce que lit `--sound-for wsl=corne.wav` et ce que
+        # lit un fichier `wsl.mp3` : il ne s'interesse pas a ce que `all`
+        # emporte, seulement a ce qui est du football.
+        self.assertIs(leagues.designates("wsl"), leagues.BY_SLUG["eng.w.1"])
+        self.assertIs(leagues.designates("uclf"),
+                      leagues.BY_SLUG["uefa.wchampions"])
+        self.assertIsNone(leagues.designates("wslf"))
+
+
+class TestWomenPayload(unittest.TestCase):
+    """La source les publie comme les autres : charge utile figee, ici.
+
+    Relevee sur `soccer/eng.w.1` - meme forme, memes cles, memes drapeaux
+    qu'un match de Premier League. C'est tout le fond du chantier : il n'y
+    avait rien a ecrire du cote de la lecture.
+    """
+
+    PAYLOAD = payload(event(
+        match_id="1", home="Arsenal", away="Chelsea",
+        home_score=2, away_score=1, state="in", detail="67'", clock="67'",
+        details=[goal_detail("H1", minute="12'", scorer="A. Russo"),
+                 goal_detail("A1", minute="40'", scorer="S. Kaneryd", index=1),
+                 goal_detail("H1", minute="66'", scorer="B. Mead",
+                             penalty=True, index=2)]))
+
+    def test_a_womens_match_reads_like_any_other(self):
+        league = leagues.BY_SLUG["eng.w.1"]
+        matches = espn.parse(self.PAYLOAD, league)
+        self.assertEqual(len(matches), 1)
+
+        match = matches[0]
+        self.assertEqual((match.home, match.away), ("Arsenal", "Chelsea"))
+        self.assertEqual((match.home_score, match.away_score), (2, 1))
+        self.assertEqual([play.scorer for play in match.plays],
+                         ["A. Russo", "S. Kaneryd", "B. Mead"])
+        self.assertTrue(match.plays[2].penalty)
+
+    def test_the_card_says_which_competition(self):
+        # Une equipe feminine porte le nom de son club masculin (voir
+        # teams.py) : l'en-tete de la carte est ce qui separe les deux, et
+        # c'est pour ca qu'elle porte un F.
+        self.assertEqual(leagues.BY_SLUG["eng.w.1"].label, "WSL")
+        self.assertEqual(leagues.BY_SLUG["fra.w.1"].label, "PREMIERE LIGUE F")
+        self.assertEqual(leagues.BY_SLUG["fra.1"].label, "LIGUE 1")
+
+    def test_a_catalogued_womens_league_never_renames_itself(self):
+        league = leagues.BY_SLUG["fra.w.1"]
+        raw = payload(event())
+        raw["leagues"] = [{"name": "French Premiere Ligue",
+                           "abbreviation": "Premiere Ligue"}]
+        espn.parse(raw, league)
+        self.assertEqual(league.name, "Premiere Ligue F")
+        self.assertEqual(league.label, "PREMIERE LIGUE F")
 
 
 if __name__ == "__main__":

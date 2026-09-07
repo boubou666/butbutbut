@@ -137,6 +137,10 @@ MESSAGES = {
         'catalogo)',
     '  butbutbut --leagues all-sports         (vraiment tout)':
         '  butbutbut --leagues all-sports         (davvero tutto)',
+    '  butbutbut --leagues feminines          (tout le football feminin)':
+        '  butbutbut --leagues feminines          (tutto il calcio femminile)',
+    '  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)':
+        '  butbutbut --leagues l1f,wsl,uclf       (lo stesso, al femminile: una f finale)',
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         '  butbutbut --leagues por.1              (un codice ESPN qualsiasi)',
     '  butbutbut --leagues hockey:nhl         (... y compris dans un autre '
@@ -580,6 +584,8 @@ MESSAGES = {
         'i 5 grandi campionati',
     'tout le catalogue ({} competitions)':
         'tutto il catalogo ({} competizioni)',
+    'tout le football feminin ({} competitions)':
+        'tutto il calcio femminile ({} competizioni)',
     # "tout le {} ({} competitions)" n'a pas d'entree : le trou y recoit le nom
     # du sport, que sports.py garde en francais pour le journal. La traduire
     # ferait une phrase a moitie italienne ; celle-ci, non.
@@ -595,6 +601,8 @@ MESSAGES = {
         'Hockey su ghiaccio (a richiesta)',
     'Rugby a XV (a demander)':
         'Rugby a XV (a richiesta)',
+    'Football feminin (a demander)':
+        'Calcio femminile (a richiesta)',
 
     # --- --top-scorers -------------------------------------------------------
     # Les buts repris par la VAR sont deduits : le compte affiche n'est pas

@@ -70,6 +70,8 @@ MESSAGES = {
     "les 5 grands championnats": "las 5 grandes ligas",
     "tout le catalogue ({} competitions)":
         "todo el catalogo ({} competiciones)",
+    "tout le football feminin ({} competitions)":
+        "todo el futbol femenino ({} competiciones)",
     # "tout le {} ({} competitions)" n'a pas d'entree : le trou y recoit le nom
     # du sport, que sports.py garde en francais pour le journal. La traduire
     # ferait une phrase a moitie espagnole ; celle-ci, non.
@@ -301,6 +303,8 @@ MESSAGES = {
     "Aussi disponibles": "Tambien disponibles",
     "Hockey sur glace (a demander)": "Hockey sobre hielo (a peticion)",
     "Rugby a XV (a demander)": "Rugby XV (a peticion)",
+    "Football feminin (a demander)":
+        "Futbol femenino (a peticion)",
     "\nExemples :": "\nEjemplos:",
     "  butbutbut --exclude liga,seriea        (les 5 grands moins deux)":
         "  butbutbut --exclude liga,seriea        (las 5 grandes menos dos)",
@@ -312,6 +316,10 @@ MESSAGES = {
         "  butbutbut --leagues rugby              (todo el rugby del catalogo)",
     "  butbutbut --leagues all-sports         (vraiment tout)":
         "  butbutbut --leagues all-sports         (absolutamente todo)",
+    "  butbutbut --leagues feminines          (tout le football feminin)":
+        "  butbutbut --leagues feminines          (todo el futbol femenino)",
+    "  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)":
+        "  butbutbut --leagues l1f,wsl,uclf       (lo mismo, en femenino: una f al final)",
     "  butbutbut --leagues por.1              (n'importe quel code ESPN)":
         "  butbutbut --leagues por.1              (cualquier codigo ESPN)",
     "  butbutbut --leagues hockey:nhl         (... y compris dans un autre "
