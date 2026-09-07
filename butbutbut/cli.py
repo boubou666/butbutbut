@@ -28,6 +28,11 @@ CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs ligne
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
+# Ce qu'on accorde au fil de surveillance pour finir sa phrase quand on s'en
+# va. Plus que le delai d'un releve reseau (espn.DEFAULT_TIMEOUT) serait faire
+# attendre l'arret pour un fil qu'on va de toute facon abandonner ; moins ne
+# laisserait meme pas le temps d'ecrire le fichier d'etat.
+WATCH_JOIN = 5.0
 
 # Les recapitulatifs du journal (--today, --week, --month, --since).
 WEEK_DAYS = 7                  # --week : aujourd'hui et les six jours d'avant
@@ -757,7 +762,24 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
             stack.stop()
 
     stack.every(overlay.PUMP_MS, drain)
-    stack.run()
+    try:
+        stack.run()
+    finally:
+        # La boucle tkinter rendue, le fil de surveillance peut etre en plein
+        # reporter.update(), c'est-a-dire en train d'ecrire le fichier d'etat.
+        # Rendre la main sans l'attendre laisse la suite - l'effacement de cet
+        # etat, la fin du processus - passer par-dessus une ecriture en cours,
+        # et un fil demon n'y change rien : il est tue net, au milieu de sa
+        # phrase. On leve donc `stopping` (sa longue attente se reveille la) et
+        # on lui laisse le temps de sortir de lui-meme.
+        stopping.set()
+        thread.join(WATCH_JOIN)
+        if thread.is_alive():
+            # Il tient un releve reseau qui ne repond pas. On ne retient pas
+            # l'arret pour lui - c'est un fil demon, le processus s'en va -
+            # mais on le dit, parce qu'un etat a moitie ecrit se lira ailleurs.
+            log("le fil de surveillance n'a pas rendu la main en {:.0f}s"
+                .format(WATCH_JOIN), quiet=args.quiet)
 
 
 def do_replay(args) -> int:

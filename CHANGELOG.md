@@ -9,6 +9,23 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Corrige
 
+- **La boucle a cartes rendait la main pendant que son fil ecrivait encore.**
+  Le fil de surveillance est le seul a appeler `reporter.update()`, donc le
+  seul a ecrire le fichier d'etat ; il etait lance et jamais attendu. Ce qui
+  suit le retour de la boucle - l'effacement de cet etat, la fin du processus -
+  passait donc par-dessus une ecriture en cours, et le fait qu'il s'agisse d'un
+  fil demon n'arrangeait rien : un demon est tue net, au milieu de sa phrase.
+  La boucle leve maintenant `stopping` et attend le fil (`WATCH_JOIN`, cinq
+  secondes) avant de rendre la main. S'il tient un releve reseau qui ne repond
+  pas, on ne retient pas l'arret pour lui - mais on le note au journal, parce
+  qu'un etat a moitie ecrit se lira ailleurs.
+- **C'est ce qui rendait `TestBothWatchLoopsFeedTheState` instable**, une fois
+  sur deux et seulement sous Windows, sur des commits qui ne la touchaient pas.
+  Deux visages du meme defaut : un fichier d'etat relu vide
+  (`'NoneType' object is not subscriptable`) et un dossier temporaire qu'on ne
+  pouvait plus effacer parce qu'il restait ouvert (`WinError 145`). Le nouveau
+  test etire l'ecriture pour que la course soit certaine a chaque passage
+  plutot qu'une fois sur deux : sans l'attente il echoue, avec elle il passe.
 - **Un but dans les arrets de jeu ne comptait nulle part.** La source ecrit la
   minute `90'+9'` - apostrophe des les deux cotes du plus - la ou le lecteur du
   journal n'acceptait que `90+3'`, la forme qu'on ecrit a la main et que les
@@ -28,9 +45,6 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - 1029 -> **1033 tests** : les deux formes de temps additionnel, une apostrophe
   de trop qui doit rester illisible, l'horloge qui change de forme vue par le
   canari, et celle du hockey qui ne doit pas le faire crier au loup.
-
-### Corrige
-
 - **Un nom polonais ne termine plus la commande sur une trace d'appels.**
   Sous Windows, une sortie redirigee - `butbutbut --scores > matchs.txt`, un
   pipe, le journal d'un service - n'herite pas de l'UTF-8 de la console mais de
