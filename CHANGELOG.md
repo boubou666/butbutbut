@@ -7,6 +7,53 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Les catalogues de langue sont complets.** Sept commandes livrees depuis la
+  1.6.0 - `--next`, `--top-scorers`, `--stats`, `--table`, `--speak`,
+  `--sound-for`, `--export` - portaient toutes la meme note de livraison : « la
+  prose n'est pas encore dans les catalogues, elle sort en francais dans les
+  cinq langues, degradee et jamais cassee ». Sept fois de suite, et personne
+  n'a compte avant la huitieme : 132 phrases sur 272 n'etaient traduites nulle
+  part. Elles le sont maintenant, dans les quatre langues. Ce qui reste en
+  francais est nomme phrase par phrase dans les deux README et dans
+  `tests/test_i18n.py`, avec la raison de l'y laisser.
+- **Trois metavariables de `--help` sortaient en francais** au milieu d'une
+  page par ailleurs entierement traduite : `--pin EQUIPE`, `--next
+  EQUIPE|JOURS` et `--spoiler-free LISTE` ne passaient pas par `tr()`, la ou
+  leurs voisines y passaient. `--since DATE` et `--test N` non plus. Elles y
+  passent, et l'allemand dit desormais `--pin TEAM`, `--since DATUM`.
+- **Les titres de sport du catalogue** (`Hockey sur glace (a demander)`,
+  `Rugby a XV (a demander)`) et `tous les sports (N competitions)` n'avaient
+  d'entree dans aucun catalogue : `butbutbut --list` les affichait en francais
+  quelle que soit la langue. Traduits.
+
+### Corrige
+
+- **L'aide allemande de `--retry-fullscreen` renvoyait a un mot absent de la
+  page.** La phrase disait « maximal SECONDES lang » alors que la
+  metavariable, elle, etait bien traduite en `SEKUNDEN` : le lecteur cherchait
+  dans la page un mot qui n'y figurait pas. Meme defaut que celui deja corrige
+  pour l'anglais.
+- **Deux commentaires orphelins dans `de.py`** flottaient au-dessus d'une
+  entree qui n'etait pas la leur - la note sur `ausgelost` expliquait un choix
+  de traduction pour une phrase absente du fichier. Ils ont retrouve leur
+  entree, qui existe desormais.
+
+### Teste
+
+- **Le garde-fou qui manquait.** `tests/test_i18n.py` compare maintenant, pour
+  chacune des quatre langues, les phrases que le code passe a `tr()` a ce que
+  le catalogue porte : les trous a valeur doivent etre les memes (nom,
+  conversion et gabarit, dans l'ordre - compter les accolades laissait passer
+  `{:.1f}` rendu `{:.0f}`), chaque traduction doit se formater pour de bon, les
+  etiquettes de `--status` doivent garder leur deux-points au meme caractere,
+  les blancs de bord doivent survivre, et aucune entree ne doit recopier sa
+  cle. Une phrase nouvelle passee a `tr()` fait echouer la suite tant qu'elle
+  n'est ni traduite ni inscrite, avec sa raison, dans la liste des phrases
+  laissees en francais. C'est ce qui aurait arrete la dette a la premiere
+  livraison plutot qu'a la huitieme.
+
 ## [1.9.0] - 2026-09-07
 
 ### Corrige

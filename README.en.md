@@ -1510,16 +1510,45 @@ World Cup WELTMEISTERSCHAFT. The ones whose name is a proper noun are left
 alone - the Bundesliga, Serie A or the Coupe de France are spelled the same
 everywhere.
 
-The help, `--status`, `--scores`, `--screens`, `--list` and `--today` follow,
-down to the values they print - `il y a 12 s` becomes `vor 12 s`, not just the
-label in front of it.
+**Every** command follows, down to the values they print - `il y a 12 s`
+becomes `vor 12 s`, not just the label in front of it: the help, `--status`,
+`--scores`, `--next`, `--table`, `--screens`, `--list`, `--list-teams`,
+`--today`, `--week`, `--month`, `--since`, `--top-scorers`, `--stats`,
+`--export` and `--test-hook`.
 
-**What stays in French**: the log, and **by choice**. `--today` reads it back,
-and a file written before a language change would otherwise be half unreadable
-to the parser. So a card can read `TOR!` while the log records `BUT`.
+The columns hold in all five languages. That constraint is what decides how a
+`--status` label is translated: the colon lands on the same character
+everywhere, abbreviating where it must (`rattrapage` becomes `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+**What stays in French**:
+
+- **the log, and by choice.** `--today` reads it back, and a file written
+  before a language change would otherwise be half unreadable to the parser.
+  So a card can read `TOR!` while the log records `BUT` - and a line quoted
+  back by `--today` stays in the language it was written in;
+- **dates.** Weekday names (`lundi`, `mar.`), `(aujourd'hui)` and `(demain)`,
+  and the `--next` countdown (`dans 3 h`) are hard-coded in `cli.py` and never
+  reach the catalogue;
+- **a few `--status` values**: the `silence` and `voice` lines, whose text is
+  built in `silence.py` and `speech.py`, outside the catalogue. The label
+  itself is translated;
+- **the commented configuration file** written by `--write-config`, and the
+  four messages that reject an impossible argument (`--speed 0`, `--record`
+  together with `--replay`...);
+- **the sport name inside one templated phrase.** `tout le {} (N competitions)`
+  gets the name of the sport, which `sports.py` keeps in French for the log:
+  translating the frame would produce a half-translated sentence. The catalogue
+  headings themselves are translated (`Ice hockey (on request)`, `Eishockey
+  (auf Wunsch)`).
 
 A phrase a catalogue does not carry falls back to French rather than
-disappearing: an unfinished translation leaves the program usable.
+disappearing: an unfinished translation leaves the program usable. That is what
+let seven commands ship in French across all five languages without anything
+breaking - and without anyone noticing. A test now compares, language by
+language, the phrases the code hands over for translation against what the
+catalogues carry: whatever stays in French is named there one by one, with its
+reason.
 
 Precedence, strongest first:
 
@@ -2643,7 +2672,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1222 tests**, with no network and no screen: the source is simulated by an
+**1226 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

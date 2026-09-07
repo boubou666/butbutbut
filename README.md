@@ -1512,17 +1512,45 @@ la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
 touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
 pareil partout.
 
-L'aide, `--status`, `--scores`, `--screens`, `--list` et `--today` suivent, y
-compris les valeurs qu'ils affichent - `il y a 12 s` devient `vor 12 s`, pas
-seulement l'etiquette devant.
+**Toutes** les commandes suivent, y compris les valeurs qu'elles affichent -
+`il y a 12 s` devient `vor 12 s`, pas seulement l'etiquette devant : l'aide,
+`--status`, `--scores`, `--next`, `--table`, `--screens`, `--list`,
+`--list-teams`, `--today`, `--week`, `--month`, `--since`, `--top-scorers`,
+`--stats`, `--export` et `--test-hook`.
 
-**Ce qui reste en francais** : le journal, et **par choix**. `--today` le
-relit, et un fichier ecrit avant un changement de langue resterait sinon a
-moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!` pendant
-que le journal note `BUT`.
+Les colonnes tiennent dans les cinq langues. C'est la contrainte qui decide de
+la traduction d'une etiquette de `--status` : le deux-points tombe au meme
+caractere partout, quitte a abreger (`rattrapage` devient `catch-up`,
+`recuperacion`, `recupero`, `Nachholen`).
+
+**Ce qui reste en francais** :
+
+- **le journal, et par choix.** `--today` le relit, et un fichier ecrit avant
+  un changement de langue resterait sinon a moitie illisible pour le
+  relecteur. Une carte peut donc afficher `TOR!` pendant que le journal note
+  `BUT` - et une ligne citee par `--today` reste dans la langue ou elle a ete
+  ecrite ;
+- **les dates.** Les jours de la semaine (`lundi`, `mar.`), `(aujourd'hui)` et
+  `(demain)`, le compte a rebours de `--next` (`dans 3 h`) sont ecrits en dur
+  dans `cli.py` et ne passent pas par le catalogue ;
+- **quelques valeurs de `--status`** : les lignes `silence` et `voix`, dont le
+  texte est fabrique dans `silence.py` et `speech.py`, hors du catalogue.
+  L'etiquette, elle, est traduite ;
+- **le fichier de configuration commente** qu'ecrit `--write-config`, et les
+  quatre messages qui refusent un argument impossible (`--speed 0`,
+  `--record` avec `--replay`...) ;
+- **le nom des sports dans une phrase a trou.** `tout le {} (N competitions)`
+  recoit le nom du sport, que `sports.py` garde en francais pour le journal :
+  la traduire ferait une phrase a moitie traduite. Les titres du catalogue,
+  eux, sont traduits (`Ice hockey (on request)`, `Eishockey (auf Wunsch)`).
 
 Une phrase qu'un catalogue ne porte pas retombe sur le francais plutot que de
-disparaitre : une traduction incomplete laisse le programme utilisable.
+disparaitre : une traduction incomplete laisse le programme utilisable. C'est
+ce qui a permis a sept commandes d'etre livrees en francais dans les cinq
+langues sans que rien ne casse - et sans que personne ne le voie. Un test
+compare maintenant, langue par langue, les phrases que le code donne a traduire
+a celles que les catalogues portent : ce qui reste en francais y est nomme une
+par une, avec sa raison.
 
 L'ordre de decision, du plus fort au plus faible :
 
@@ -2653,7 +2681,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1222 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1226 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

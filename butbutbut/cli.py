@@ -2826,7 +2826,7 @@ def build_parser() -> argparse.ArgumentParser:
                         version="butbutbut {}".format(__version__))
 
     parser.add_argument("--test", nargs="?", type=int, const=1, default=0,
-                        metavar="N",
+                        metavar=tr("N"),
                         help=tr("affiche N cartes de demonstration puis quitte "
                              "(defaut 1 ; --test 3 montre l'empilement)"))
     parser.add_argument("--scores", action="store_true",
@@ -2834,7 +2834,7 @@ def build_parser() -> argparse.ArgumentParser:
     # nargs="?" avec un const vide : '--next' tout court doit se distinguer de
     # '--next' absent, sans quoi la commande ne serait jamais declenchee.
     parser.add_argument("--next", nargs="?", const="", default=None,
-                        metavar="EQUIPE|JOURS",
+                        metavar=tr("EQUIPE|JOURS"),
                         help=tr("affiche les prochains matchs puis quitte. Sans "
                                 "rien : les {} prochains jours des competitions "
                                 "suivies. '--next om' cible une equipe, "
@@ -2860,7 +2860,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--month", action="store_true",
                         help=tr("recapitule les buts des {} derniers jours",
                                 MONTH_DAYS))
-    parser.add_argument("--since", default=None, metavar="DATE",
+    parser.add_argument("--since", default=None, metavar=tr("DATE"),
                         help=tr("recapitule les buts depuis ce jour, au format "
                              "AAAA-MM-JJ. Ex : --since 2026-09-01. "
                              "L'emporte sur --week et --month."))
@@ -2935,13 +2935,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude-teams", default=None, metavar=tr("LISTE"),
                         dest="exclude_teams",
                         help=tr("ne rien signaler des matchs de ces equipes"))
-    parser.add_argument("--pin", default=None, metavar="EQUIPE",
+    parser.add_argument("--pin", default=None, metavar=tr("EQUIPE"),
                         help=tr("garde a l'ecran une carte qui suit les matchs "
                              "de cette equipe : elle apparait au coup d'envoi, "
                              "se met a jour a chaque releve et s'en va "
                              "quelques minutes apres la fin. Une seule equipe, "
                              "et jamais de son. Ex : --pin om"))
-    parser.add_argument("--spoiler-free", default=None, metavar="LISTE",
+    parser.add_argument("--spoiler-free", default=None, metavar=tr("LISTE"),
                         dest="spoiler_free",
                         help=tr("matchs regardes en differe : aucune carte ni "
                              "aucun son pour ces equipes, quel que soit "
