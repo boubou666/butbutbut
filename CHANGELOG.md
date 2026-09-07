@@ -52,6 +52,56 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   elle sort en francais dans les cinq langues, comme `--next` et
   `--top-scorers`. Degradee, jamais cassee.
 
+### Ajoute
+
+- **`--quiet-hours 23:00-08:00` : ne pas deranger la nuit.** Pendant la plage,
+  aucune carte et aucun son - pas meme la carte epinglee, qui s'efface et
+  revient toute seule apres. Le but, lui, tombe dans le journal comme
+  n'importe quel autre soir, et `butbutbut --today` le retrouve au reveil :
+  on ne coupe que l'alerte, jamais la trace. L'heure est celle de la machine,
+  la plage peut enjamber minuit (le cas courant), le debut est inclus et la
+  fin exclue. `23:00-08:00`, `23h00-08h00`, `23h-8h` et `23-8` disent la meme
+  chose ; une plage illisible est refusee en nommant le format attendu, et une
+  plage qui commence ou elle finit aussi - elle veut dire « tout le temps » ou
+  « jamais » selon la personne a qui on demande.
+- **`--quiet-while-presenting` : se taire quand quelqu'un d'autre regarde
+  l'ecran.** Une carte « BUT » au milieu d'une visio partagee est le bug qu'on
+  ne decouvre qu'une fois, et devant temoins. La question est posee au systeme
+  plutot que devinee : sous Windows, `SHQueryUserNotificationState` est l'API
+  par laquelle Windows repond lui-meme a « est-ce le moment d'afficher une
+  notification ? ». Sont detectes le mode presentation, l'ecran duplique vers
+  un projecteur (Windows y allume l'assistant de concentration tout seul) et
+  le « ne pas deranger » active a la main.
+- **Ce qui n'est PAS detecte, et c'est ecrit dans le README** : un partage de
+  fenetre ou d'ecran depuis Teams, Zoom ou Meet. Windows n'expose rien qui le
+  signale, et la seule facon d'y arriver serait de guetter le nom de classe de
+  la barre flottante de chaque application de visio - une heuristique qui
+  tombe a la premiere mise a jour et se declenche de travers entre-temps.
+  Hors de Windows, rien du tout : l'option y est refusee avec un
+  avertissement, comme `--retry-fullscreen`.
+- **`butbutbut --status` dit quand butbutbut se tait, et pourquoi** : une ligne
+  `silence`, toujours affichee, qui annonce « en veille jusqu'a 08:00 » plutot
+  que de laisser croire a une panne. Le journal note les changements d'etat, et
+  eux seuls : un daemon qui repeterait « en veille » a chaque releve noierait
+  ses buts.
+- Les deux reglages ont leur cle de configuration (`quiet_hours`,
+  `quiet_while_presenting`), et 43 tests hors reseau et hors ecran
+  (`tests/test_silence.py`, plus les boucles de surveillance dans
+  `tests/test_cli.py`) : plage normale, plage qui enjambe minuit, bornes
+  exactes, formes acceptees, plage refusee, le but qui va bien au journal
+  pendant le silence, et la degradation quand la detection ne repond pas.
+
+### Modifie
+
+- Les trois « est-ce le moment ? » - l'heure, le regard des autres, le plein
+  ecran - passent desormais par un seul point de decision
+  (`butbutbut/silence.py`) au lieu d'etre eparpillees. Elles ne rendent pas le
+  meme verdict, et c'est voulu : le plein ecran laisse partir la carte quitte a
+  la repasser plus tard, alors que la nuit et la presentation la retiennent.
+- Le crochet `--on-goal` continue de partir pendant le silence, contrairement a
+  `--spoiler-free` qui le coupe : le silence protege cet ecran et ce
+  haut-parleur, pas une guirlande ni un telephone a l'autre bout de la maison.
+
 ## [1.7.0] - 2026-09-07
 
 ### Ajoute

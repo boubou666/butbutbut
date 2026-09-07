@@ -11,8 +11,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import (cli, espn, hook, i18n, leagues, pinned, sound,
-                       state, watcher)
+from butbutbut import (cli, espn, hook, i18n, leagues, pinned, presenting,
+                       silence, sound, state, watcher)
 
 from helpers import at_local_hour, event, goal_detail, in_minutes, payload
 
@@ -61,6 +61,9 @@ class TestParser(unittest.TestCase):
         self.assertEqual(args.before_kickoff, 0)
         self.assertFalse(args.quiet)
         self.assertEqual(args.retry_fullscreen, 0.0)
+        # Le silence ne s'invite pas non plus : sans plage, rien ne se tait.
+        self.assertIsNone(args.quiet_hours)
+        self.assertFalse(args.quiet_while_presenting)
 
     def test_retry_fullscreen_is_opt_in(self):
         # Sans valeur : la duree par defaut. Avec : celle qu'on donne.
@@ -132,6 +135,29 @@ class TestMainGuards(unittest.TestCase):
 
     def test_unknown_exclusion_is_refused(self):
         self.assertEqual(cli.main(["--exclude", "championnat-de-mars"]), 2)
+
+    def test_an_unreadable_quiet_range_is_refused(self):
+        """Devant son terminal, on veut savoir tout de suite qu'on s'est trompe."""
+        err = io.StringIO()
+        with redirect_stderr(err):
+            self.assertEqual(cli.main(["--quiet-hours", "de 23h a 8h"]), 2)
+        self.assertIn(silence.FORMAT, err.getvalue())
+
+    def test_a_readable_quiet_range_is_rewritten_once_for_all(self):
+        parser = cli.build_parser()
+        self.assertEqual(parser.parse_args(["--quiet-hours", "23h-8h"]).quiet_hours,
+                         "23h-8h")
+        # main() normalise : le reste du programme ne voit qu'une seule forme.
+        seen = {}
+
+        def capture(args):
+            seen["args"] = args
+            return 0
+
+        with mock.patch.object(cli, "do_paths", capture):
+            with redirect_stdout(io.StringIO()):
+                cli.main(["--quiet-hours", "23h-8h", "--paths"])
+        self.assertEqual(seen["args"].quiet_hours, "23:00-08:00")
 
     def test_list_command(self):
         self.assertEqual(cli.main(["--list"]), 0)
@@ -1312,6 +1338,177 @@ class TestSpoilerFreeLoops(unittest.TestCase):
         self.run_with_cards(True)
         data = state.read(self.paths["state"])
         self.assertEqual(data["matches"][0]["home"], "Angers")
+
+
+class TestQuietHoursLoops(unittest.TestCase):
+    """--quiet-hours : rien a l'ecran, rien au haut-parleur, tout au journal.
+
+    C'est le meme contrat que le mode sans spoiler, pour une autre raison : la
+    nuit plutot que le differe. D'ou les memes verifications - et une de plus,
+    parce que le crochet, lui, continue de partir.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+        self.paths["data"].mkdir(parents=True, exist_ok=True)
+        self.args = cli.build_parser().parse_args(["--quiet"])
+
+    def hush(self, hour):
+        """Le verdict d'une nuit, a l'heure qu'on veut : jamais celle de la CI."""
+        return silence.Silence("23:00-08:00",
+                               clock=lambda: datetime(2026, 9, 6, hour, 0))
+
+    def guard_with_one_goal(self, stopping):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        goal = watcher.Event(kind=watcher.GOAL, match=matches[0], side="home",
+                             team=matches[0].home, opponent=matches[0].away,
+                             home_score=1, away_score=0, delta=1, play=None)
+        return OneShot(matches, [goal], stopping)
+
+    def reporter(self):
+        return state.Reporter(self.paths["state"],
+                              leagues=[leagues.BY_SLUG["fra.1"]],
+                              interval=25, idle_interval=300)
+
+    def run_headless(self, hour, pin=""):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            with mock.patch.object(cli, "log") as journal:
+                cli._watch_headless(guard, self.args, stopping,
+                                    self.reporter(), pinned.Pin(pin),
+                                    hush=self.hush(hour))
+        return horn, journal
+
+    def run_with_cards(self, hour, pin=""):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            with mock.patch.object(cli, "log") as journal:
+                cli._watch_with_cards(guard, self.args, stopping, stack,
+                                      self.reporter(), pinned.Pin(pin),
+                                      hush=self.hush(hour))
+        return stack, horn, journal
+
+    # ------------------------------------------------------ pendant la nuit --
+
+    def test_the_headless_loop_stays_silent_at_two_in_the_morning(self):
+        horn, journal = self.run_headless(2)
+        horn.assert_not_called()
+        self.assertIn("BUT", " ".join(str(c) for c in journal.call_args_list))
+
+    def test_the_card_loop_shows_and_sounds_nothing_at_two_in_the_morning(self):
+        stack, horn, journal = self.run_with_cards(2)
+        self.assertEqual(stack.cards, [])
+        horn.assert_not_called()
+        self.assertIn("BUT", " ".join(str(c) for c in journal.call_args_list))
+
+    def test_the_goal_still_reaches_the_journal_file(self):
+        """Le coeur du reglage : --today doit le retrouver au reveil."""
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        cli._watch_with_cards(guard, self.args, stopping, stack,
+                              self.reporter(), pinned.Pin(""),
+                              hush=self.hush(2))
+
+        written = self.paths["log"].read_text(encoding="utf-8")
+        self.assertIn("BUT", written)
+        self.assertIn("Angers", written)
+        self.assertEqual(stack.cards, [])
+
+    def test_the_pinned_card_goes_away_for_the_night_too(self):
+        """Aucune carte vaut aussi pour celle qui reste allumee en permanence."""
+        stack, _horn, _journal = self.run_with_cards(2, pin="angers")
+        self.assertEqual(stack.pinned, [])
+        self.assertEqual(stack.unpinned, 1)
+        # Le daemon suit toujours le match : --status ne doit pas mentir.
+        self.assertEqual(state.read(self.paths["state"])["pinned"]["home"],
+                         "Angers")
+
+    def test_the_hook_still_fires_during_the_night(self):
+        """Le silence protege cet ecran et ce haut-parleur, pas un telephone.
+
+        C'est la difference avec --spoiler-free, qui coupe tout : la nuit, on
+        veut justement que la commande qui pousse une notification ailleurs
+        parte, sinon le reglage reviendrait a arreter le daemon.
+        """
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        fired = []
+        runner = hook.Runner("peu importe",
+                             spawn=lambda *a: fired.append(a) or (0, ""))
+        thread = None
+        original = runner.fire
+
+        def watched(event):
+            nonlocal thread
+            thread = original(event)
+            return thread
+
+        runner.fire = watched
+        cli._watch_headless(guard, self.args, stopping, self.reporter(),
+                            pinned.Pin(""), on_goal=runner, hush=self.hush(2))
+        if thread is not None:
+            thread.join(5.0)
+        self.assertEqual(len(fired), 1)
+
+    # ------------------------------------------------------ hors de la nuit --
+
+    def test_the_headless_loop_sounds_the_goal_at_two_in_the_afternoon(self):
+        horn, _journal = self.run_headless(14)
+        self.assertTrue(horn.called)
+
+    def test_the_card_loop_shows_the_goal_at_two_in_the_afternoon(self):
+        stack, horn, _journal = self.run_with_cards(14)
+        self.assertEqual(len(stack.cards), 1)
+        self.assertTrue(horn.called)
+
+    def test_the_pinned_card_is_back_outside_the_window(self):
+        stack, _horn, _journal = self.run_with_cards(14, pin="angers")
+        self.assertEqual(len(stack.pinned), 1)
+        self.assertEqual(stack.unpinned, 0)
+
+    # --------------------------------------------------------- degradation --
+
+    def test_a_detection_that_fails_lets_the_card_through(self):
+        """La presentation indetectable ramene au comportement d'avant."""
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        lines = []
+        hush = silence.Silence(while_presenting=True, on_log=lines.append)
+        with mock.patch.object(presenting, "state", return_value=None):
+            with mock.patch.object(cli, "play_goal_sound") as horn:
+                cli._watch_with_cards(guard, self.args, stopping, stack,
+                                      self.reporter(), pinned.Pin(""),
+                                      hush=hush)
+        self.assertEqual(len(stack.cards), 1)
+        self.assertTrue(horn.called)
+        self.assertEqual(len(lines), 1)
+
+    def test_a_loop_without_a_verdict_behaves_exactly_as_before(self):
+        """Les deux boucles se passent d'un Silence : le rejeu n'en a pas."""
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            cli._watch_with_cards(guard, self.args, stopping, stack,
+                                  self.reporter(), pinned.Pin(""))
+        self.assertEqual(len(stack.cards), 1)
+        self.assertTrue(horn.called)
 
 
 class TestSpoilerFreeCommands(unittest.TestCase):

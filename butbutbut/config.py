@@ -32,7 +32,7 @@ import configparser
 import textwrap
 from pathlib import Path
 
-from . import leagues, screens
+from . import leagues, screens, silence
 
 SECTION = "butbutbut"
 FILENAME = "butbutbut.conf"
@@ -76,6 +76,15 @@ def _flag(value):
     if lowered in FALSE_WORDS:
         return False
     raise Invalid("attend oui ou non (true/false, 1/0 marchent aussi)")
+
+
+def _hours(value):
+    """Une plage horaire, gardee sous sa forme normalisee : "23h-8h" -> "23:00-08:00"."""
+    try:
+        window = silence.parse(value)
+    except silence.Invalid as exc:
+        raise Invalid(str(exc))
+    return window.describe() if window is not None else ""
 
 
 def _corner(value):
@@ -197,6 +206,18 @@ OPTIONS = (
            "carte des que l'ecran se libere, pendant ce nombre de secondes au "
            "plus. 0 desactive. Windows uniquement.",
            "120", fallback="desactive"),
+    Option("quiet_hours", _hours,
+           "Plage horaire ou butbutbut se tait : aucune carte, aucun son. Le "
+           "but tombe quand meme dans le journal, et 'butbutbut --today' le "
+           "retrouve au reveil. L'heure est celle de la machine, la plage peut "
+           "enjamber minuit, le debut est inclus et la fin exclue.",
+           "23:00-08:00", fallback="aucune"),
+    Option("quiet_while_presenting", _flag,
+           "Se taire aussi quand le systeme signale qu'on presente : mode "
+           "presentation, ecran duplique (videoprojecteur, salle de reunion) "
+           "ou 'ne pas deranger'. Windows uniquement, et un partage de fenetre "
+           "Teams/Zoom n'est pas detectable : voir le README.",
+           "non"),
     Option("lang", _text,
            "Langue des cartes : fr, en, es, it, de. Par defaut celle du "
            "systeme, et le francais si elle n'est pas des cinq.",
