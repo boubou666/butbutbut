@@ -491,17 +491,17 @@ def do_scores(args) -> int:
 
         print(tr("\n{}", league.name))
         if not matches:
-            print("  (aucun match au programme)"
-                  if chosen is None else "  (aucun match de ces equipes)")
+            print(tr("  (aucun match au programme)")
+                  if chosen is None else tr("  (aucun match de ces equipes)"))
             continue
 
         for match in matches:
             total += 1
             # 'note' et non 'state' : le module state est importe ici.
             if match.live:
-                mark, note = ">", match.detail or match.clock or "en cours"
+                mark, note = ">", match.detail or match.clock or tr("en cours")
             elif match.finished:
-                mark, note = " ", match.detail or "termine"
+                mark, note = " ", match.detail or tr("termine")
             else:
                 mark, note = " ", _kickoff_text(match, now)
             print(tr("  {} {:>22} {} - {} {:<22} {}", 
@@ -518,11 +518,11 @@ def do_scores(args) -> int:
 def _kickoff_text(match, now) -> str:
     remaining = match.seconds_until_kickoff(now)
     if remaining is None:
-        return match.detail or "a venir"
+        return match.detail or tr("a venir")
     if remaining < 0:
-        return match.detail or "imminent"
+        return match.detail or tr("imminent")
     if remaining < 3600:
-        return "dans {} min".format(int(remaining // 60))
+        return tr("dans {} min", int(remaining // 60))
     local = match.start.astimezone()
     return "{:%d/%m %H:%M}".format(local)
 
@@ -537,8 +537,8 @@ def _print_activity(pid) -> None:
     data = state.read(paths()["state"])
     if data is None:
         print(tr("  releve      : {}", 
-            "aucun pour l'instant" if pid
-            else "aucun (le daemon efface son etat en s'arretant)"))
+            tr("aucun pour l'instant") if pid
+            else tr("aucun (le daemon efface son etat en s'arretant)")))
         return
 
     stale = state.is_stale(data)
@@ -561,9 +561,9 @@ def _print_activity(pid) -> None:
     else:
         matches = [row for row in (data.get("matches") or [])
                    if isinstance(row, dict)]
-        summary = "{} match(s)".format(len(matches))
+        summary = tr("{} match(s)", len(matches))
         if isinstance(data.get("total_matches"), int):
-            summary += " sur {} au programme".format(data["total_matches"])
+            summary += tr(" sur {} au programme", data["total_matches"])
         print(tr("  en cours    : {}", summary))
         for row in matches:
             print("                [{}] {} {} - {} {}  {}".format(
@@ -638,15 +638,18 @@ def do_status(args) -> int:
     print(tr("  donnees     : {}", p["data"]))
     settings = Path(getattr(args, "config", None) or p["config"])
     print(tr("  config      : {}{}", 
-        settings, "" if settings.exists() else "  (absent, voir --write-config)"))
+        settings,
+        "" if settings.exists() else tr("  (absent, voir --write-config)")))
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
-        extra = " (+{} autre(s), tirage au hasard)".format(len(sounds) - 1) if len(sounds) > 1 else ""
+        extra = (tr(" (+{} autre(s), tirage au hasard)", len(sounds) - 1)
+                 if len(sounds) > 1 else "")
         print(tr("  son         : {}{}", sounds[0].name, extra))
     else:
         chosen = sound.pick_sound(p["wav"], p["sound"])
-        origin = "fourni" if chosen == sound.BUNDLED_SOUND else "corne synthetisee"
+        origin = (tr("fourni") if chosen == sound.BUNDLED_SOUND
+                  else tr("corne synthetisee"))
         print(tr("  son         : {} ({})", chosen.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
 
@@ -661,9 +664,9 @@ def do_status(args) -> int:
              tr("l'ecran principal") if args.screen is None
              else tr("ecran {}", args.screen)))
     print(tr("  plein ecran : {}", 
-        "detecte (la carte masquee est notee au journal)"
+        tr("detecte (la carte masquee est notee au journal)")
         if fullscreen.supported()
-        else "non detectable sur cette plateforme"))
+        else tr("non detectable sur cette plateforme")))
     print(tr("  journal     : {}", p["log"]))
 
     if sys.platform == "win32":
@@ -671,7 +674,8 @@ def do_status(args) -> int:
     else:
         player = sound.find_player()
         print(tr("  lecteur     : {}", 
-            player[0] if player else "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)"))
+            player[0] if player
+            else tr("AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)")))
     try:
         import tkinter  # noqa: F401
 
@@ -679,7 +683,7 @@ def do_status(args) -> int:
     except Exception:
         print(tr("  affichage   : tkinter MANQUANT (voir README)"))
 
-    print("\n  Connexion   : ", end="", flush=True)
+    print(tr("\n  Connexion   : "), end="", flush=True)
     try:
         matches = espn.scoreboard(selection[0])
         print(tr("OK ({} : {} match(s))", selection[0].name, len(matches)))
@@ -691,7 +695,7 @@ def do_status(args) -> int:
 
 def do_list(args) -> int:
     """Le catalogue des competitions, avec les noms acceptes."""
-    print("butbutbut : competitions surveillables\n")
+    print(tr("butbutbut : competitions surveillables\n"))
     for title, name, slug, alias in leagues.catalogue_lines():
         if title is not None:
             print(tr("{}:", title))
@@ -710,7 +714,7 @@ def do_screens(args) -> int:
     found = screens.monitors()
     print(tr("butbutbut : {} ecran(s) detecte(s)", len(found)))
     for index, monitor in enumerate(found):
-        tag = "  (principal)" if monitor.primary else ""
+        tag = tr("  (principal)") if monitor.primary else ""
         print(tr("  {}  {:<16} {}x{} a +{}+{}{}", 
             index, monitor.name, monitor.width, monitor.height,
             monitor.x, monitor.y, tag))
@@ -748,7 +752,7 @@ def do_update(args) -> int:
 def do_stop(args) -> int:
     pid = running_pid()
     if not pid:
-        print("butbutbut : aucun daemon en cours.")
+        print(tr("butbutbut : aucun daemon en cours."))
         return 1
     try:
         if sys.platform == "win32":
@@ -771,8 +775,9 @@ def do_stop(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="butbutbut",
-        description="Un but tombe en Ligue 1, Premier League, LaLiga, Serie A ou "
-                    "Bundesliga : le son part et le score s'affiche a l'ecran.",
+        description=tr("Un but tombe en Ligue 1, Premier League, LaLiga, Serie A "
+                       "ou Bundesliga : le son part et le score s'affiche a "
+                       "l'ecran."),
     )
     parser.add_argument("--version", action="version",
                         version="butbutbut {}".format(__version__))
@@ -800,7 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("avec --update ou --check-update : viser la pointe "
                              "de la branche principale au lieu de la derniere release"))
 
-    parser.add_argument("--config", default=None, metavar="CHEMIN",
+    parser.add_argument("--config", default=None, metavar=tr("CHEMIN"),
                         help=tr("fichier de configuration a lire (defaut : {} dans "
                              "le dossier de donnees, voir 'butbutbut --paths')"
                         , config.FILENAME))
@@ -808,21 +813,21 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("ecrit un fichier de configuration d'exemple, "
                              "commente, puis quitte (n'ecrase rien)"))
 
-    parser.add_argument("--leagues", default=None, metavar="LISTE",
+    parser.add_argument("--leagues", default=None, metavar=tr("LISTE"),
                         help=tr("competitions suivies, separees par des virgules "
                              "(defaut : les 5 grands championnats). Ex : "
                              "--leagues l1,pl,ucl ; 'all' pour tout le "
                              "catalogue ; un code ESPN marche aussi (por.1)"))
-    parser.add_argument("--exclude", default=None, metavar="LISTE",
+    parser.add_argument("--exclude", default=None, metavar=tr("LISTE"),
                         help=tr("competitions a ne pas suivre, meme syntaxe. Ex : "
                              "--exclude liga,seriea"))
     parser.add_argument("--list", action="store_true", dest="list_leagues",
                         help=tr("liste les competitions surveillables et leurs noms"))
-    parser.add_argument("--teams", default=None, metavar="LISTE",
+    parser.add_argument("--teams", default=None, metavar=tr("LISTE"),
                         help=tr("ne signaler que les matchs de ces equipes, "
                              "separees par des virgules. Un match compte des "
                              "qu'une des deux equipes y est. Ex : --teams om,psg"))
-    parser.add_argument("--exclude-teams", default=None, metavar="LISTE",
+    parser.add_argument("--exclude-teams", default=None, metavar=tr("LISTE"),
                         dest="exclude_teams",
                         help=tr("ne rien signaler des matchs de ces equipes"))
     parser.add_argument("--list-teams", action="store_true", dest="list_teams",
@@ -838,10 +843,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--duration", type=float, default=None,
                         help=tr("duree d'affichage de la carte (defaut : la duree "
                              "du son, au moins {})", DEFAULT_DURATION))
-    parser.add_argument("--position", default=DEFAULT_POSITION, metavar="COIN",
+    parser.add_argument("--position", default=DEFAULT_POSITION, metavar=tr("COIN"),
                         help=tr("coin ou les cartes s'empilent : bottom-right "
                              "(defaut), bottom-left, top-right, top-left, center"))
-    parser.add_argument("--screen", default=None, metavar="CHOIX",
+    parser.add_argument("--screen", default=None, metavar=tr("CHOIX"),
                         help=tr("ecran d'affichage : 'primary' (defaut) ou un index "
                              "(0, 1, 2...). Voir 'butbutbut --screens'."))
     parser.add_argument("--scale", type=float, default=1.0,
@@ -854,7 +859,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("pas de carte au coup d'envoi, a la mi-temps, a la "
                              "reprise ni a la fin du match (les buts, si)"))
     parser.add_argument("--retry-fullscreen", nargs="?", type=float,
-                        const=RETRY_FULLSCREEN, default=0.0, metavar="SECONDES",
+                        const=RETRY_FULLSCREEN, default=0.0, metavar=tr("SECONDES"),
                         dest="retry_fullscreen",
                         help=tr("quand une application en plein ecran masque "
                              "l'ecran, repasser la carte des que l'ecran se "
@@ -865,14 +870,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("signale aussi les cartons rouges, par une carte "
                              "discrete et sans son"))
     parser.add_argument("--before-kickoff", type=int, default=0,
-                        dest="before_kickoff", metavar="MINUTES",
+                        dest="before_kickoff", metavar=tr("MINUTES"),
                         help=tr("annonce le match ce nombre de minutes avant le "
                              "coup d'envoi, une seule fois et sans son "
                              "(0 = desactive, defaut)"))
-    parser.add_argument("--lang", default=None, metavar="CODE",
+    parser.add_argument("--lang", default=None, metavar=tr("CODE"),
                         help=tr("langue des cartes : fr, en, es, it, de (defaut : "
-                             "celle du systeme, francais a defaut). Le journal "
-                             "et cette aide restent en francais."))
+                             "celle du systeme, francais a defaut). Le journal, "
+                             "lui, reste toujours en francais."))
     parser.add_argument("--no-logos", action="store_true", dest="no_logos",
                         help=tr("pas d'ecusson sur les cartes, et rien de "
                              "telecharge (les couleurs des clubs restent)"))
@@ -887,11 +892,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    chosen = config.path_from(argv, paths()["config"])
+
+    # La langue en tout premier : les aides d'argparse sont traduites a la
+    # construction du parseur, donc avant que l'analyse ne livre --lang. C'est
+    # le seul moment ou --help peut encore sortir dans la bonne langue.
+    try:
+        i18n.use(config.lang_from(argv, chosen))
+    except i18n.UnknownLanguage as exc:
+        # Langue inconnue : le francais est tout ce qui est sur, ici.
+        print("butbutbut : {}".format(exc), file=sys.stderr)
+        return 2
+
     parser = build_parser()
 
     # Le fichier alimente les defauts du parseur avant l'analyse : la ligne de
     # commande, analysee ensuite, l'emporte donc toujours. Voir config.apply().
-    chosen = config.path_from(argv, paths()["config"])
     for warning in config.apply(parser, chosen).warnings:
         print(tr("butbutbut : {}", warning), file=sys.stderr)
 
@@ -920,11 +936,6 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
 
-    try:
-        i18n.use(args.lang)
-    except i18n.UnknownLanguage as exc:
-        print(tr("butbutbut : {}", exc), file=sys.stderr)
-        return 2
 
     try:
         leagues.resolve(args.leagues, args.exclude)

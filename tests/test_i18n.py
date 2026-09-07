@@ -338,18 +338,25 @@ class TestLaProseDeLaLigneDeCommande(unittest.TestCase):
     """Le francais sert de cle : les catalogues doivent lui coller."""
 
     def phrases(self):
-        """Les phrases que cli.py passe a tr(), extraites du code."""
+        """Les phrases que le programme passe a tr(), extraites du code.
+
+        Tout le paquet, et pas seulement cli.py : --status affiche aussi ce que
+        lui rendent state, screens et leagues, et ces trois-la traduisent leurs
+        valeurs eux-memes.
+        """
         import ast
 
-        source = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
         trouvees = []
-        for noeud in ast.walk(ast.parse(source)):
-            if (isinstance(noeud, ast.Call)
-                    and getattr(noeud.func, "id", None) == "tr"
-                    and noeud.args
-                    and isinstance(noeud.args[0], ast.Constant)
-                    and isinstance(noeud.args[0].value, str)):
-                trouvees.append(noeud.args[0].value)
+        dossier = pathlib.Path(cli.__file__).parent
+        for fichier in sorted(dossier.glob("*.py")):
+            source = fichier.read_text(encoding="utf-8")
+            for noeud in ast.walk(ast.parse(source)):
+                if (isinstance(noeud, ast.Call)
+                        and getattr(noeud.func, "id", None) == "tr"
+                        and noeud.args
+                        and isinstance(noeud.args[0], ast.Constant)
+                        and isinstance(noeud.args[0].value, str)):
+                    trouvees.append(noeud.args[0].value)
         return trouvees
 
     def test_il_y_a_de_la_prose_a_traduire(self):

@@ -310,6 +310,26 @@ def path_from(argv, default) -> Path:
     return Path(known.config) if known.config else Path(default)
 
 
+def lang_from(argv, path):
+    """La langue a appliquer avant meme de construire le parseur, ou None.
+
+    Meme precedence que partout ailleurs -- la ligne de commande d'abord, le
+    fichier ensuite -- mais lue en avance. Les textes d'aide sont traduits au
+    moment ou argparse les recoit : les fixer apres l'analyse, quand --lang est
+    enfin connu, laisserait --help en francais quoi qu'on demande.
+    """
+    pre = _Silent(add_help=False)
+    pre.add_argument("--lang", default=None)
+    try:
+        known, _rest = pre.parse_known_args(argv)
+    except (ValueError, SystemExit):
+        known = None
+    if known is not None and known.lang:
+        return known.lang
+    # Les avertissements de lecture ne sont pas emis ici : apply() relit le
+    # fichier juste apres et les dira une fois, dans la bonne langue.
+    return read(path).values.get("lang")
+
 # ------------------------------------------------------------- ecriture ------
 
 def _wrap(text) -> list:

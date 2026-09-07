@@ -161,7 +161,7 @@ MESSAGES = {
         ('meldet das Spiel so viele Minuten vor dem Anpfiff, einmalig und '
          'ohne Ton (0 = aus, Standard)'),
     ('langue des cartes : fr, en, es, it, de (defaut : celle du systeme, '
-     'francais a defaut). Le journal et cette aide restent en francais.'):
+     'francais a defaut). Le journal, lui, reste toujours en francais.'):
         ('Sprache der Karten : fr, en, es, it, de (Standard : die des '
          'Systems, sonst Franzoesisch). Die Logdatei bleibt franzoesisch.'),
     ("pas d'ecusson sur les cartes, et rien de telecharge (les couleurs des "

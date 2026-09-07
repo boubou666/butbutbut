@@ -27,6 +27,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from .i18n import tr
+
 VERSION = 1
 
 # On tolere trois releves manques avant de crier : la source repond parfois
@@ -125,13 +127,13 @@ def is_stale(data, now=None) -> bool:
 def describe_age(seconds) -> str:
     """"il y a 12 s", "il y a 4 min", "il y a 2 h 10" - jamais un nombre nu."""
     if seconds is None:
-        return "date inconnue"
+        return tr("date inconnue")
     seconds = int(seconds)
     if seconds < 90:
-        return "il y a {} s".format(seconds)
+        return tr("il y a {} s", seconds)
     if seconds < 5400:
-        return "il y a {} min".format(seconds // 60)
-    return "il y a {} h {:02d}".format(seconds // 3600, (seconds % 3600) // 60)
+        return tr("il y a {} min", seconds // 60)
+    return tr("il y a {} h {:02d}", seconds // 3600, (seconds % 3600) // 60)
 
 
 def today() -> str:

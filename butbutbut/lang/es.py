@@ -212,7 +212,7 @@ MESSAGES = {
         "anuncia el partido estos minutos antes del comienzo, una sola vez y "
         "sin sonido (0 = desactivado, por defecto)",
     "langue des cartes : fr, en, es, it, de (defaut : celle du systeme, "
-    "francais a defaut). Le journal et cette aide restent en francais.":
+    "francais a defaut). Le journal, lui, reste toujours en francais.":
         "idioma de las tarjetas: fr, en, es, it, de (por defecto: el del "
         "sistema, frances si no se sabe). El registro sigue en frances.",
     "pas d'ecusson sur les cartes, et rien de telecharge (les couleurs des "

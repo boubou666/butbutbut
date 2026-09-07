@@ -189,7 +189,7 @@ MESSAGES = {
         'annuncia la partita questo numero di minuti prima del fischio '
         "d'inizio, una sola volta e senza suono (0 = disattivato, di base)",
     'langue des cartes : fr, en, es, it, de (defaut : celle du systeme, '
-    'francais a defaut). Le journal et cette aide restent en francais.':
+    'francais a defaut). Le journal, lui, reste toujours en francais.':
         'lingua delle schede: fr, en, es, it, de (di base: quella del '
         'sistema, francese come ripiego). Il registro resta in francese.',
     "pas d'ecusson sur les cartes, et rien de telecharge (les couleurs des "

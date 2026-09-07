@@ -357,8 +357,13 @@ def language() -> str:
 
 
 def describe() -> str:
+    """Le code de langue et son nom, ex. "en (anglais)" ou "en (English)".
+
+    Le nom passe par tr() comme le reste de la ligne de commande : afficher
+    "en (anglais)" dans une interface anglaise serait cocasse.
+    """
     code = language()
-    return "{} ({})".format(code, NAMES.get(code, code))
+    return "{} ({})".format(code, tr(NAMES.get(code, code)))
 
 
 # ---------------------------------------------------------------- texte ------

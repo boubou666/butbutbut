@@ -10,10 +10,30 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, leagues, state, watcher
+from butbutbut import cli, espn, i18n, leagues, state, watcher
 
 from helpers import event, payload
 
+
+_LANGUE = {}
+
+
+def setUpModule():
+    # Ces tests lancent cli.main() sans --lang et affirment des libelles
+    # francais. Sans cela la langue vient de la detection : ils passeraient sur
+    # une machine francaise et echoueraient sur la CI, dont les machines sont
+    # anglaises. On passe par la variable d'environnement plutot que par
+    # i18n.use(), parce que main() refixe la langue a chaque appel.
+    _LANGUE["avant"] = os.environ.get(i18n.ENV)
+    os.environ[i18n.ENV] = "fr"
+    i18n.use("fr")
+
+
+def tearDownModule():
+    if _LANGUE["avant"] is None:
+        os.environ.pop(i18n.ENV, None)
+    else:
+        os.environ[i18n.ENV] = _LANGUE["avant"]
 
 class TestParser(unittest.TestCase):
     def setUp(self):

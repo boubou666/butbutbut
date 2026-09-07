@@ -211,7 +211,7 @@ MESSAGES = {
         "announce the match this many minutes before kick-off, once only and "
         "without sound (0 = off, default)",
     "langue des cartes : fr, en, es, it, de (defaut : celle du systeme, "
-    "francais a defaut). Le journal et cette aide restent en francais.":
+    "francais a defaut). Le journal, lui, reste toujours en francais.":
         "card language: fr, en, es, it, de (default: the system language, "
         "French otherwise). The log stays in French.",
     "pas d'ecusson sur les cartes, et rien de telecharge (les couleurs des "
