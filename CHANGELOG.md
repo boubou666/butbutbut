@@ -7,6 +7,203 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **La boucle a cartes rendait la main pendant que son fil ecrivait encore.**
+  Le fil de surveillance est le seul a appeler `reporter.update()`, donc le
+  seul a ecrire le fichier d'etat ; il etait lance et jamais attendu. Ce qui
+  suit le retour de la boucle - l'effacement de cet etat, la fin du processus -
+  passait donc par-dessus une ecriture en cours, et le fait qu'il s'agisse d'un
+  fil demon n'arrangeait rien : un demon est tue net, au milieu de sa phrase.
+  La boucle leve maintenant `stopping` et attend le fil (`WATCH_JOIN`, cinq
+  secondes) avant de rendre la main. S'il tient un releve reseau qui ne repond
+  pas, on ne retient pas l'arret pour lui - mais on le note au journal, parce
+  qu'un etat a moitie ecrit se lira ailleurs.
+- **C'est ce qui rendait `TestBothWatchLoopsFeedTheState` instable**, une fois
+  sur deux et seulement sous Windows, sur des commits qui ne la touchaient pas.
+  Deux visages du meme defaut : un fichier d'etat relu vide
+  (`'NoneType' object is not subscriptable`) et un dossier temporaire qu'on ne
+  pouvait plus effacer parce qu'il restait ouvert (`WinError 145`). Le nouveau
+  test etire l'ecriture pour que la course soit certaine a chaque passage
+  plutot qu'une fois sur deux : sans l'attente il echoue, avec elle il passe.
+- **Un but dans les arrets de jeu ne comptait nulle part.** La source ecrit la
+  minute `90'+9'` - apostrophe des les deux cotes du plus - la ou le lecteur du
+  journal n'acceptait que `90+3'`, la forme qu'on ecrit a la main et que les
+  captures de test portaient depuis toujours. Les deux se ressemblent assez
+  pour que personne ne les confronte, et le resultat est le pire genre de
+  panne : rien ne casse, `--stats` compte simplement ces buts parmi les minutes
+  illisibles. Sur une vraie journee de Premier League, seize formes de temps
+  additionnel sur soixante et un matchs partaient ainsi a la poubelle, et le
+  compteur des arrets de jeu affichait zero depuis le premier jour. Les deux
+  formes sont desormais lues.
+- **Le canari surveille maintenant la FORME de l'horloge**, et pas seulement la
+  presence de sa cle. C'est ce qui manquait pour attraper le defaut ci-dessus :
+  il relit les minutes qu'il vient de telecharger avec le lecteur du journal
+  (`journal.minute_of`, rendue publique pour lui), et une horloge que plus
+  personne ne sait lire vaut une ligne rouge. Le football seul y est tenu :
+  `12:34`, l'horloge d'un match de hockey, n'est pas une minute de jeu.
+- 1029 -> **1033 tests** : les deux formes de temps additionnel, une apostrophe
+  de trop qui doit rester illisible, l'horloge qui change de forme vue par le
+  canari, et celle du hockey qui ne doit pas le faire crier au loup.
+- **Un nom polonais ne termine plus la commande sur une trace d'appels.**
+  Sous Windows, une sortie redirigee - `butbutbut --scores > matchs.txt`, un
+  pipe, le journal d'un service - n'herite pas de l'UTF-8 de la console mais de
+  la page de code ANSI, qui ne connait qu'une fraction des caracteres. Un
+  buteur nomme Zielinski, avec le vrai `n` polonais, suffisait a faire tomber
+  la commande sur une `UnicodeEncodeError` au lieu du score, alors que le meme
+  nom s'affichait sans probleme dans le terminal. La sortie standard et la
+  sortie d'erreur passent maintenant en UTF-8 des qu'elles ne sont pas un
+  terminal (`cli.utf8_output`), comme tous les fichiers ecrits par le projet.
+  Une console, elle, garde sa page de code - c'est elle qui sait ce qu'elle
+  peut dessiner - et herite seulement du remplacement : un accent approximatif
+  vaut mieux qu'une trace d'appels a la place des resultats.
+
+### Ajoute
+
+- **Un dossier `recipes/` pour `--on-goal`.** Le crochet donne tout le detail
+  du but dans des variables `BUT_*` depuis la 1.7.0, et n'avait qu'un exemple :
+  une ligne `notify-send`. Personne n'ecrit son webhook Discord a partir de ca.
+  Huit recettes completes s'y trouvent desormais, a copier et a tailler :
+  webhook Discord (`discord_webhook.py`), webhook Slack (`slack_webhook.py`),
+  evenement Home Assistant a qui l'automatisation de la maison repond
+  (`home_assistant.py`), ampoule WiZ qui vire au vert le temps du but
+  (`ampoule_wiz.py`), compteur de buts en JSON (`compteur.py`), notification du
+  systeme sur les trois plateformes (`notification_bureau.py`), bandeau texte
+  pour OBS ou une barre d'etat (`obs_texte.py`), et un gabarit shell pour ne
+  reagir qu'a certains buts (`filtre.sh`).
+- **Zero dependance jusque dans les recettes** : bibliotheque standard de
+  Python 3.8+, ou shell POSIX. Aucune ne suppose `curl` present, aucune ne
+  demande `jq`. Les webhooks passent par `urllib`, l'ampoule par une trame UDP,
+  la notification Windows par le PowerShell deja installe.
+- **Un secret ne va ni dans le depot ni dans la ligne de commande** : chaque
+  recette qui en demande un le lit dans une variable d'environnement
+  (`BUTBUTBUT_DISCORD_WEBHOOK`, `BUTBUTBUT_HA_TOKEN`...). Une ligne de commande
+  se lit dans `ps` et `butbutbut --status` la reaffiche. `recipes/README.md`
+  dit ou poser la variable pour que le service de demarrage la voie, sur les
+  trois systemes.
+- Les deux recettes qui attendent (l'ampoule, le bandeau) sont bornees a 25
+  secondes, sous le delai de 30 du crochet, et un test le verifie contre
+  `hook.DEFAULT_TIMEOUT` : une recette qui deborderait serait tuee en plein
+  travail, l'ampoule restant verte jusqu'au matin.
+- 66 tests de plus, dont celui qui empechera ce dossier de pourrir : **chaque
+  nom `BUT_` ecrit dans `recipes/` est compare a ce que `hook.py` publie
+  vraiment**. Les autres verifient qu'une recette compile et se charge sans
+  configuration, qu'elle est listee dans `recipes/README.md`, que chaque
+  reglage `BUTBUTBUT_*` y est documente, qu'un echec tient en une ligne courte
+  (le journal n'en garde qu'une, tronquee a 120 signes), qu'une reussite se
+  tait, et que l'ampoule retrouve exactement l'etat qu'elle avait. Rien ne
+  parle au reseau : les recettes sont chargees comme des modules et leurs
+  fonctions pures sont eprouvees a part.
+- `MANIFEST.in` emporte `recipes/` dans l'archive des sources, et le paquet
+  installe ne l'emporte pas : butbutbut ne lance jamais ces fichiers lui-meme.
+  Un test du depot tient les deux moities de cette phrase.
+
+### Note
+
+- `recipes/README.md` n'existe qu'en francais, comme les commentaires du
+  depot ; les deux README principaux y renvoient depuis leur section
+  `--on-goal`.
+- `ampoule_wiz.py` est la seule recette qu'on ne peut pas eprouver de bout en
+  bout sans le materiel : les tests couvrent le dialogue (ce qui part, ce qui
+  revient, le verrou entre deux buts), pas une vraie ampoule au bout du fil.
+
+### Ajoute
+
+- **`butbutbut --speak` : le but dit a voix haute.** Tout le reste du programme
+  suppose qu'on regarde l'ecran ; le son dit qu'il s'est passe quelque chose,
+  la carte dit quoi - mais elle ne dit rien a qui travaille dans une autre
+  fenetre, sur un autre bureau, ou ne voit pas l'ecran du tout. La phrase part
+  apres la corne, ou a sa place avec `--no-sound`. C'est du confort, et
+  accessoirement de l'accessibilite.
+- La phrase n'est pas une nouvelle : c'est **celle du crochet**, la variable
+  `BUT_TEXT` de `--on-goal`, mot pour mot (`hook.phrase`). Deux formulations
+  auraient fini par ne plus dire la meme chose. Elle suit la **langue des
+  cartes** et non celle du journal : on parle a qui regarde l'ecran, pas a qui
+  relira `--today` demain matin.
+- Trois systemes, zero dependance, rien a installer sous Windows ni macOS :
+  PowerShell et `System.Speech` d'un cote, `say` de l'autre. Sous Linux,
+  `spd-say` (speech-dispatcher), puis `espeak-ng`, puis `espeak` - le premier
+  qui existe. `butbutbut --status` gagne une ligne `voix` qui dit lequel
+  parlerait ici, avant meme qu'on ait pose l'option.
+- Sous Windows, le texte passe par une **variable d'environnement** et n'est
+  jamais recolle dans le script : meme regle qu'au crochet, le jour ou la
+  source annoncera un club nomme `'; rm -rf ~`, ce sera un nom d'equipe et rien
+  d'autre. Ailleurs il part en argument, jamais dans une ligne de shell.
+- La voix choisit une **voix installee de la langue des cartes** quand la
+  machine en a une, et garde la sienne sinon : une machine anglaise lit du
+  francais avec un accent anglais plutot que de se taire.
+- `butbutbut --test --speak` fait dire la carte de demonstration. Sans lui,
+  regler l'option voudrait dire attendre un vrai but pour savoir si la machine
+  parle - la meme demi-journee de mise au point que `--test-hook` avait
+  supprimee pour le crochet.
+- Nouvelle cle `speak` dans le fichier de configuration, comme toute option
+  durable.
+
+### Details qui ont demande un arbitrage
+
+- **Deux buts coup sur coup font la queue**, ils ne se parlent pas dessus et
+  aucun n'est jete tant que la file tient. Deux buts du meme releve, c'est le
+  plus souvent deux matchs differents : en jeter un laisserait croire a un
+  score qui n'existe plus. La file est bornee a quatre phrases, et au-dela
+  c'est la plus **ancienne en attente** qui saute - un soir de folie, on veut
+  savoir ou on en est, pas ecouter le quart d'heure precedent.
+- **La voix attend la fin de la corne** (2,5 s) avant de parler : dire le but
+  pendant le jingle rendrait les deux inaudibles. En mode muet elle part tout
+  de suite, puisqu'elle est alors la seule alerte.
+- **Le silence de la 1.8.0 vaut pour la voix.** `--quiet-hours` et
+  `--quiet-while-presenting` la taisent comme ils taisent le haut-parleur :
+  c'en est un. `--spoiler-free` aussi - ce qui n'est pas montre ne se dit pas
+  non plus, sinon l'option ne protegerait plus rien. Le journal, lui, garde
+  tout dans les deux cas. Le crochet `--on-goal` reste la seule alerte que la
+  nuit laisse partir, pour la raison deja ecrite en 1.8.0.
+- **`--speak` ne parle pas en rejeu.** Une soiree rejouee a `--speed 60` reduit
+  une mi-temps a trente secondes : la voix parlerait encore du premier but que
+  le match serait fini. Le crochet se tait deja en rejeu pour une raison
+  voisine.
+- **Aucune panne de voix ne remonte.** Programme absent, voix non installee,
+  commande qui rend un code non nul, commande qui ne rend jamais la main (tuee
+  au bout de 30 s) : une ligne au journal, **une seule** - un samedi entier
+  ecrirait sinon autant de lignes que de buts pour une panne qui ne changera
+  plus - et le match continue. La parole vit dans un fil a elle et part du fil
+  de surveillance, jamais de celui qui dessine les cartes : ni la carte, ni le
+  releve suivant ne l'attendent.
+
+### Ajoute
+
+- **`--sound-for om=~/sons/om.wav` : un son a soi pour un club ou une
+  competition.** Un but de son equipe et un but dans un match qu'on suit de
+  loin sonnaient pareil - or on ne se leve pas pour les deux. Les sons par
+  contexte de la 1.7.0 repondaient deja a la question, mais seulement en
+  renommant un fichier depose dans le dossier `sound`, donc en laissant
+  butbutbut deviner ce que `om` veut dire. La paire se dit maintenant
+  directement, et le fichier reste ou il est.
+- Plusieurs paires d'un coup (`om=...,ucl=...`), les memes mots que `--teams`
+  et `--leagues`, et `contre` pour un but encaisse par une equipe suivie.
+- **L'equipe l'emporte sur sa competition** quand un but coche les deux : ce
+  sont les **memes quatre etages** que les noms de fichiers - equipe, `contre`,
+  competition, fond sonore - et non un second mecanisme pose a cote. A etage
+  egal, ce qui est nomme couvre ce qui est devine dans un nom de fichier :
+  celui qui ecrit la paire vient de dire lequel il voulait. `--sound-for` n'a
+  en revanche pas d'etage general - un son nomme vise quelqu'un, il ne devient
+  jamais le bruit de fond des autres buts.
+- **Un chemin fautif est refuse au demarrage**, comme un nom d'equipe mal
+  orthographie (`check_teams`) : le fichier doit exister, etre lisible et
+  porter une extension jouable, et une equipe nommee a `--sound-for` est
+  confrontee au meme catalogue que `--teams`. Toutes les paires fautives sont
+  dites d'un coup.
+- Un fichier qui **disparait en cours de route** ne fait rien tomber : le but
+  retombe sur le son d'en dessous et le journal garde une ligne. Le disque
+  n'est consulte que pour les paires que le but arme, donc jamais pour une
+  equipe qui ne joue pas ce soir-la.
+- Cle durable `sound_for` dans le fichier de configuration : toutes les paires
+  dans une seule cle, separees par des virgules ou une par ligne. Une virgule
+  ne coupe que devant une nouvelle paire, pour qu'un chemin qui en contient une
+  reste ecrivable. `--status` dit ce que chaque paire arme, et ce qui cloche -
+  c'est la seule commande que le refus au demarrage epargne, sans quoi la seule
+  capable de repondre sortirait en erreur avant d'avoir rien affiche.
+- `--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
+  sons nommes.
+
 ### Ajoute
 
 - **`butbutbut --export json|csv` : le journal en donnees.** `--on-goal`

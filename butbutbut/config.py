@@ -163,12 +163,26 @@ OPTIONS = (
     Option("opacity", _number,
            "Opacite des cartes, de 0.0 a 1.0.",
            "1.0"),
+    Option("sound_for", _text,
+           "Un son a soi pour une equipe ou une competition : des paires "
+           "'nom=chemin' separees par des virgules, ou une par ligne quand la "
+           "liste s'allonge. Les noms sont ceux de 'teams' et de 'leagues', et "
+           "l'equipe l'emporte sur sa competition. Le fichier doit exister au "
+           "demarrage, sinon butbutbut refuse de partir.",
+           "om=~/sons/om.wav, ucl=~/sons/ucl.mp3", fallback="aucun"),
     Option("volume", _number,
            "Volume de la corne synthetisee, de 0.0 a 1.0. Sans effet sur un "
            "son depose dans le dossier 'sound'.",
            "0.55"),
     Option("no_sound", _flag,
            "Mode muet : oui pour ne plus rien entendre.",
+           "non"),
+    Option("speak", _flag,
+           "Dire le but a voix haute, en plus du son (ou a sa place avec "
+           "no_sound). La phrase est celle des cartes, dans leur langue : "
+           "'BUT ! [Ligue 1] Marseille 2 - 1 Paris FC - But de M. Greenwood "
+           "(67')'. Rien a installer sous Windows et macOS ; sous Linux il "
+           "faut speech-dispatcher ou espeak-ng.",
            "non"),
     Option("no_overlay", _flag,
            "Pas de carte du tout : oui pour ne garder que le son et le journal.",

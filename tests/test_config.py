@@ -352,6 +352,47 @@ class TestMainWiring(ConfigCase):
                       config.example(cli.build_parser()))
 
 
+class TestSoundFor(ConfigCase):
+    """Plusieurs paires dans une seule cle, et le retour a la ligne de commande.
+
+    C'est la forme qui ferait le plus de degats si elle se perdait en route :
+    un son nomme qui ne sort pas ne dit rien de lui-meme, contrairement a une
+    carte qui ne s'affiche pas.
+    """
+
+    def assignments(self, argv=()):
+        parser = cli.build_parser()
+        config.apply(parser, self.path)
+        return cli.sound_assignments(parser.parse_args(list(argv)))
+
+    def test_the_pairs_travel_in_one_key(self):
+        outcome = self.read("[butbutbut]\n"
+                            "sound_for = om=~/sons/om.wav, ucl=~/sons/ucl.mp3\n")
+        self.assertEqual(outcome.warnings, [])
+        found = self.assignments()
+        self.assertEqual([one.token for one in found], ["om", "ucl"])
+        self.assertEqual([one.path.name for one in found],
+                         ["om.wav", "ucl.mp3"])
+
+    def test_one_pair_per_line_is_accepted_too(self):
+        # La forme naturelle quand la liste s'allonge : configparser rend la
+        # valeur avec ses retours a la ligne, et la lecture les accepte.
+        write(self.path, "[butbutbut]\nsound_for =\n"
+                         "    om=om.wav\n"
+                         "    ucl=ucl.mp3\n")
+        self.assertEqual([one.token for one in self.assignments()],
+                         ["om", "ucl"])
+
+    def test_the_command_line_replaces_the_file(self):
+        write(self.path, "[butbutbut]\nsound_for = om=om.wav\n")
+        found = self.assignments(["--sound-for", "psg=psg.wav"])
+        self.assertEqual([one.token for one in found], ["psg"])
+
+    def test_an_empty_key_names_no_sound_at_all(self):
+        write(self.path, "[butbutbut]\nsound_for =\n")
+        self.assertEqual(self.assignments(), [])
+
+
 class TestNoOptionIsForgotten(unittest.TestCase):
     """Le fichier doit suivre la ligne de commande, sinon il ment.
 

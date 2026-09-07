@@ -19,7 +19,7 @@ from pathlib import Path
 
 from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
                journal, leagues, pinned, presenting, replay, screens, silence,
-               sound, state, teams, watcher)
+               sound, speech, state, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -31,6 +31,11 @@ CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs ligne
 DEFAULT_VOLUME = 0.55
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
+# Ce qu'on accorde au fil de surveillance pour finir sa phrase quand on s'en
+# va. Plus que le delai d'un releve reseau (espn.DEFAULT_TIMEOUT) serait faire
+# attendre l'arret pour un fil qu'on va de toute facon abandonner ; moins ne
+# laisserait meme pas le temps d'ecrire le fichier d'etat.
+WATCH_JOIN = 5.0
 
 # Les recapitulatifs du journal (--today, --week, --month, --since).
 WEEK_DAYS = 7                  # --week : aujourd'hui et les six jours d'avant
@@ -258,14 +263,45 @@ def sound_context(args, event):
                          clubs=sound_clubs(args))
 
 
+def sound_assignments(args) -> list:
+    """Les paires de --sound-for, relues a chaque appel.
+
+    Relues et non gardees : main() a deja refuse une paire fautive, et analyser
+    trois mots coute moins cher qu'un etat de plus a trainer dans `args` - que
+    les tests, `--status` et le daemon devraient tous penser a poser.
+
+    Une paire qui ne veut rien dire rend une liste vide plutot que de lever :
+    le demarrage l'a deja dite, et ce n'est pas au moment de jouer un son qu'on
+    arrete tout.
+    """
+    try:
+        return sound.parse_assignments(getattr(args, "sound_for", None))
+    except sound.Invalid:
+        return []
+
+
+def sound_gone(args):
+    """Que faire d'un son nomme qui s'est evapore : le noter, et continuer.
+
+    Une cle USB debranchee ou un fichier renomme ne vaut pas le silence : le
+    dossier, puis le son fourni, prennent le relais. Le journal, lui, garde de
+    quoi comprendre pourquoi le cri du club n'est pas sorti ce soir-la.
+    """
+    def note(assignment, problem):
+        log("son nomme pour {} indisponible ({}) : {} -- le son par defaut "
+            "prend le relais".format(assignment.token, problem,
+                                     assignment.path), quiet=args.quiet)
+    return note
+
+
 def resolve_sound(args, event=None):
     """(chemin du son, duree d'affichage). Relu a chaque but.
 
     Tu peux deposer un mp3 dans <data>/sound pendant que le daemon tourne : il
     le prendra au but suivant, sans redemarrage. `event` est ce qui permet au
-    nom des fichiers de designer une equipe, une competition ou un but
-    encaisse ; il reste facultatif, faute de quoi --test et les cartes muettes
-    n'auraient plus de son du tout.
+    nom des fichiers - et aux paires de --sound-for - de designer une equipe,
+    une competition ou un but encaisse ; il reste facultatif, faute de quoi
+    --test et les cartes muettes n'auraient plus de son du tout.
     """
     p = paths()
 
@@ -273,7 +309,9 @@ def resolve_sound(args, event=None):
     if not args.no_sound:
         try:
             chosen = sound.pick_sound(p["wav"], p["sound"], args.volume,
-                                      context=sound_context(args, event))
+                                      context=sound_context(args, event),
+                                      assigned=sound_assignments(args),
+                                      on_missing=sound_gone(args))
         except Exception as exc:
             log("son indisponible : {}".format(exc), quiet=args.quiet)
 
@@ -306,6 +344,19 @@ def play_goal_sound(path, min_gap: float = 2.0):
         return None
     _last_sound_at = now
     return sound.play_async(path)
+
+
+def speak_goal(voice, args, event) -> None:
+    """Dit le but a voix haute, quand --speak est arme. Rend la main aussitot.
+
+    La phrase part apres la corne (speech.AFTER_SOUND) : parler pendant le
+    jingle rendrait les deux inaudibles. En mode muet il n'y a rien a attendre,
+    et la voix devient la seule alerte.
+    """
+    if voice is None or not voice:
+        return
+    voice.say(hook.phrase_of(event),
+              after=0.0 if args.no_sound else speech.AFTER_SOUND)
 
 
 def crest_cache(args, on_log=None):
@@ -343,13 +394,30 @@ def spoiler_filter(args):
     return chosen if chosen.active else None
 
 
+def sound_teams(args):
+    """Les mots de --sound-for qui visent une equipe, en filtre verifiable.
+
+    Une competition se reconnait hors ligne, une equipe non : elle passe donc
+    par le meme catalogue que --teams, et une faute de frappe y merite le meme
+    refus. Sans ca, `--sound-for marseile=cri.wav` serait un cri qui ne sort
+    jamais, sans que rien ne le dise - la faute exacte que check_teams() a ete
+    ecrite pour attraper.
+    """
+    tokens = [one.token for one in sound_assignments(args)
+              if not sound.is_conceded_word(one.token)
+              and leagues.designates(one.token) is None]
+    chosen = teams.Filter(",".join(tokens))
+    return chosen if chosen.active else None
+
+
 def _team_filters(args) -> list:
     """Tous les filtres par equipe en vigueur, dans l'ordre de decision.
 
-    Sert a la verification des mots au demarrage : les trois listes puisent
+    Sert a la verification des mots au demarrage : les quatre listes puisent
     dans le meme vocabulaire, une faute de frappe y coute aussi cher.
     """
-    return [f for f in (checked_filter(args), spoiler_filter(args)) if f is not None]
+    return [f for f in (checked_filter(args), spoiler_filter(args),
+                        sound_teams(args)) if f is not None]
 
 
 def check_teams(args, selection, stream=None) -> int:
@@ -358,7 +426,8 @@ def check_teams(args, selection, stream=None) -> int:
     Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
     le dire tout de suite que de laisser le daemon rester muet pour toujours.
     Un mot fautif dans --spoiler-free est encore plus sournois : il ne rend pas
-    le daemon muet, il le laisse spoiler le match qu'on voulait proteger.
+    le daemon muet, il le laisse spoiler le match qu'on voulait proteger. Les
+    equipes nommees a --sound-for suivent le meme chemin.
     """
     chosen = _team_filters(args)
     if not chosen:
@@ -537,6 +606,13 @@ def do_daemon(args) -> int:
         # laisse aucune trace ensuite, autant savoir ce qui a ete arme.
         log("crochet a chaque but : {}".format(on_goal.command), quiet=args.quiet)
 
+    voice = speech.Voice(args.speak, lang=i18n.language(),
+                         on_log=lambda message: log(message, quiet=args.quiet))
+    if voice:
+        # Ce qui parlera est dit au demarrage : une machine sans synthetiseur
+        # se decouvrirait sinon au premier but, c'est-a-dire trop tard.
+        log("annonce vocale : {}".format(voice.describe()), quiet=args.quiet)
+
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -574,14 +650,15 @@ def do_daemon(args) -> int:
     try:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
-                            on_goal=on_goal, hush=hush)
+                            on_goal=on_goal, hush=hush, voice=voice)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                              crest, on_goal=on_goal, hush=hush)
+                              crest, on_goal=on_goal, hush=hush, voice=voice)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
         stopping.set()
+        voice.close()
         if stack is not None:
             stack.close()
         if recorder is not None:
@@ -598,7 +675,7 @@ def do_daemon(args) -> int:
 
 
 def _watch_headless(guard, args, stopping, reporter, pin,
-                    on_goal=None, hush=None) -> None:
+                    on_goal=None, hush=None, voice=None) -> None:
     """Sans carte : un seul fil, le son et le journal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
@@ -632,6 +709,10 @@ def _watch_headless(guard, args, stopping, reporter, pin,
                 continue            # but annule et phases de match : muets
             if hushed:
                 continue            # nuit, ou presentation : le journal a deja tout
+            # La voix avant le son : elle part dans son propre fil et n'attend
+            # personne, alors que resolve_sound() relit le dossier et peut
+            # mesurer un fichier. Elle attendra la corne d'elle-meme.
+            speak_goal(voice, args, event)
             # Un son par but, et pas un par releve : deux buts du meme tour
             # peuvent venir de deux equipes, donc de deux fichiers.
             play_goal_sound(resolve_sound(args, event)[0])
@@ -642,7 +723,7 @@ def _watch_headless(guard, args, stopping, reporter, pin,
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                      crest=None, on_goal=None, hush=None) -> None:
+                      crest=None, on_goal=None, hush=None, voice=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -687,6 +768,13 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                         on_goal.fire(event)
                     if hushed:
                         continue    # rien ne monte a tkinter : ni carte, ni son
+                    # La voix part d'ici et pas de drain(), pour la meme raison
+                    # que le crochet : elle ne doit rien devoir a tkinter, et
+                    # une carte qui n'arrive pas a s'afficher ne doit pas
+                    # rendre le but muet. Elle a son fil, elle ne retient
+                    # personne.
+                    if event.goal:
+                        speak_goal(voice, args, event)
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
@@ -765,7 +853,24 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
             stack.stop()
 
     stack.every(overlay.PUMP_MS, drain)
-    stack.run()
+    try:
+        stack.run()
+    finally:
+        # La boucle tkinter rendue, le fil de surveillance peut etre en plein
+        # reporter.update(), c'est-a-dire en train d'ecrire le fichier d'etat.
+        # Rendre la main sans l'attendre laisse la suite - l'effacement de cet
+        # etat, la fin du processus - passer par-dessus une ecriture en cours,
+        # et un fil demon n'y change rien : il est tue net, au milieu de sa
+        # phrase. On leve donc `stopping` (sa longue attente se reveille la) et
+        # on lui laisse le temps de sortir de lui-meme.
+        stopping.set()
+        thread.join(WATCH_JOIN)
+        if thread.is_alive():
+            # Il tient un releve reseau qui ne repond pas. On ne retient pas
+            # l'arret pour lui - c'est un fil demon, le processus s'en va -
+            # mais on le dit, parce qu'un etat a moitie ecrit se lira ailleurs.
+            log("le fil de surveillance n'a pas rendu la main en {:.0f}s"
+                .format(WATCH_JOIN), quiet=args.quiet)
 
 
 def do_replay(args) -> int:
@@ -781,7 +886,12 @@ def do_replay(args) -> int:
       - aucun `hush` n'est passe aux boucles de surveillance : `--quiet-hours`
         et `--quiet-while-presenting` restent sans effet en rejeu. Un rejeu est
         une commande qu'on vient de taper ; la taire parce qu'il est 3 h
-        ressemblerait a une panne.
+        ressemblerait a une panne ;
+      - aucune voix non plus : `--speak` ne parle pas en rejeu. Une soiree
+        rejouee a `--speed 60` reduit une mi-temps a trente secondes, ou une
+        phrase de trois secondes par but ne raconterait plus rien - elle
+        parlerait encore du premier but que le match serait fini. Le crochet se
+        tait ici pour une raison voisine.
 
     Le watcher, la detection des buts, les cartes, le son et les lignes de
     journal, eux, sont exactement ceux du direct. C'est voulu : un rejeu qui
@@ -907,6 +1017,24 @@ def _startup_summary(guard) -> str:
     return line
 
 
+def speak_demo(args, card):
+    """Fait dire la carte de demo par --test --speak. Rend la voix, a fermer.
+
+    La phrase est celle du crochet, montee sur les morceaux de la carte plutot
+    que sur un evenement : la demo n'en a pas, et elle merite quand meme la
+    phrase que le daemon dira le soir venu.
+    """
+    voice = speech.Voice(args.speak, lang=i18n.language(),
+                         on_log=lambda message: print(tr("butbutbut : {}",
+                                                         message)))
+    if voice:
+        print(tr("butbutbut : voix - {}", voice.describe()))
+        voice.say(hook.phrase(card.title, card.league, card.text_line(),
+                              card.detail, card.minute),
+                  after=0.0 if args.no_sound else speech.AFTER_SOUND)
+    return voice
+
+
 def do_test(args) -> int:
     from . import overlay
 
@@ -933,10 +1061,16 @@ def do_test(args) -> int:
 
     path, duration = resolve_sound(args)
 
+    # Sans ca, regler --speak voudrait dire attendre un vrai but pour savoir
+    # si la machine parle - la meme demi-journee de mise au point que
+    # --test-hook a supprimee pour le crochet.
+    voice = speak_demo(args, cards[0])
+
     if args.no_overlay:
         handle = play_goal_sound(path)
         time.sleep(min(duration, 5.0))
         sound.release(handle)
+        voice.close(2.0)
         return 0
 
     try:
@@ -953,6 +1087,7 @@ def do_test(args) -> int:
         # On laisse finir les ecussons partis en fond : sinon la demo,
         # toujours tuee juste apres, ne les aurait jamais.
         crest.join(3.0)
+        voice.close(2.0)
     return 0
 
 
@@ -1595,6 +1730,38 @@ def _sound_arming(sounds, args, selection=()) -> list:
 
     if len(sounds) > SOUNDS_SHOWN:
         rows.append(("...", tr("et {} autre(s)", len(sounds) - SOUNDS_SHOWN)))
+    return rows
+
+
+def _named_arming(assigned, args, selection=()) -> list:
+    """Ce que chaque paire de --sound-for arme, et ce qui cloche s'il y a lieu.
+
+    Plus sur que _sound_arming() : le mot a ete donne, il n'y a rien a deviner
+    dans un nom de fichier. Le chemin, lui, est reverifie a chaque --status -
+    le demarrage remonte parfois a des semaines, et un disque externe se
+    debranche.
+    """
+    followed = team_filter(args)
+    watched = bool(followed is not None and followed.wanted)
+    slugs = {league.slug for league in selection}
+
+    rows = []
+    for one in assigned:
+        target = leagues.designates(one.token)
+        if sound.is_conceded_word(one.token):
+            label = tr("quand une equipe suivie encaisse")
+            if not watched:
+                label += tr("  (jamais : aucune equipe suivie, voir --teams)")
+        elif target is not None:
+            label = tr("les buts de {}", target.name)
+            if target.slug not in slugs:
+                label += tr("  (competition non suivie)")
+        else:
+            label = tr("quand cette equipe marque")
+        problem = sound.unusable(one.path)
+        if problem is not None:
+            label += tr("  ({})", problem)
+        rows.append(("{} -> {}".format(one.token, one.path.name), label))
     return rows
 
 
@@ -2496,6 +2663,9 @@ def do_status(args) -> int:
     print(tr("  crochet     : {}",
              tr("{}  (essai : --test-hook)", args.on_goal) if args.on_goal
              else tr("aucun (voir --on-goal)")))
+    # Toujours affichee, comme le silence : "qui parlerait ici" est la premiere
+    # question de qui vient d'essayer --speak sans rien entendre.
+    print(tr("  voix        : {}", speech.Voice(args.speak).describe()))
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -2509,6 +2679,13 @@ def do_status(args) -> int:
                   else tr("corne synthetisee"))
         print(tr("  son         : {} ({})", fallback.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
+
+    named = sound_assignments(args)
+    if named:
+        print(tr("  son nomme   : {} paire(s), le plus precis l'emporte",
+                 len(named)))
+        for pair, label in _named_arming(named, args, selection):
+            print("                {:<22} {}".format(pair, label))
 
     cached = crest_cache(args).cached()
     print(tr("  ecussons    : {}",
@@ -2849,15 +3026,60 @@ def build_parser() -> argparse.ArgumentParser:
                              "telecharge (les couleurs des clubs restent)"))
     parser.add_argument("--no-sound", action="store_true", dest="no_sound",
                         help=tr("mode muet"))
+    parser.add_argument("--speak", action="store_true", dest="speak",
+                        help=tr("dit le but a voix haute, en plus du son (ou a "
+                             "sa place avec --no-sound). La phrase est celle "
+                             "des cartes, dans leur langue. 'butbutbut --test "
+                             "--speak' l'essaie tout de suite."))
     parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
                         help=tr("volume de la corne synthetisee, 0.0 a 1.0"))
+    parser.add_argument("--sound-for", default=None, dest="sound_for",
+                        metavar=tr("PAIRES"),
+                        help=tr("un son a soi pour une equipe ou une "
+                             "competition, sous forme de paires nom=chemin "
+                             "separees par des virgules. Les noms sont ceux de "
+                             "--teams et de --leagues, et l'equipe l'emporte "
+                             "sur sa competition. Un chemin fautif est refuse "
+                             "au demarrage. Ex : --sound-for om=~/sons/om.wav"))
     parser.add_argument("--regen-sound", action="store_true", dest="regen_sound",
                         help=tr("regenere la corne synthetisee"))
     parser.add_argument("--quiet", action="store_true", help=tr("n'ecrit que dans le journal"))
     return parser
 
 
+def utf8_output() -> None:
+    """Met la sortie standard en UTF-8, ou l'empeche au moins de casser.
+
+    Sous Windows, une sortie redirigee - '> matchs.txt', un pipe, le journal
+    d'un service - n'herite pas de l'UTF-8 de la console mais de la page de
+    code ANSI, qui ne connait qu'un caractere sur mille. Un buteur nomme
+    Zielinski, avec le vrai 'n' polonais, suffit alors a terminer la commande
+    sur une UnicodeEncodeError au lieu du score. Tous les fichiers du projet
+    sont deja ecrits en UTF-8 : la sortie fait desormais pareil.
+
+    Une console reste sur sa page de code, elle : c'est elle qui saura ou non
+    dessiner le caractere, et on ne gagne rien a lui envoyer autre chose. Elle
+    herite seulement du remplacement, parce qu'un accent approximatif vaut
+    mieux qu'une trace d'appels a la place des resultats.
+    """
+    for flux in (sys.stdout, sys.stderr):
+        try:
+            if flux.isatty():
+                flux.reconfigure(errors="replace")
+            else:
+                flux.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # Sortie capturee par un test, deja fermee, ou detournee vers autre
+            # chose qu'un flux texte : il n'y a rien a reconfigurer, et rien de
+            # grave non plus.
+            pass
+
+
 def main(argv=None) -> int:
+    # Avant le moindre print : un message d'erreur aussi a le droit de
+    # contenir le nom d'un club.
+    utf8_output()
+
     chosen = config.path_from(argv, paths()["config"])
 
     # La langue en tout premier : les aides d'argparse sont traduites a la
@@ -2938,6 +3160,27 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
 
+    # Un son nomme se verifie ici et maintenant, comme un nom d'equipe : un
+    # chemin fautif qui ne se dirait qu'au premier but laisserait quelqu'un
+    # attendre trois heures un cri qui ne viendra pas, et chercher du cote du
+    # volume ou des haut-parleurs. Les paires sont lues au meme endroit, pour
+    # que la ligne de commande et le fichier de configuration se trompent de la
+    # meme facon et l'apprennent dans les memes termes.
+    try:
+        named = sound.parse_assignments(args.sound_for)
+    except sound.Invalid as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+    # --status echappe seul a ce refus : c'est la commande dont le travail est
+    # justement de dire ce qui cloche. Refuser de la lancer reviendrait a nier
+    # la reponse a la question qu'on vient de poser - et le chemin fautif est
+    # de toute facon nomme, ligne par ligne, dans ce qu'elle affiche.
+    problems = sound.check_assignments(named)
+    if problems and not args.status:
+        for message in problems:
+            print(tr("butbutbut : {}", message), file=sys.stderr)
+        return 2
+
 
     try:
         leagues.resolve(args.leagues, args.exclude)
@@ -2968,8 +3211,8 @@ def main(argv=None) -> int:
         return do_list(args)
     if args.list_teams:
         return do_list_teams(args)
-    if ((args.teams or args.exclude_teams or args.pin
-         or args.spoiler_free) and not args.replay):
+    if ((args.teams or args.exclude_teams or args.pin or args.spoiler_free
+         or args.sound_for) and not args.replay):
         # --export n'ecrit que des donnees sur la sortie standard : la
         # confirmation des noms d'equipe est de la prose, elle part a cote
         # avec le reste, sans quoi le fichier produit commencerait par elle.

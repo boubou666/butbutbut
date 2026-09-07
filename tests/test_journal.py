@@ -367,6 +367,14 @@ class TestMinuteOfAGoal(unittest.TestCase):
         self.assertEqual(goal(minute="90+3'").clock, (90, 3))
         self.assertEqual(goal(minute="45+2'").clock, (45, 2))
 
+    def test_the_form_the_source_really_writes_is_read_too(self):
+        # La forme d'ESPN porte une apostrophe des les deux cotes du plus. Elle
+        # n'etait lue par personne, et un but dans les arrets de jeu - celui
+        # qu'on retient - ne comptait donc nulle part.
+        self.assertEqual(goal(minute="90'+9'").clock, (90, 9))
+        self.assertEqual(goal(minute="45'+2'").clock, (45, 2))
+        self.assertEqual(goal(minute="90'+11'").clock, (90, 11))
+
     def test_what_is_not_a_minute_of_play_is_not_read_as_one(self):
         # L'horloge d'un match de hockey, un libelle de phase, un but sans
         # minute du tout : rien de tout cela n'est une minute de jeu.
@@ -374,6 +382,10 @@ class TestMinuteOfAGoal(unittest.TestCase):
         self.assertIsNone(goal(minute="Mi-temps").clock)
         self.assertIsNone(goal(minute="").clock)
         self.assertIsNone(goal(minute="FT").clock)
+        # Une apostrophe de trop reste illisible : elargir la forme acceptee
+        # ne doit pas revenir a tout accepter.
+        self.assertIsNone(goal(minute="90''").clock)
+        self.assertIsNone(goal(minute="+3'").clock)
 
 
 class TestEvenings(unittest.TestCase):

@@ -62,19 +62,29 @@ def _flag(value) -> str:
     return "1" if value else "0"
 
 
-def _text(event) -> str:
+def phrase(title, league, score_line, detail="", minute="") -> str:
     """La phrase toute faite, dans la langue des cartes.
 
-    C'est ce qu'on poste sans rien avoir a rassembler soi-meme :
+    C'est ce qu'on poste - ou ce qu'on dit a voix haute avec `--speak` - sans
+    rien avoir a rassembler soi-meme :
     "BUT ! [Ligue 1] Marseille 2 - 1 Paris FC - But de M. Greenwood (67')".
+
+    Elle prend ses morceaux plutot qu'un evenement parce qu'une carte de demo
+    (`--test --speak`) n'en est pas un et merite pourtant la meme phrase : il
+    n'y a **qu'une** formulation dans le programme, et c'est celle-ci.
     """
-    line = "{} [{}] {}".format(event.title, event.league.name, event.score_line)
-    detail = event.detail_line()
+    line = "{} [{}] {}".format(title, league, score_line)
     if detail:
         line += " - " + detail
-    if event.minute:
-        line += " (" + event.minute + ")"
+    if minute:
+        line += " (" + minute + ")"
     return line
+
+
+def phrase_of(event) -> str:
+    """La meme phrase, pour un evenement du watcher."""
+    return phrase(event.title, event.league.name, event.score_line,
+                  event.detail_line(), event.minute)
 
 
 def environment(event) -> dict:
@@ -104,7 +114,7 @@ def environment(event) -> dict:
         PREFIX + "OWN_GOAL": _flag(play is not None and play.own_goal),
         PREFIX + "PENALTY": _flag(play is not None and play.penalty),
         PREFIX + "DELTA": str(event.delta),                 # +1, -1, +2...
-        PREFIX + "TEXT": _text(event),
+        PREFIX + "TEXT": phrase_of(event),
     }
 
 

@@ -97,6 +97,7 @@ python -m butbutbut --test 3
 
 ```bash
 butbutbut                     # watch in the background (the default)
+butbutbut --speak             # ... and say the goal out loud, on top of the sound
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
@@ -951,12 +952,193 @@ butbutbut --status            # what butbutbut made of each file
 > catalogue to settle it. `--teams angers` removes the ambiguity, and
 > `--status` then files it under the right tier.
 
+#### Naming the sound yourself: `--sound-for`
+
+Renaming a file means copying it into the `sound` folder, and accepting that
+butbutbut guesses what `om` stands for. When the club's chant already lives
+somewhere on the disk - or when the file name is needed for something else -
+the pair can simply be spelled out:
+
+```bash
+butbutbut --sound-for om=~/sounds/allez-om.wav
+butbutbut --sound-for om=~/sounds/om.wav,ucl=~/sounds/anthem.mp3
+butbutbut --teams om --sound-for om=~/sounds/om.wav,contre=~/sounds/ouch.wav
+```
+
+On the left, the very same words as everywhere else: those of `--teams` for a
+club (`om`, `barca`, `manu`, `marseille`, the start of a name), those of
+`--leagues` for a competition (`l1`, `ucl`, `nhl`, an ESPN code), and `contre`
+for a goal conceded by a followed team. On the right, a path - `~` included.
+
+**Which one wins when a goal ticks both boxes?** The team. A goal for OM in the
+Champions League, with both `om=` and `ucl=` named, plays the OM sound: the
+most precise one speaks, exactly as with file names. These are in fact the
+**same four tiers** - the team, `contre`, the competition, the background pool -
+and not a second mechanism bolted on the side. The one difference:
+`--sound-for` has no general tier. A named sound aims at someone; it never
+becomes the background noise of every other goal.
+
+**And if the folder already says something?** At equal tier, what is named
+covers what is guessed: with `om.mp3` in the folder *and*
+`--sound-for om=~/sounds/om.wav`, the latter plays. Whoever wrote the pair has
+just said which one they meant.
+
+**A wrong path is reported at startup**, not at the first goal three hours
+later - the same logic as a misspelled team name:
+
+```
+$ butbutbut --sound-for om=~/sounds/om.wav
+butbutbut : le son de om : fichier introuvable (/home/me/sounds/om.wav)
+$ butbutbut --sound-for marseile=~/sounds/om.wav
+butbutbut : aucune equipe ne correspond a 'marseile' dans Ligue 1. [...]
+```
+
+The file must exist, be readable, and carry an extension butbutbut knows how to
+play (wav, mp3, ogg, opus, flac, m4a, aac). Every faulty pair is reported at
+once: fixing three paths across three restarts is nobody's idea of fun.
+
+Once started, though, the daemon no longer stops for that. A file that
+**vanishes along the way** - USB stick unplugged, folder renamed - makes the
+goal fall back to the sound below it (the folder, then the bundled sound) and
+leaves a line in the log:
+
+```
+2026-09-07 21:14:03  son nomme pour om indisponible (fichier introuvable) :
+/media/usb/om.wav -- le son par defaut prend le relais
+```
+
+`--volume` and `--no-sound` keep their reach: silent mode also cuts the named
+sounds, and `--volume` still only tunes the synthesised horn - a file of your
+own is tuned in your own editor, just like those in the `sound` folder.
+
+```bash
+butbutbut --status            # what each pair arms, and what is wrong with it
+```
+
+```
+  son nomme   : 3 paire(s), le plus precis l'emporte
+                om -> om.wav           quand cette equipe marque
+                contre -> aie.wav      quand une equipe suivie encaisse
+                ucl -> hymne.mp3       les buts de Ligue des champions
+```
+
+And `--status` does say so even when something is wrong: a faulty path is
+refused at startup by every command **except that one**. Erroring out in front
+of the only command you asked the question of would amount to refusing to
+answer; it prints the offending pair instead, with what it has -
+`om -> om.wav  quand cette equipe marque  (fichier introuvable)`. That is the
+case that matters, because startup was sometimes weeks ago and external drives
+get unplugged.
+
+In the configuration file everything fits in a single key - comma-separated, or
+one pair per line once the list grows:
+
+```ini
+[butbutbut]
+teams = om
+sound_for =
+    om=~/sounds/om.wav
+    contre=~/sounds/ouch.wav
+    ucl=~/sounds/anthem.mp3
+```
+
+A comma only splits in front of a new pair: a path that contains one
+(`om=~/sounds, vol. 2/om.wav`) stays readable as it is.
+
 ```bash
 butbutbut --no-sound          # silent
 butbutbut --no-overlay        # just the sound and the log, no card
 butbutbut --no-logos          # no crest on the cards
 butbutbut --duration 8        # keep the card for 8 s (default: the length of the sound)
 ```
+
+### The voice
+
+Everything above assumes you are looking at the screen. The sound says
+something happened, the card says what - but it says nothing to someone working
+in another window, on another desktop, or who cannot see the screen at all. A
+sentence spoken out loud carries the score and the scorer without you having to
+look up.
+
+```bash
+butbutbut --speak                    # the sound, then the sentence
+butbutbut --speak --no-sound         # the voice alone, no horn
+butbutbut --test --speak             # try it right now, without waiting for a goal
+```
+
+The sentence is **the hook's sentence** - the `BUT_TEXT` variable of
+`--on-goal`, word for word:
+
+```
+BUT ! [Ligue 1] Angers 1 - 2 Stade Rennais - But de A. Kalimuendo (58')
+```
+
+There is only one in the program, deliberately: two wordings would eventually
+have stopped saying the same thing. It follows the **language of the cards**
+(`--lang`), not that of the log - you are speaking to whoever is watching the
+screen, not to whoever will read `--today` tomorrow morning.
+
+**Nothing to install, anywhere** - the same rule as everywhere else here:
+
+| System | What speaks | To install |
+| --- | --- | --- |
+| Windows | PowerShell and `System.Speech` | nothing |
+| macOS | `say` | nothing |
+| Linux | `spd-say`, else `espeak-ng`, else `espeak` | `speech-dispatcher` or `espeak-ng` |
+
+`butbutbut --status` says which one would speak here, before you have even set
+the option:
+
+```
+  voix        : inactive (voir --speak) - PowerShell (System.Speech) parlerait
+```
+
+That is the answer that matters, because it comes before you have installed
+anything: a machine where nothing can speak says so there, not at the first
+goal. With the option set, the same line changes tense:
+
+```
+  voix        : PowerShell (System.Speech), dans la langue des cartes
+```
+
+**A word about installed voices.** Windows picks a voice in the language of the
+cards when the machine has one, and keeps its own otherwise: an English machine
+will read French with an English accent rather than fall silent. `spd-say` and
+`espeak` are handed the language directly. `say`, for its part, has no language
+option - the voice set in System Settings is the one that speaks, whichever it
+is; `say -v '?'` lists them.
+
+**Two goals back to back?** The sentences **queue up** and come out one after
+the other. That was the call to make, and it holds: two goals in the same poll
+are most often two different matches, and dropping the second would leave you
+believing a score that no longer exists. Talking over it, meanwhile, makes both
+unintelligible. The queue is capped at four sentences, and beyond that it is
+the **oldest one waiting** that goes: on a wild night you want to know where
+things stand, not to listen to the previous quarter of an hour.
+
+The voice also waits for the horn to finish before speaking - two and a half
+seconds - for the same reason.
+
+**What silences it.** Exactly what silences the speaker, because it is one:
+
+- `--quiet-hours` and `--quiet-while-presenting`: at night and during a
+  presentation, we no more speak than we display (see
+  [Do not disturb](#do-not-disturb));
+- `--spoiler-free`: what is not shown is not said either, otherwise the option
+  would no longer protect anything;
+- the log, for its part, keeps everything in both cases, and `--today` tells
+  the story.
+
+**What cannot happen.** No failure of the voice touches the daemon: missing
+program, voice not installed, command returning 1, command that never returns
+(it is killed after 30 s). One line in the log, **one only** - a whole Saturday
+would otherwise write as many lines as there were goals for a fault that will
+not change - and the match goes on. Speech lives in a thread of its own:
+neither the card nor the next poll waits for it.
+
+> `--speak` does not talk during a `--replay`. An evening replayed at
+> `--speed 60` squeezes a half into thirty seconds: the voice would still be on
+> the first goal when the match ended.
 
 ### The key moments of a match
 
@@ -1037,8 +1219,10 @@ interval = 25
 idle_interval = 300
 
 # Sound and discretion (oui/non, true/false, 1/0)
+sound_for = om=~/sounds/om.wav, ucl=~/sounds/anthem.mp3
 volume = 0.55
 no_sound = non
+speak = non
 no_overlay = non
 no_phase_cards = non
 catch_up = non
@@ -1245,6 +1429,36 @@ butbutbut --on-goal 'notify-send "Goal!" "$BUT_TEXT"'
 butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/my-goals.txt'
 butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sounds/airhorn.mp3'
 ```
+
+**Recipes that already work.** A way out is of no use if nobody knows what lies
+behind it: nobody will write their Discord webhook starting from a
+`notify-send`. So the
+[`recipes/`](https://github.com/boubou666/butbutbut/tree/main/recipes) folder
+holds eight complete commands, to copy and to trim — a Discord webhook, a Slack
+webhook, a Home Assistant event your home automation answers, a WiZ bulb that
+turns green for the length of the goal then goes back to exactly the state it
+was in, a JSON goal counter that follows VAR cancellations too, a real system
+notification that stays in the notification centre, a text banner for OBS or a
+status bar, and a shell template to react only to the goals you care about.
+
+```bash
+butbutbut --on-goal 'python3 ~/butbutbut/recipes/discord_webhook.py'
+```
+
+Zero dependencies there as well: nothing but the Python standard library, or
+the machine's shell. No `curl` assumed to be there, no `jq`. A secret — webhook
+URL, token — is read from an environment variable and **never** travels through
+the command line, which shows up in `ps` and which `butbutbut --status` prints
+back. The instructions, each recipe's settings and where to put the secret on
+each system are in
+[`recipes/README.md`](https://github.com/boubou666/butbutbut/blob/main/recipes/README.md)
+(in French, like the rest of that folder).
+
+Those recipes travel with the source code, and not inside the package `pipx`
+installs: butbutbut never runs them itself, you do. A test in the repository
+compares the `BUT_*` variables they read with the ones the hook really
+publishes — a recipe cannot rot silently by promising a detail that does not
+exist.
 
 **What the hook promises:**
 
@@ -1512,7 +1726,15 @@ It queries the source for real, then checks that every key read by
 `butbutbut/espn.py` is still there, and of the right type. It even hands the
 reply back to `espn.parse()`, the very code the daemon runs: keys that are
 present but no longer yield a match, a goal or a scorer would be just as
-serious a drift. The report gives one line per key:
+serious a drift.
+
+A key can also stay in place and **change shape**, which shows up nowhere else.
+So the canary re-reads goal minutes with the log's own reader, the one behind
+the `--stats` histogram: a clock nobody can read any more earns a red line.
+Football alone is held to that rule - `12:34`, an ice hockey clock, is not a
+minute of play.
+
+The report gives one line per key:
 
 ```
   ok           competitor.team.color                        couleur hex     6/6
@@ -2421,7 +2643,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1051 tests**, with no network and no screen: the source is simulated by an
+**1222 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,
