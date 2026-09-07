@@ -125,6 +125,11 @@ OPTIONS = (
            "s'en va quelques minutes apres la fin. Une seule equipe, et une "
            "seule carte epinglee.",
            "om", fallback="aucune"),
+    Option("spoiler_free", _text,
+           "Equipes regardees en differe : aucune carte ni aucun son pour "
+           "leurs matchs, quel que soit l'evenement. Le journal garde tout, "
+           "et 'butbutbut --today' le raconte une fois le match vu.",
+           "om", fallback="aucune"),
     Option("position", _corner,
            "Coin ou les cartes s'empilent : {}.".format(
                ", ".join(screens.CORNERS)),

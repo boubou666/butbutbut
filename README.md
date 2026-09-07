@@ -305,7 +305,9 @@ butbutbut --exclude-teams psg               # tout, sauf le PSG
 
 Un match compte **des qu'une des deux equipes** y est : suivre l'OM, c'est
 aussi vouloir savoir quand l'OM encaisse. Le filtre s'applique aux buts comme
-aux cartes de deroulement, et aussi a `--scores`.
+aux cartes de deroulement, et aussi a `--scores`. Ces deux options **font
+disparaitre** un match ; pour le suivre sans se le faire raconter, voir [le mode
+sans spoiler](#le-mode-sans-spoiler) juste en dessous.
 
 Les noms acceptes encaissent ce qu'on tape vraiment :
 
@@ -326,6 +328,88 @@ Un mot qui ne designe aucune equipe est refuse au demarrage, avec la liste des
 competitions ou il a ete cherche : une faute de frappe ne se traduit pas par un
 daemon muet pendant trois semaines. `butbutbut --list-teams --teams om` montre
 d'ailleurs ce que chaque mot attrape (`*` suivie, `-` exclue).
+
+### Le mode sans spoiler
+
+Il y a un moment ou butbutbut se retourne contre toi : tu regardes le match en
+differe - streaming, replay, quatre-vingt-dix secondes de retard sur le direct -
+et la carte t'annonce le but avant que tu ne le voies. Ce match-la, il faut
+pouvoir lui dire de se taire.
+
+```bash
+butbutbut --spoiler-free om                  # je regarde l'OM en differe
+butbutbut --teams om,psg --spoiler-free om   # l'alerte pour le PSG, pas pour l'OM
+```
+
+Pour un match concerne, **rien n'arrive a l'ecran ni au haut-parleur** : ni but,
+ni but annule, ni temps fort, ni carton rouge, ni annonce d'avant match. Un
+« COUP D'ENVOI » dirait que le direct est parti, un « FIN DU MATCH » que tout
+est joue : ca spoile autant qu'un but, donc **tous** les evenements se taisent,
+sans exception.
+
+**Le journal, lui, garde tout.** C'est le coeur du reglage : on ne coupe que
+l'ecran et le son. Une fois le match vu, `butbutbut --today` le raconte comme
+n'importe quel autre soir :
+
+```
+butbutbut : buts signales le 06/09/2026
+
+Ligue 1
+    18:51:10  Marseille 1 - 0 Paris FC        But de A. Kalimuendo (61')
+    19:14:02  Marseille 1 - 1 Paris FC        But de M. Kebbal (77')
+```
+
+Les noms se tapent avec la meme souplesse que `--teams` (`om`, `barca`, `manu`,
+les noms sans accents, les debuts de mots), et un mot qui ne designe aucune
+equipe est refuse au demarrage. Une faute de frappe est meme plus sournoise ici
+qu'ailleurs : elle ne rend pas le daemon muet, elle le laisse spoiler le match
+qu'on voulait proteger. `butbutbut --list-teams --spoiler-free om` marque d'un
+`?` ce que le mot attrape.
+
+**`--scores` masque le score** plutot que de cacher le match :
+
+```
+Ligue 1
+  ?              Marseille ? - ? Paris FC               sans spoiler
+  >                   Lens 2 - 0 Lille                  35'
+
+2 match(s), '>' = en cours.
+'?' = sans spoiler : 1 match(s) masque(s). Le journal, lui, a tout : butbutbut --today.
+```
+
+Faire disparaitre la ligne aurait ete pire que de tout montrer : on ne saurait
+plus si le match a lieu, ni a quelle heure, et c'est justement le jour ou on le
+regarde qu'on ouvre `--scores`. Rien de ce qui permettrait de reconstituer le
+score ne s'affiche donc - ni les buteurs, ni l'etat du match : un match termine
+ressemble a un match en cours, sinon un simple « termine » a la 80e minute
+suffirait a dire que c'est plie. `butbutbut --status` masque de la meme facon
+le score des matchs en cours, et rappelle le reglage :
+
+```
+  equipes     : equipes suivies : om, psg
+  sans spoiler: om  (journal seulement : ni carte, ni son)
+```
+
+**Avec `--teams` et `--exclude-teams`**, les trois listes cohabitent, et l'ordre
+de decision est toujours le meme :
+
+| Ordre | Reglage | Ce qu'il fait d'un match concerne |
+| --- | --- | --- |
+| 1 | `--exclude-teams` | le match n'existe pas : ni carte, ni son, ni journal |
+| 2 | `--teams` | hors de la liste, le match n'existe pas non plus |
+| 3 | `--spoiler-free` | le match reste et remplit le journal ; l'ecran et le son se taisent |
+
+Les deux premieres taisent un match, la troisieme ne tait que l'alerte. Suivre
+l'OM **et** le mettre en sans-spoiler n'est donc pas une contradiction, c'est
+l'usage normal : je veux le journal, pas l'alerte.
+
+Le reglage a sa cle de configuration, pour ne pas le retaper le samedi suivant :
+
+```ini
+[butbutbut]
+teams = om
+spoiler_free = om
+```
 
 ### Placer les cartes
 
@@ -472,6 +556,7 @@ leagues = l1,ucl,cdf
 exclude = seriea
 teams = om,psg
 exclude_teams = psg
+spoiler_free = om
 
 # La carte qui reste a l'ecran pendant le match (une seule equipe)
 pin = om
@@ -1280,7 +1365,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**701 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**743 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

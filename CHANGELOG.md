@@ -9,6 +9,47 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Le mode sans spoiler** : `--spoiler-free EQUIPES` (et la cle
+  `spoiler_free`). Pour les matchs de ces equipes, plus rien n'arrive a l'ecran
+  ni au haut-parleur - ni but, ni but annule, ni temps fort, ni carton rouge, ni
+  annonce d'avant match. Un « COUP D'ENVOI » dit que le direct est parti, un
+  « FIN DU MATCH » que tout est joue : ca spoile autant qu'un but, donc tous les
+  evenements se taisent. C'est le reglage du match regarde en differe, ou la
+  carte annoncait le but avant qu'on ne le voie.
+- Le journal, lui, garde tout : c'est le coeur du reglage. On ne coupe que
+  l'ecran et le son, et `butbutbut --today` raconte le match une fois qu'on l'a
+  vu. D'ou un evenement *marque* (`Event.spoiler_free`) et non filtre, la ou
+  `--exclude-teams` fait disparaitre le match jusque dans le journal.
+- Les noms se tapent avec la meme souplesse que `--teams` (`om`, `barca`,
+  `manu`, les noms sans accents, les debuts de mots) et un mot qui ne designe
+  aucune equipe est refuse au demarrage. La faute de frappe est plus sournoise
+  ici qu'ailleurs : elle ne rend pas le daemon muet, elle le laisse spoiler le
+  match qu'on voulait proteger.
+- `--status` rappelle le reglage, et `--list-teams` marque d'un `?` les equipes
+  concernees.
+
+### Change
+
+- `--scores` montre les matchs sans spoiler, mais avec leur score masque :
+  `Marseille ? - ? Paris FC   sans spoiler`. Les faire disparaitre aurait ete
+  pire que de tout montrer - on ne saurait plus si le match a lieu, ni a quelle
+  heure, et c'est justement le jour ou on le regarde qu'on ouvre `--scores`.
+  Rien de ce qui permettrait de reconstituer le score ne s'affiche : ni les
+  buteurs, ni l'etat du match, pour qu'un match termine ressemble a un match en
+  cours. `--status` masque de la meme facon le score des matchs en cours.
+- L'ordre de decision des trois filtres par equipe est fixe et teste :
+  `--exclude-teams` fait disparaitre le match, puis `--teams`, puis
+  `--spoiler-free` qui le laisse vivre en silence. Suivre l'OM **et** le mettre
+  en sans-spoiler est donc un usage normal : je veux le journal, pas l'alerte.
+
+### Interne
+
+- 701 -> **743 tests**.
+
+
+
+### Ajoute
+
 - **`--catch-up` : rattraper ce qui s'est passe pendant la veille.** Au reveil,
   au lieu de se taire, butbutbut affiche UNE carte de resume - les matchs qui
   ont bouge, leur score avant et apres, et les buteurs. La photo d'avant le

@@ -5,14 +5,14 @@ import re
 import threading
 import time
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
 from butbutbut import cli, espn, i18n, leagues, pinned, state, watcher
 
-from helpers import event, payload
+from helpers import event, goal_detail, payload
 
 
 _LANGUE = {}
@@ -100,6 +100,20 @@ class TestParser(unittest.TestCase):
         self.assertTrue(args.no_phase_cards)
         self.assertTrue(args.red_cards)
         self.assertEqual(args.before_kickoff, 10)
+
+    def test_the_three_team_lists_cohabit(self):
+        args = self.parser.parse_args(
+            ["--teams", "om,psg", "--exclude-teams", "psg",
+             "--spoiler-free", "om"])
+        self.assertEqual(args.teams, "om,psg")
+        self.assertEqual(args.exclude_teams, "psg")
+        self.assertEqual(args.spoiler_free, "om")
+        self.assertEqual(cli.spoiler_filter(args).wanted_tokens, ["om"])
+
+    def test_spoiler_free_is_off_by_default(self):
+        args = self.parser.parse_args([])
+        self.assertIsNone(args.spoiler_free)
+        self.assertIsNone(cli.spoiler_filter(args))
 
 
 class TestMainGuards(unittest.TestCase):
@@ -404,8 +418,10 @@ class OneShot:
 class FakeStack:
     """Une pile de cartes sans tkinter : elle retient ce qu'on lui pousse."""
 
-    def __init__(self, state_path):
+    def __init__(self, state_path, guard=None):
         self.state_path = state_path
+        # Le watcher, pour savoir quand son passage est fini. Voir run().
+        self.guard = guard
         self.cards = []
         # La carte epinglee est tenue a part, comme dans la vraie pile : elle
         # ne s'empile pas, elle se remplace.
@@ -418,10 +434,19 @@ class FakeStack:
         self.drain = callback
 
     def run(self):
-        # Le fil de surveillance travaille : on l'attend a son premier etat
-        # publie, puis on vide la file comme le ferait la boucle tkinter.
+        """Attend la fin du passage du fil, puis vide la file une fois.
+
+        Surtout pas "attendre le premier etat publie" : la boucle ecrit
+        l'etat AVANT de deposer ses evenements dans la file, et vider entre
+        les deux rendait zero carte une fois sur cent - un echec sur une
+        seule machine de la CI, jamais en local. La boucle annonce son
+        attente (plan_wait) une fois tout depose : c'est ce moment-la qu'on
+        guette.
+        """
         deadline = time.time() + 10
-        while time.time() < deadline and not self.state_path.exists():
+        while time.time() < deadline and not (
+                getattr(self.guard, "planned", False)
+                if self.guard is not None else self.state_path.exists()):
             time.sleep(0.01)
         self.stopping.set()
         self.drain()
@@ -483,7 +508,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_card_loop_publishes_the_state_too(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin(""))
@@ -496,7 +521,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_without_pin_nothing_is_pinned_anywhere(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin(""))
@@ -508,7 +533,7 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
     def test_the_card_loop_pins_the_followed_match(self):
         stopping = threading.Event()
         guard = self.guard_with_one_goal(stopping)
-        stack = FakeStack(self.paths["state"])
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         cli._watch_with_cards(guard, self.args, stopping, stack,
                               self.reporter(), pinned.Pin("angers"))
@@ -547,12 +572,12 @@ class TestBothWatchLoopsFeedTheState(unittest.TestCase):
         # Le point de l'option : une carte au reveil, et surtout pas la corne
         # pour un but vieux d'une heure.
         stopping = threading.Event()
-        stack = FakeStack(self.paths["state"])
+        guard = self.catch_up_event(stopping)
+        stack = FakeStack(self.paths["state"], guard)
         stack.stopping = stopping
         with mock.patch.object(cli, "play_goal_sound") as horn:
-            cli._watch_with_cards(self.catch_up_event(stopping), self.args,
-                                  stopping, stack, self.reporter(),
-                                  pinned.Pin(""))
+            cli._watch_with_cards(guard, self.args, stopping, stack,
+                                  self.reporter(), pinned.Pin(""))
 
         self.assertEqual(len(stack.cards), 1)
         # La duree du trou plutot qu'une minute de jeu : c'est bien le resume.
@@ -650,6 +675,206 @@ class TestPinOption(unittest.TestCase):
             with redirect_stdout(buffer):
                 cli.main(["--status", "--pin", "om", "--leagues", "l1"])
         self.assertIn("epinglee", buffer.getvalue())
+
+
+class TestSpoilerFreeLoops(unittest.TestCase):
+    """Un but en differe : une ligne de journal, et strictement rien d'autre.
+
+    Les deux chemins de surveillance sont verifies, pour la meme raison que
+    l'etat : oublier celui des cartes reviendrait a ne rien avoir corrige.
+    """
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+        self.paths["data"].mkdir(parents=True, exist_ok=True)
+        self.args = cli.build_parser().parse_args(["--quiet"])
+
+    def guard_with_one_goal(self, stopping, spoiler_free):
+        matches = espn.parse(payload(event(state="in", home_score=1)),
+                             leagues.BY_SLUG["fra.1"])
+        goal = watcher.Event(kind=watcher.GOAL, match=matches[0], side="home",
+                             team=matches[0].home, opponent=matches[0].away,
+                             home_score=1, away_score=0, delta=1, play=None,
+                             spoiler_free=spoiler_free)
+        return OneShot(matches, [goal], stopping)
+
+    def reporter(self):
+        return state.Reporter(self.paths["state"],
+                              leagues=[leagues.BY_SLUG["fra.1"]],
+                              interval=25, idle_interval=300)
+
+    def run_headless(self, spoiler_free):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, spoiler_free)
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            with mock.patch.object(cli, "log") as journal:
+                cli._watch_headless(guard, self.args, stopping,
+                                    self.reporter(), pinned.Pin(""))
+        return horn, journal
+
+    def run_with_cards(self, spoiler_free):
+        stopping = threading.Event()
+        guard = self.guard_with_one_goal(stopping, spoiler_free)
+        stack = FakeStack(self.paths["state"], guard)
+        stack.stopping = stopping
+        with mock.patch.object(cli, "play_goal_sound") as horn:
+            with mock.patch.object(cli, "log") as journal:
+                cli._watch_with_cards(guard, self.args, stopping, stack,
+                                      self.reporter(), pinned.Pin(""))
+        return stack, horn, journal
+
+    def test_headless_loop_stays_silent(self):
+        horn, journal = self.run_headless(True)
+        horn.assert_not_called()
+        self.assertIn("BUT", " ".join(str(c) for c in journal.call_args_list))
+
+    def test_headless_loop_still_sounds_an_ordinary_goal(self):
+        horn, _journal = self.run_headless(False)
+        self.assertTrue(horn.called)
+
+    def test_card_loop_shows_and_sounds_nothing(self):
+        stack, horn, journal = self.run_with_cards(True)
+        self.assertEqual(stack.cards, [])
+        horn.assert_not_called()
+        self.assertIn("BUT", " ".join(str(c) for c in journal.call_args_list))
+
+    def test_card_loop_still_shows_an_ordinary_goal(self):
+        stack, horn, _journal = self.run_with_cards(False)
+        self.assertEqual(len(stack.cards), 1)
+        self.assertTrue(horn.called)
+
+    def test_the_state_is_published_either_way(self):
+        # Le daemon continue de suivre le match : --status doit le voir.
+        self.run_with_cards(True)
+        data = state.read(self.paths["state"])
+        self.assertEqual(data["matches"][0]["home"], "Angers")
+
+
+class TestSpoilerFreeCommands(unittest.TestCase):
+    """--scores, --status et la verification des mots au demarrage."""
+
+    CATALOGUE = [("Angers", "Angers", "SCO"),
+                 ("Stade Rennais", "Rennes", "REN")]
+
+    def setUp(self):
+        self.tmp = TemporaryDirectory()
+        patcher = mock.patch.object(cli, "data_dir",
+                                    return_value=Path(self.tmp.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = cli.paths()
+
+    def run_cli(self, argv):
+        matches = espn.parse(
+            payload(event(state="in", home_score=1,
+                          details=[goal_detail("H1", "35'", "C. Arcus")])),
+            leagues.BY_SLUG["fra.1"])
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            with mock.patch.object(espn, "catalogue", return_value=self.CATALOGUE):
+                with redirect_stdout(out), redirect_stderr(err):
+                    code = cli.main(argv + ["--leagues", "l1"])
+        return code, out.getvalue(), err.getvalue()
+
+    # ------------------------------------------------------------ scores ---
+
+    def test_scores_masks_the_score_but_keeps_the_match(self):
+        code, printed, _err = self.run_cli(["--scores", "--spoiler-free", "angers"])
+        self.assertEqual(code, 0)
+        self.assertIn("Angers", printed)
+        self.assertIn("Stade Rennais", printed)
+        self.assertIn("? - ?", printed)
+        self.assertIn("sans spoiler", printed)
+
+    def test_scores_hides_what_would_rebuild_the_score(self):
+        _code, printed, _err = self.run_cli(["--scores", "--spoiler-free", "angers"])
+        self.assertNotIn("C. Arcus", printed)
+        self.assertNotIn("1 - 0", printed)
+
+    def test_scores_without_the_option_says_everything(self):
+        _code, printed, _err = self.run_cli(["--scores"])
+        self.assertIn("1 - 0", printed)
+        self.assertIn("C. Arcus", printed)
+        self.assertNotIn("sans spoiler", printed)
+
+    def test_scores_only_masks_the_match_concerned(self):
+        # L'autre match du jour garde son score : on ne coupe pas tout.
+        matches = espn.parse(payload(event(state="in", home_score=1),
+                                     event(match_id="2", home="Lens",
+                                           away="Lille", home_score=2,
+                                           state="in")),
+                             leagues.BY_SLUG["fra.1"])
+        buffer = io.StringIO()
+        with mock.patch.object(espn, "scoreboard", return_value=matches):
+            with mock.patch.object(espn, "catalogue", return_value=self.CATALOGUE):
+                with redirect_stdout(buffer):
+                    cli.main(["--scores", "--leagues", "l1",
+                              "--spoiler-free", "angers"])
+        printed = buffer.getvalue()
+        self.assertIn("? - ?", printed)
+        self.assertIn("2 - 0", printed)
+
+    # ------------------------------------------------------------ status ---
+
+    def write_state(self, home="Angers", away="Stade Rennais"):
+        data = {
+            "version": 1, "pid": os.getpid(), "updated_at": time.time(),
+            "updated_text": "2026-09-06 18:52:44", "day": state.today(),
+            "goals_today": 1, "interval": 25, "idle_interval": 300,
+            "leagues": ["Ligue 1"], "total_matches": 1,
+            "matches": [{"league": "Ligue 1", "home": home, "away": away,
+                         "home_score": 1, "away_score": 0, "clock": "35'"}],
+        }
+        self.paths["state"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["state"].write_text(json.dumps(data), encoding="utf-8")
+        self.paths["pid"].write_text(str(os.getpid()))
+
+    def test_status_announces_the_setting(self):
+        code, printed, _err = self.run_cli(
+            ["--status", "--spoiler-free", "angers,rennes"])
+        self.assertEqual(code, 0)
+        self.assertIn("sans spoiler: angers, rennes", printed)
+
+    def test_status_says_nothing_without_the_option(self):
+        _code, printed, _err = self.run_cli(["--status"])
+        self.assertNotIn("sans spoiler", printed)
+
+    def test_status_masks_the_score_of_a_match_in_progress(self):
+        # Une ligne "en cours" en dit autant qu'une carte.
+        self.write_state()
+        _code, printed, _err = self.run_cli(["--status", "--spoiler-free", "angers"])
+        self.assertIn("Angers ? - ? Stade Rennais", printed)
+        self.assertNotIn("Angers 1 - 0", printed)
+
+    def test_status_leaves_the_other_matches_alone(self):
+        self.write_state(home="Lens", away="Lille")
+        _code, printed, _err = self.run_cli(["--status", "--spoiler-free", "angers"])
+        self.assertIn("Lens 1 - 0 Lille", printed)
+
+    # ------------------------------------------------------ verification ---
+
+    def test_a_word_that_designates_nothing_is_refused_at_startup(self):
+        # Comme --teams : une faute de frappe ici laisserait spoiler le match
+        # qu'on voulait justement proteger.
+        code, _printed, err = self.run_cli(["--status", "--spoiler-free", "marseile"])
+        self.assertEqual(code, 2)
+        self.assertIn("marseile", err)
+
+    def test_a_known_word_passes(self):
+        code, _printed, _err = self.run_cli(["--status", "--spoiler-free", "angers"])
+        self.assertEqual(code, 0)
+
+    def test_a_word_shared_by_two_lists_is_only_reported_once(self):
+        _code, _printed, err = self.run_cli(
+            ["--status", "--teams", "marseile", "--spoiler-free", "marseile"])
+        self.assertEqual(err.count("marseile"), 1)
 
 
 if __name__ == "__main__":

@@ -246,14 +246,31 @@ def checked_filter(args):
     return chosen if chosen.active else None
 
 
+def spoiler_filter(args):
+    """Le filtre sans spoiler, ou None si personne ne regarde en differe."""
+    chosen = teams.SpoilerFilter(args.spoiler_free)
+    return chosen if chosen.active else None
+
+
+def _team_filters(args) -> list:
+    """Tous les filtres par equipe en vigueur, dans l'ordre de decision.
+
+    Sert a la verification des mots au demarrage : les trois listes puisent
+    dans le meme vocabulaire, une faute de frappe y coute aussi cher.
+    """
+    return [f for f in (checked_filter(args), spoiler_filter(args)) if f is not None]
+
+
 def check_teams(args, selection) -> int:
-    """Confronte --teams / --exclude-teams / --pin au catalogue des competitions.
+    """Confronte --teams / --exclude-teams / --pin / --spoiler-free au catalogue.
 
     Un mot qui ne designe aucune equipe est une faute de frappe : mieux vaut
     le dire tout de suite que de laisser le daemon rester muet pour toujours.
+    Un mot fautif dans --spoiler-free est encore plus sournois : il ne rend pas
+    le daemon muet, il le laisse spoiler le match qu'on voulait proteger.
     """
-    chosen = checked_filter(args)
-    if chosen is None:
+    chosen = _team_filters(args)
+    if not chosen:
         return 0
 
     catalogue = []
@@ -267,7 +284,14 @@ def check_teams(args, selection) -> int:
               file=sys.stderr)
         return 0
 
-    found, orphans = chosen.resolve(catalogue)
+    found, orphans = {}, []
+    for one in chosen:
+        hits, missed = one.resolve(catalogue)
+        found.update(hits)
+        # Un meme mot peut figurer dans deux listes : il n'est signale qu'une
+        # fois, sans quoi --teams om --spoiler-free omm sortirait deux lignes.
+        orphans.extend(o for o in missed if o not in orphans)
+
     for token in sorted(found):
         clubs = found[token]
         extra = "" if len(clubs) == 1 else "  ({} clubs)".format(len(clubs))
@@ -285,6 +309,7 @@ def do_list_teams(args) -> int:
     """Les equipes des competitions suivies, avec ce que le filtre attrape."""
     selection = leagues.resolve(args.leagues, args.exclude)
     chosen = team_filter(args)
+    quiet_teams = spoiler_filter(args)
 
     for league in selection:
         catalogue = espn.catalogue(league)
@@ -300,16 +325,25 @@ def do_list_teams(args) -> int:
                     mark = "-"
                 elif chosen.team_matches(names):
                     mark = "*"
+            # Le sans-spoiler passe apres l'exclusion (un match exclu n'existe
+            # deja plus) mais devant le suivi : c'est la nuance qu'on est venu
+            # verifier ici.
+            if mark != "-" and quiet_teams is not None \
+                    and quiet_teams.team_matches(names):
+                mark = "?"
             print(tr("  {} {:<30} {}", mark, names[0], names[-1]))
         time.sleep(0.15)
 
     print()
     if chosen is not None:
         print(tr("'*' = suivie, '-' = exclue."))
+    if quiet_teams is not None:
+        print(tr("'?' = suivie sans spoiler : journal seulement, ni carte ni son."))
     print(tr("Exemples :"))
     print("  butbutbut --teams om,psg")
     print("  butbutbut --teams \"real madrid\" --leagues liga,ucl")
     print("  butbutbut --exclude-teams psg")
+    print("  butbutbut --spoiler-free om")
     return 0
 
 
@@ -326,6 +360,7 @@ def do_daemon(args) -> int:
         return 1
 
     chosen_teams = team_filter(args)
+    quiet_teams = spoiler_filter(args)
     stopping = threading.Event()
 
     def request_stop(_signum, _frame):
@@ -358,6 +393,7 @@ def do_daemon(args) -> int:
         opener=recorder.opener if recorder is not None else None,
         on_log=lambda message: log(message, quiet=args.quiet),
         teams=chosen_teams,
+        spoiler_free=quiet_teams,
         red_cards=args.red_cards,
         before_kickoff=args.before_kickoff * 60.0,
         catch_up=args.catch_up,
@@ -375,6 +411,9 @@ def do_daemon(args) -> int:
                 args.idle_interval), quiet=args.quiet)
     if chosen_teams is not None:
         log(chosen_teams.describe(), quiet=args.quiet)
+    if quiet_teams is not None:
+        log("sans spoiler : {} - le journal garde tout, l'ecran et le son se "
+            "taisent".format(quiet_teams.describe()), quiet=args.quiet)
     if args.red_cards:
         log("cartons rouges signales", quiet=args.quiet)
     if args.before_kickoff:
@@ -459,6 +498,8 @@ def _watch_headless(guard, args, stopping, reporter, pin) -> None:
                         pinned=follow.match if follow is not None else None)
         for event in events:
             log(event.log_line(), quiet=args.quiet)
+            if event.spoiler_free:
+                continue            # match en differe : le journal, et rien d'autre
             if not event.goal:
                 continue            # but annule et phases de match : muets
             if media is None:
@@ -498,7 +539,11 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     pinning.put(follow)
                 for event in events:
                     log(event.log_line(), quiet=args.quiet)
-                    pending.put(event)
+                    # Le journal vient d'avoir sa ligne : un match en differe
+                    # s'arrete la, il n'entre meme pas dans la file. Rien ne
+                    # peut donc arriver ni a l'ecran ni au haut-parleur.
+                    if not event.spoiler_free:
+                        pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
             stopping.wait(guard.plan_wait())
@@ -758,10 +803,25 @@ def do_test(args) -> int:
 
 
 def do_scores(args) -> int:
+    """Les matchs du jour. Un match en differe apparait, son score est masque.
+
+    Trois reponses etaient possibles pour --spoiler-free ici, et deux sont
+    mauvaises. Tout afficher trahirait le seul reglage qu'on est venu chercher.
+    Faire disparaitre le match serait pire encore : on ne saurait plus s'il a
+    lieu, a quelle heure, ni meme si le mot tape designe bien ce club-la - et
+    c'est justement le jour ou l'on regarde ce match qu'on ouvre --scores.
+
+    Reste le compromis : la ligne existe, le score devient "? - ?", et rien de
+    ce qui pourrait le reconstituer ne s'affiche - ni les buteurs, ni l'etat du
+    match. Un match termine ressemble ainsi a un match en cours, sinon un
+    simple "termine" a la 80e minute suffirait a dire que c'est plie.
+    """
     selection = leagues.resolve(args.leagues, args.exclude)
     chosen = team_filter(args)
+    quiet_teams = spoiler_filter(args)
     now = datetime.now(timezone.utc)
     total = 0
+    masked = 0
 
     for league in selection:
         try:
@@ -782,21 +842,32 @@ def do_scores(args) -> int:
 
         for match in matches:
             total += 1
+            hidden = quiet_teams is not None and quiet_teams.covers(match)
+            home_score, away_score = match.home_score, match.away_score
             # 'note' et non 'state' : le module state est importe ici.
-            if match.live:
+            if hidden:
+                masked += 1
+                mark, note = "?", tr("sans spoiler")
+                home_score = away_score = "?"
+            elif match.live:
                 mark, note = ">", match.detail or match.clock or tr("en cours")
             elif match.finished:
                 mark, note = " ", match.detail or tr("termine")
             else:
                 mark, note = " ", _kickoff_text(match, now)
-            print(tr("  {} {:>22} {} - {} {:<22} {}", 
-                mark, match.home, match.home_score, match.away_score,
+            print(tr("  {} {:>22} {} - {} {:<22} {}",
+                mark, match.home, home_score, away_score,
                 match.away, note))
+            if hidden:
+                continue        # les buteurs reconstitueraient le score
             for play in match.plays:
                 side = match.home if play.team_id == match.home_id else match.away
                 print(tr("      {:<22} {}", side, play.summary()))
 
     print(tr("\n{} match(s), '>' = en cours.", total))
+    if masked:
+        print(tr("'?' = sans spoiler : {} match(s) masque(s). "
+                 "Le journal, lui, a tout : butbutbut --today.", masked))
     return 0
 
 
@@ -812,12 +883,15 @@ def _kickoff_text(match, now) -> str:
     return "{:%d/%m %H:%M}".format(local)
 
 
-def _print_activity(pid) -> None:
+def _print_activity(pid, quiet_teams=None) -> None:
     """L'activite du daemon, relue dans le fichier d'etat.
 
     Le fichier pid dit qu'un processus existe, jamais qu'il travaille : sans
     ces lignes, un daemon bloque sur une requete est indistinguable d'un daemon
     qui suit trois matchs.
+
+    `quiet_teams` masque le score des matchs regardes en differe, comme le fait
+    --scores : une ligne "en cours" en dit autant qu'une carte.
     """
     data = state.read(paths()["state"])
     if data is None:
@@ -851,10 +925,17 @@ def _print_activity(pid) -> None:
             summary += tr(" sur {} au programme", data["total_matches"])
         print(tr("  en cours    : {}", summary))
         for row in matches:
+            home, away = row.get("home", "?"), row.get("away", "?")
+            home_score = row.get("home_score", "?")
+            away_score = row.get("away_score", "?")
+            clock = row.get("clock", "")
+            if quiet_teams is not None and quiet_teams.covers_names((home,),
+                                                                    (away,)):
+                home_score = away_score = "?"
+                clock = "(sans spoiler)"
             print("                [{}] {} {} - {} {}  {}".format(
-                row.get("league", "?"), row.get("home", "?"),
-                row.get("home_score", "?"), row.get("away_score", "?"),
-                row.get("away", "?"), row.get("clock", "")).rstrip())
+                row.get("league", "?"), home, home_score, away_score,
+                away, clock).rstrip())
 
     goals = data.get("goals_today", 0) if data.get("day") == state.today() else 0
     print(tr("  buts du jour: {}  (le detail : butbutbut --today)", goals))
@@ -927,12 +1008,16 @@ def do_status(args) -> int:
     print(tr("butbutbut {}", __version__))
     print(tr("  daemon      : {}",
              tr("actif (pid {})", pid) if pid else tr("arrete")))
-    _print_activity(pid)
+    quiet_teams = spoiler_filter(args)
+    _print_activity(pid, quiet_teams)
     chosen = team_filter(args)
     if chosen is not None:
         print(tr("  equipes     : {}", chosen.describe()))
     if args.pin:
         print(tr("  epinglee    : {}", pin_summary(args.pin)))
+    if quiet_teams is not None:
+        print(tr("  sans spoiler: {}  (journal seulement : ni carte, ni son)",
+                 quiet_teams.describe()))
     print(tr("  langue      : {}", i18n.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
@@ -1175,6 +1260,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "se met a jour a chaque releve et s'en va "
                              "quelques minutes apres la fin. Une seule equipe, "
                              "et jamais de son. Ex : --pin om"))
+    parser.add_argument("--spoiler-free", default=None, metavar="LISTE",
+                        dest="spoiler_free",
+                        help=tr("matchs regardes en differe : aucune carte ni "
+                             "aucun son pour ces equipes, quel que soit "
+                             "l'evenement. Le journal, lui, garde tout "
+                             "(butbutbut --today). Ex : --spoiler-free om"))
     parser.add_argument("--list-teams", action="store_true", dest="list_teams",
                         help=tr("liste les equipes des competitions suivies"))
     parser.add_argument("--interval", type=int, default=DEFAULT_INTERVAL,
@@ -1330,7 +1421,8 @@ def main(argv=None) -> int:
         return do_list(args)
     if args.list_teams:
         return do_list_teams(args)
-    if (args.teams or args.exclude_teams or args.pin) and not args.replay:
+    if ((args.teams or args.exclude_teams or args.pin
+         or args.spoiler_free) and not args.replay):
         failed = check_teams(args, leagues.resolve(args.leagues, args.exclude))
         if failed:
             return failed

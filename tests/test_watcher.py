@@ -255,6 +255,134 @@ class TestOnlyAGoalMakesNoise(unittest.TestCase):
         self.assertNotIn(watcher.PREMATCH, watcher.PHASES)
 
 
+class TestSpoilerFree(unittest.TestCase):
+    """Le match regarde en differe : marque, jamais coupe.
+
+    Toute la difference avec --exclude-teams tient la : l'evenement remonte
+    complet, avec sa ligne de journal, et porte seulement un drapeau.
+    """
+
+    def guard(self, spoiler="om", wanted=None, excluded=None, home="Marseille",
+              away="Lyon", red_cards=False, before_kickoff=0.0, **kwargs):
+        self.state = {"payload": payload(event(home=home, away=away, **kwargs))}
+        chosen = teams.Filter(wanted, excluded) if (wanted or excluded) else None
+        guard = make_watcher(self.state, teams=chosen, red_cards=red_cards,
+                             before_kickoff=before_kickoff,
+                             spoiler_free=teams.SpoilerFilter(spoiler)
+                             if spoiler else None)
+        guard.prime()
+        return guard
+
+    def test_a_goal_comes_through_but_marked(self):
+        guard = self.guard()
+        self.state["payload"] = bump(self.state["payload"], "home")
+        events = guard.refresh(LIGUE1)
+        self.assertEqual(len(events), 1)
+        self.assertTrue(events[0].goal)
+        self.assertTrue(events[0].spoiler_free)
+
+    def test_the_journal_line_is_intact(self):
+        # Le coeur du reglage : on ne coupe que l'ecran et le son, --today
+        # doit pouvoir raconter le match une fois qu'on l'a vu.
+        guard = self.guard()
+        self.state["payload"] = bump(
+            self.state["payload"], "home",
+            details=(goal_detail("H1", "58'", "A. Kalimuendo", index=3),))
+        line = guard.refresh(LIGUE1)[0].log_line()
+        self.assertIn("BUT", line)
+        self.assertIn("Marseille 1 - 0 Lyon", line)
+        self.assertIn("A. Kalimuendo", line)
+
+    def test_another_match_is_not_marked(self):
+        guard = self.guard(home="Lens", away="Lille")
+        self.state["payload"] = bump(self.state["payload"], "home")
+        events = guard.refresh(LIGUE1)
+        self.assertEqual(len(events), 1)
+        self.assertFalse(events[0].spoiler_free)
+
+    def test_no_filter_marks_nothing(self):
+        guard = self.guard(spoiler=None)
+        self.state["payload"] = bump(self.state["payload"], "home")
+        self.assertFalse(guard.refresh(LIGUE1)[0].spoiler_free)
+
+    # ------------------------------------------------- tous les evenements --
+
+    def test_a_cancelled_goal_is_marked_too(self):
+        guard = self.guard(home_score=1)
+        self.state["payload"] = bump(self.state["payload"], "home", by=-1)
+        events = guard.refresh(LIGUE1)
+        self.assertEqual([e.kind for e in events], [watcher.CANCELLED])
+        self.assertTrue(events[0].spoiler_free)
+
+    def test_every_phase_card_is_marked(self):
+        # "COUP D'ENVOI" et "FIN DU MATCH" spoilent autant qu'un but : le
+        # premier dit que le direct a demarre, le second que tout est joue.
+        for first, second, kind in (
+                ({"state": "pre"}, {"state": "in"}, watcher.KICKOFF),
+                ({"state": "in"},
+                 {"state": "in", "status_name": "STATUS_HALFTIME"},
+                 watcher.HALFTIME),
+                ({"state": "in", "status_name": "STATUS_HALFTIME"},
+                 {"state": "in", "status_name": "STATUS_SECOND_HALF"},
+                 watcher.RESTART),
+                ({"state": "in"}, {"state": "post"}, watcher.FULLTIME)):
+            guard = self.guard(**first)
+            self.state["payload"] = payload(
+                event(home="Marseille", away="Lyon", **second))
+            events = guard.refresh(LIGUE1)
+            self.assertEqual([e.kind for e in events], [kind])
+            self.assertTrue(events[0].spoiler_free, kind)
+
+    def test_a_red_card_is_marked(self):
+        guard = self.guard(home_score=1, away_score=1, red_cards=True)
+        self.state["payload"] = bump(
+            self.state["payload"], "home", by=0,
+            details=(red_card_detail("H1", "62'", "J. Lefort"),))
+        events = guard.refresh(LIGUE1)
+        self.assertEqual([e.kind for e in events], [watcher.RED_CARD])
+        self.assertTrue(events[0].spoiler_free)
+
+    def test_a_prematch_announcement_is_marked(self):
+        guard = self.guard(state="pre", clock="0'", date=in_minutes(5),
+                           before_kickoff=10 * 60.0)
+        events = guard.refresh(LIGUE1)
+        self.assertEqual([e.kind for e in events], [watcher.PREMATCH])
+        self.assertTrue(events[0].spoiler_free)
+
+    # ------------------------------------------- cohabitation des 3 filtres -
+
+    def test_following_a_team_and_muting_it_is_a_sensible_pair(self):
+        # L'usage reel : je veux le journal de l'OM, pas l'alerte.
+        guard = self.guard(spoiler="om", wanted="om")
+        self.state["payload"] = bump(self.state["payload"], "home")
+        events = guard.refresh(LIGUE1)
+        self.assertEqual(len(events), 1)
+        self.assertTrue(events[0].spoiler_free)
+
+    def test_a_match_outside_the_followed_teams_disappears_anyway(self):
+        guard = self.guard(spoiler="om", wanted="om", home="Lens", away="Lille")
+        self.state["payload"] = bump(self.state["payload"], "home")
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_exclusion_wins_over_the_spoiler_free_list(self):
+        # Un match exclu n'existe pas : il n'a meme pas de ligne de journal.
+        guard = self.guard(spoiler="om", excluded="om")
+        self.state["payload"] = bump(self.state["payload"], "home")
+        self.assertEqual(guard.refresh(LIGUE1), [])
+
+    def test_a_followed_team_that_is_not_muted_keeps_its_alert(self):
+        guard = self.guard(spoiler="om", wanted="om,ol", home="Lyon",
+                           away="Lens")
+        self.state["payload"] = bump(self.state["payload"], "home")
+        events = guard.refresh(LIGUE1)
+        self.assertEqual(len(events), 1)
+        self.assertFalse(events[0].spoiler_free)
+
+    def test_the_match_is_still_followed(self):
+        guard = self.guard()
+        self.assertEqual(len(guard.all_matches()), 1)
+
+
 class TestRedCards(unittest.TestCase):
     """L'expulsion : detectee comme un but, affichee comme un temps fort."""
 
