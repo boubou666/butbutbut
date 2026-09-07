@@ -181,6 +181,13 @@ OPTIONS = (
            "tombes pendant l'absence. Non : le reveil reste silencieux, comme "
            "avant.",
            "oui"),
+    Option("on_goal", _text,
+           "Commande lancee a chaque but, avec le detail du but dans des "
+           "variables d'environnement BUT_* ($BUT_TEXT sous un shell, "
+           "%BUT_TEXT% sous cmd). Rien n'est recolle dans la commande : les "
+           "valeurs restent des valeurs. 'butbutbut --test-hook' l'essaie sur "
+           "un but fabrique.",
+           'notify-send "But !" "$BUT_TEXT"', fallback="aucune"),
     Option("no_logos", _flag,
            "Pas d'ecusson sur les cartes, et rien de telecharge. Les couleurs "
            "des clubs, elles, restent.",

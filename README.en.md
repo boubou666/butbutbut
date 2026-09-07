@@ -110,6 +110,7 @@ butbutbut --stop              # stop the daemon
 butbutbut --check-update      # is there a newer version?
 butbutbut --update            # fetch, reinstall, restart the daemon
 butbutbut --update --dev      # same, but the tip of the main branch
+butbutbut --test-hook         # try the --on-goal command out
 butbutbut --paths             # where the data and the log live
 butbutbut --write-config      # write an example configuration file
 butbutbut --screens           # the screens detected
@@ -773,6 +774,92 @@ butbutbut --status            # the "epinglee" line says what it follows
 
 The log records the card arriving and leaving, and nothing in between: one line
 per poll for ninety minutes would teach nobody anything.
+### Running a command on every goal
+
+```bash
+butbutbut --on-goal 'curl -s -X POST -d "$BUT_TEXT" https://example/hook'
+```
+
+Rather than building into butbutbut the ten integrations ten people would want
+- a smart light strip, a Discord webhook, home automation, a personal counter -
+`--on-goal` hands you what you need to write them yourself. The program knows
+nothing about what it runs, and that is the point.
+
+The details of the goal arrive in **environment variables**, never pasted into
+the command: `$BUT_TEXT` under a shell, `%BUT_TEXT%` under cmd.
+
+| Variable | Example | |
+| --- | --- | --- |
+| `BUT_TEXT` | `GOAL! [Ligue 1] Marseille 2 - 1 Paris FC - Goal by M. Greenwood (67')` | the ready-made sentence |
+| `BUT_TYPE` | `goal` | `goal`, or `cancelled` when VAR takes it back |
+| `BUT_LEAGUE`, `BUT_LEAGUE_CODE` | `Ligue 1`, `fra.1` | the competition, and its ESPN code |
+| `BUT_HOME`, `BUT_AWAY` | `Marseille`, `Paris FC` | both teams |
+| `BUT_HOME_SCORE`, `BUT_AWAY_SCORE`, `BUT_SCORE` | `2`, `1`, `2 - 1` | the score after the goal |
+| `BUT_TEAM`, `BUT_OPPONENT`, `BUT_SIDE` | `Marseille`, `Paris FC`, `home` | who has just scored |
+| `BUT_SCORER`, `BUT_MINUTE` | `M. Greenwood`, `67'` | empty until the source publishes them |
+| `BUT_OWN_GOAL`, `BUT_PENALTY` | `0`, `0` | `1` or `0` |
+| `BUT_DELTA` | `1` | `-1` when the goal is taken back, `2` when a missed one is caught up |
+
+These names are a **contract**: they go and live in scripts that are not in
+this repository, so they will not change. They are in English, unlike the rest
+of the project, because a script gets shared across the five languages of the
+cards.
+
+**Tuning the command without waiting for a goal:**
+
+```bash
+butbutbut --test-hook
+```
+
+The command runs against a made-up goal, right away, and butbutbut shows the
+variables it receives, its output and its exit code. Without this, getting a
+hook right would mean waiting for the next goal with a daemon that stays
+silent when everything works.
+
+```
+butbutbut : but fabrique, la commande recevra
+  BUT_AWAY           Paris FC
+  BUT_HOME           Marseille
+  BUT_SCORER         M. Greenwood
+  ...
+  commande    : notify-send "Goal!" "$BUT_TEXT"
+  resultat    : code de sortie 0
+```
+
+A few commands that work as they are:
+
+```bash
+butbutbut --on-goal 'notify-send "Goal!" "$BUT_TEXT"'
+butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/my-goals.txt'
+butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sounds/airhorn.mp3'
+```
+
+**What the hook promises:**
+
+- **The data travels through the environment, never through the command.** A
+  team name is therefore never pasted into a shell line: the day the source
+  announces a club called `; rm -rf ~`, nothing will happen.
+- **A goal never waits for the command.** It runs in its own thread and nobody
+  watches for its end: a slow script delays neither the card nor the next
+  poll. Past 30 seconds, it is killed.
+- **It cannot bring butbutbut down.** Command not found, non-zero exit code, a
+  script that never returns: one line in the log, and life goes on. Success,
+  on the other hand, says nothing - a hook that fires on every goal has no
+  business filling the log.
+
+The hook fires on a goal **and on VAR taking it back**: announcing a goal and
+then staying quiet when it is disallowed would lie to whatever you feed.
+`BUT_TYPE` tells the two apart in one word. The key moments of a match,
+sendings-off and pre-match announcements trigger nothing: the option promises
+a goal.
+
+The team filter applies as it does elsewhere: with `--teams om`, only OM's
+goals run the command. The `on_goal` key of the configuration file does the
+same without retyping the option, and `butbutbut --status` recalls what is
+armed. A match set to `--spoiler-free` runs nothing: the hook is one
+more alert, and spoiler-free mode cuts them all - otherwise a light strip or a
+webhook would tell you the goal the screen and the speaker just went quiet
+about.
 
 ### Language
 
@@ -1414,7 +1501,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**784 tests**, with no network and no screen: the source is simulated by an
+**807 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

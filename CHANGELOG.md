@@ -9,6 +9,44 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **Un crochet a chaque but** : `--on-goal "commande"` lance la commande de son
+  choix quand un but tombe, avec tout le detail du but dans des variables
+  d'environnement `BUT_*` (`BUT_TEXT` porte la phrase toute faite). Plutot que
+  d'ecrire dans butbutbut les dix integrations que dix personnes voudraient -
+  guirlande connectee, webhook Discord, domotique, compteur perso - il donne de
+  quoi les ecrire soi-meme.
+- `--test-hook` lance la commande sur un but fabrique et montre ce qu'elle
+  recoit, ce qu'elle rend et son code de sortie. Regler un crochet en guettant
+  un vrai but aurait ete une mise au point d'une demi-journee, avec un daemon
+  qui se tait justement quand tout va bien.
+- La cle `on_goal` du fichier de configuration, et une ligne `crochet` dans
+  `--status`.
+
+### Interne
+
+- **Les donnees du but passent par l'environnement, jamais par la commande.**
+  Un nom d'equipe n'est donc jamais recolle dans une ligne de shell : le jour
+  ou la source annoncera un club nomme `; rm -rf ~`, il ne se passera rien.
+  C'est aussi ce qui rend `shell=True` acceptable, et donc ce qui permet
+  d'ecrire sa commande avec les tubes et les guillemets dont on a l'habitude.
+- La commande part dans un fil a part et personne ne guette sa fin : un script
+  lent ne retarde ni la carte, ni le releve suivant. Elle est tuee au bout de
+  30 s, et huit au plus tournent en meme temps. Un echec est une ligne de
+  journal ; une reussite ne dit rien, un crochet qui part a chaque but n'ayant
+  pas a remplir le journal.
+- Le crochet part **depuis le fil de surveillance**, a cote du journal, et non
+  depuis la boucle d'affichage : il decrit un but, pas une carte, et doit donc
+  partir aussi en `--no-overlay` et quand l'affichage echoue.
+- Il part aussi sur un but **retire par la VAR**, `BUT_TYPE` valant alors
+  `cancelled` : annoncer un but puis se taire quand il est refuse, ce serait
+  mentir a ce qu'on alimente. Les temps forts, les expulsions et les annonces
+  d'avant match, eux, ne declenchent rien.
+- 502 -> **523 tests**.
+
+
+
+### Ajoute
+
 - **Des sons par contexte, decides par le nom du fichier.** Le dossier `sound`
   ne se contente plus d'un tirage au hasard : `om.mp3` ne sort que quand l'OM
   marque, `fra.1.mp3` (ou `l1.mp3`) que pour un but de Ligue 1, et surtout

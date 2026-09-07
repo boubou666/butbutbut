@@ -14,9 +14,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import (__version__, config, crests, espn, fullscreen, i18n,
-               journal, leagues, pinned, replay, screens, sound, state, teams,
-               watcher)
+from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
+               journal, leagues, pinned, replay, screens, sound, state,
+               teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -465,6 +465,14 @@ def do_daemon(args) -> int:
     if args.catch_up:
         log("rattrapage de sortie de veille : une carte de resume, sans son",
             quiet=args.quiet)
+
+    on_goal = hook.Runner(args.on_goal,
+                          on_log=lambda message: log(message, quiet=args.quiet))
+    if on_goal:
+        # La commande est notee au demarrage : un crochet muet qui reussit ne
+        # laisse aucune trace ensuite, autant savoir ce qui a ete arme.
+        log("crochet a chaque but : {}".format(on_goal.command), quiet=args.quiet)
+
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -501,9 +509,11 @@ def do_daemon(args) -> int:
 
     try:
         if stack is None:
-            _watch_headless(guard, args, stopping, reporter, pin)
+            _watch_headless(guard, args, stopping, reporter, pin,
+                            on_goal=on_goal)
         else:
-            _watch_with_cards(guard, args, stopping, stack, reporter, pin, crest)
+            _watch_with_cards(guard, args, stopping, stack, reporter, pin,
+                              crest, on_goal=on_goal)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -523,7 +533,8 @@ def do_daemon(args) -> int:
     return 0
 
 
-def _watch_headless(guard, args, stopping, reporter, pin) -> None:
+def _watch_headless(guard, args, stopping, reporter, pin,
+                    on_goal=None) -> None:
     """Sans carte : un seul fil, le son et le journal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
@@ -539,6 +550,13 @@ def _watch_headless(guard, args, stopping, reporter, pin) -> None:
             log(event.log_line(), quiet=args.quiet)
             if event.spoiler_free:
                 continue            # match en differe : le journal, et rien d'autre
+            # Le crochet part avec le journal, pas avec la carte : il decrit
+            # un but, pas un affichage, et doit partir meme en --no-overlay.
+            # Un match regarde en differe, en revanche, n'en declenche aucun :
+            # le crochet est une alerte de plus, et --spoiler-free les coupe
+            # toutes - d'ou le `continue` juste au-dessus.
+            if on_goal is not None:
+                on_goal.fire(event)
             if not event.goal:
                 continue            # but annule et phases de match : muets
             # Un son par but, et pas un par releve : deux buts du meme tour
@@ -551,7 +569,7 @@ def _watch_headless(guard, args, stopping, reporter, pin) -> None:
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                      crest=None) -> None:
+                      crest=None, on_goal=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -578,11 +596,17 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     pinning.put(follow)
                 for event in events:
                     log(event.log_line(), quiet=args.quiet)
-                    # Le journal vient d'avoir sa ligne : un match en differe
-                    # s'arrete la, il n'entre meme pas dans la file. Rien ne
-                    # peut donc arriver ni a l'ecran ni au haut-parleur.
-                    if not event.spoiler_free:
-                        pending.put(event)
+                    # Depuis le fil de surveillance, et non depuis drain() :
+                    # le crochet ne doit rien devoir a tkinter, et il part
+                    # meme quand l'affichage de la carte echoue. Un match
+                    # regarde en differe, lui, n'en declenche aucun : le
+                    # crochet est une alerte de plus, et --spoiler-free les
+                    # coupe toutes. Le journal, lui, a deja sa ligne.
+                    if event.spoiler_free:
+                        continue
+                    if on_goal is not None:
+                        on_goal.fire(event)
+                    pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
             stopping.wait(guard.plan_wait())
@@ -844,6 +868,49 @@ def do_test(args) -> int:
         # On laisse finir les ecussons partis en fond : sinon la demo,
         # toujours tuee juste apres, ne les aurait jamais.
         crest.join(3.0)
+    return 0
+
+
+def do_test_hook(args) -> int:
+    """Lance la commande de --on-goal sur un but fabrique, et rend compte.
+
+    C'est le seul endroit ou on l'attend : regler un crochet en guettant un
+    vrai but serait une mise au point d'une demi-journee. On montre donc les
+    variables, la sortie et le code de retour, la ou le daemon se tait.
+    """
+    if not args.on_goal:
+        print(tr("butbutbut : aucune commande a essayer. Passe --on-goal "
+                 "\"...\", ou pose la cle on_goal dans le fichier de "
+                 "configuration."), file=sys.stderr)
+        return 2
+
+    values = hook.demo()
+    print(tr("butbutbut : but fabrique, la commande recevra"))
+    for key in sorted(values):
+        print("  {:<18} {}".format(key, values[key]))
+    print(tr("\n  commande    : {}", args.on_goal))
+
+    runner = hook.Runner(args.on_goal)
+    try:
+        code, output = runner.call(values)
+    except hook.Timeout:
+        print(tr("  resultat    : tuee apres {:.0f}s, elle ne rendait pas la main",
+                 runner.timeout), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(tr("  resultat    : impossible de la lancer ({})", exc),
+              file=sys.stderr)
+        return 1
+
+    print(tr("  resultat    : code de sortie {}", code))
+    if output:
+        print(tr("  sortie      :"))
+        for line in output.splitlines():
+            print("    " + line)
+    if code:
+        # Le daemon, lui, se contenterait d'une ligne de journal : ici on est
+        # devant son terminal, autant que le shell le sache aussi.
+        return 1
     return 0
 
 
@@ -1120,6 +1187,9 @@ def do_status(args) -> int:
     print(tr("  config      : {}{}", 
         settings,
         "" if settings.exists() else tr("  (absent, voir --write-config)")))
+    print(tr("  crochet     : {}",
+             tr("{}  (essai : --test-hook)", args.on_goal) if args.on_goal
+             else tr("aucun (voir --on-goal)")))
 
     sounds = sound.custom_sounds(p["sound"])
     if sounds:
@@ -1397,6 +1467,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("au reveil apres une veille, resume en une "
                              "carte muette les buts tombes pendant l'absence "
                              "(par defaut le reveil reste silencieux)"))
+    parser.add_argument("--on-goal", default=None, dest="on_goal",
+                        metavar=tr("COMMANDE"),
+                        help=tr("commande a lancer a chaque but, avec le detail "
+                             "du but dans des variables d'environnement BUT_* "
+                             "(voir --test-hook et le README)"))
+    parser.add_argument("--test-hook", action="store_true", dest="test_hook",
+                        help=tr("essaie la commande de --on-goal sur un but "
+                             "fabrique, et montre ce qu'elle rend"))
     parser.add_argument("--lang", default=None, metavar=tr("CODE"),
                         help=tr("langue des cartes : fr, en, es, it, de (defaut : "
                              "celle du systeme, francais a defaut). Le journal, "
@@ -1526,6 +1604,8 @@ def main(argv=None) -> int:
         return do_today(args)
     if args.scores:
         return do_scores(args)
+    if args.test_hook:
+        return do_test_hook(args)
     if args.test:
         return do_test(args)
     if args.replay:

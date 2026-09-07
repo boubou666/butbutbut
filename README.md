@@ -110,6 +110,7 @@ butbutbut --stop              # arrete le daemon
 butbutbut --check-update      # une version plus recente existe-t-elle ?
 butbutbut --update            # recupere, reinstalle, relance le daemon
 butbutbut --update --dev      # idem, mais la pointe de la branche principale
+butbutbut --test-hook         # essaie la commande de --on-goal
 butbutbut --paths             # ou vivent les donnees et le journal
 butbutbut --write-config      # ecrit un fichier de configuration d'exemple
 butbutbut --screens           # les ecrans detectes
@@ -777,6 +778,91 @@ butbutbut --status            # la ligne "epinglee" dit ce qu'elle suit
 Le journal note l'arrivee et le depart de la carte, et rien entre les deux :
 une ligne par releve pendant quatre-vingt-dix minutes n'apprendrait rien a
 personne.
+### Lancer une commande a chaque but
+
+```bash
+butbutbut --on-goal 'curl -s -X POST -d "$BUT_TEXT" https://exemple/hook'
+```
+
+Plutot que d'ecrire dans butbutbut les dix integrations que dix personnes
+voudraient - guirlande connectee, webhook Discord, domotique, compteur perso -
+`--on-goal` donne de quoi les ecrire soi-meme. Le programme ne sait rien de ce
+qu'il lance, et c'est le but.
+
+Le detail du but arrive dans des **variables d'environnement**, jamais recolle
+dans la commande : `$BUT_TEXT` sous un shell, `%BUT_TEXT%` sous cmd.
+
+| Variable | Exemple | |
+| --- | --- | --- |
+| `BUT_TEXT` | `BUT ! [Ligue 1] Marseille 2 - 1 Paris FC - But de M. Greenwood (67')` | la phrase toute faite |
+| `BUT_TYPE` | `goal` | `goal`, ou `cancelled` si la VAR retire le but |
+| `BUT_LEAGUE`, `BUT_LEAGUE_CODE` | `Ligue 1`, `fra.1` | la competition, et son code ESPN |
+| `BUT_HOME`, `BUT_AWAY` | `Marseille`, `Paris FC` | les deux equipes |
+| `BUT_HOME_SCORE`, `BUT_AWAY_SCORE`, `BUT_SCORE` | `2`, `1`, `2 - 1` | le score apres le but |
+| `BUT_TEAM`, `BUT_OPPONENT`, `BUT_SIDE` | `Marseille`, `Paris FC`, `home` | qui vient de marquer |
+| `BUT_SCORER`, `BUT_MINUTE` | `M. Greenwood`, `67'` | vides tant que la source ne les publie pas |
+| `BUT_OWN_GOAL`, `BUT_PENALTY` | `0`, `0` | `1` ou `0` |
+| `BUT_DELTA` | `1` | `-1` quand le but est retire, `2` quand un doublon est rattrape |
+
+Ces noms sont un **contrat** : ils partent vivre dans des scripts qui ne sont
+pas dans ce depot, ils ne bougeront plus. Ils sont en anglais, contrairement au
+reste, parce qu'un script se partage entre les cinq langues des cartes.
+
+**Regler la commande sans attendre un but :**
+
+```bash
+butbutbut --test-hook
+```
+
+La commande part sur un but fabrique, tout de suite, et butbutbut montre les
+variables qu'elle recoit, sa sortie et son code de retour. Sans ca, mettre au
+point un crochet voudrait dire attendre le prochain but avec un daemon qui,
+lui, se tait quand tout va bien.
+
+```
+butbutbut : but fabrique, la commande recevra
+  BUT_AWAY           Paris FC
+  BUT_HOME           Marseille
+  BUT_SCORER         M. Greenwood
+  ...
+  commande    : notify-send "But !" "$BUT_TEXT"
+  resultat    : code de sortie 0
+```
+
+Quelques commandes qui marchent telles quelles :
+
+```bash
+butbutbut --on-goal 'notify-send "But !" "$BUT_TEXT"'
+butbutbut --on-goal 'echo "$(date +%H:%M) $BUT_TEXT" >> ~/mes-buts.txt'
+butbutbut --on-goal 'test "$BUT_TYPE" = goal && mpv ~/sons/klaxon.mp3'
+```
+
+**Ce que le crochet promet :**
+
+- **Les donnees passent par l'environnement, jamais par la commande.** Un nom
+  d'equipe n'est donc jamais recolle dans une ligne de shell : le jour ou la
+  source annoncera un club nomme `; rm -rf ~`, il ne se passera rien.
+- **Un but n'attend jamais la commande.** Elle part dans un fil a part et
+  personne ne guette sa fin : un script lent ne retarde ni la carte, ni le
+  releve suivant. Au-dela de 30 secondes, elle est tuee.
+- **Elle ne peut pas faire tomber butbutbut.** Commande introuvable, code de
+  sortie non nul, script qui ne rend jamais la main : une ligne de journal, et
+  la vie continue. Une reussite, elle, ne dit rien - un crochet qui part a
+  chaque but n'a pas a remplir le journal.
+
+Le crochet part sur un but **et sur son retrait par la VAR** : annoncer un but
+puis se taire quand il est refuse, ce serait mentir a ce qu'on alimente.
+`BUT_TYPE` distingue les deux en un mot. Les temps forts du match, les
+expulsions et les annonces d'avant match, eux, ne declenchent rien : l'option
+promet un but.
+
+Le filtre par equipe s'applique comme au reste : avec `--teams om`, seuls les
+buts de l'OM lancent la commande. La cle `on_goal` du fichier de configuration
+fait la meme chose sans retaper l'option, et `butbutbut --status` rappelle ce
+qui est arme. Un match mis en `--spoiler-free`, lui, ne lance rien : le
+crochet est une alerte de plus, et le mode sans spoiler les coupe toutes -
+autrement une guirlande ou un webhook raconterait le but que l'ecran et le
+haut-parleur viennent justement de taire.
 
 ### La langue
 
@@ -1420,7 +1506,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**784 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**807 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
