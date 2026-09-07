@@ -104,6 +104,10 @@ butbutbut --list              # the competitions you can watch
 butbutbut --list-teams        # the teams in the competitions you follow
 butbutbut --status            # daemon, last poll, matches in play, sound, screens
 butbutbut --today             # the goals reported today
+butbutbut --week              # the last 7 days
+butbutbut --month             # the last 30 days
+butbutbut --since 2026-09-01  # since that date
+butbutbut --top-scorers       # the ranking of the scorers seen going by
 butbutbut --record m.jsonl    # watch, and box up the raw polls as well
 butbutbut --replay m.jsonl    # replay a recording, cards and sounds included
 butbutbut --stop              # stop the daemon
@@ -1381,6 +1385,143 @@ The goals are read back **from the log**, not from the state file: the log
 survives a reboot, a crash and the daemon being stopped, so `--today` still
 answers the next morning, machine switched off in between. Whatever the log
 cannot read is ignored without a fuss.
+
+---
+
+## Further back than today
+
+The same parser, with a wider window:
+
+```bash
+butbutbut --week                 # the last 7 days, today included
+butbutbut --month                # the last 30 days
+butbutbut --since 2026-09-01     # since that date (YYYY-MM-DD)
+```
+
+`--since` wins over `--week` and `--month`. A date that isn't one is refused
+straight away, with the expected format (these commands are not in the
+translation catalogues yet, so they answer in French, like the log they read):
+
+```
+butbutbut : date illisible : 'hier'. Format attendu : AAAA-MM-JJ, par exemple --since 2026-09-01
+```
+
+### A few days: the detail
+
+```
+butbutbut : buts signales du sam. 05/09/2026 au lun. 07/09/2026
+
+sam. 05/09/2026
+    Ligue 1          Nice 1 - 0 Lens                     G. Laborde 12'
+    Ligue 1          Nice 1 - 1 Lens                     F. Thauvin 44'
+    Ligue 1          Nice 2 - 1 Lens                     G. Laborde 62'
+    Premier League   Arsenal 1 - 0 Tottenham             M. Odegaard 21'
+    Premier League   Arsenal 2 - 0 Tottenham             B. Saka 47'
+  - Premier League   Arsenal 1 - 0 Tottenham             Score corrige 48'
+    Premier League   Arsenal 2 - 0 Tottenham             K. Havertz 77'
+    Bundesliga       Bayer 04 Leverkusen 1 - 0 Dortmund  P. Schick 29'
+    Bundesliga       Bayer 04 Leverkusen 2 - 0 Dortmund  F. Wirtz 73'
+
+dim. 06/09/2026
+    Ligue 1          Marseille 1 - 0 Nantes              M. Greenwood 17'
+    Ligue 1          Marseille 2 - 0 Nantes              A. Rabiot 59'
+    Ligue 1          Lille 1 - 0 Auxerre                 J. David 38'
+    LaLiga           Barcelone 1 - 0 Valence             R. Lewandowski 26'
+    LaLiga           Barcelone 2 - 0 Valence             Lamine Yamal 64'
+    Serie A          Inter 1 - 0 Roma                    L. Martinez 82'
+
+lun. 07/09/2026
+    Ligue 1          Angers 1 - 0 Stade Rennais          C. Arcus 61'
+    Ligue 1          Angers 1 - 1 Stade Rennais          A. Kalimuendo 79'
+
+16 but(s) signale(s), 3 jour(s), 5 competition(s).
+'-' = but retire par la VAR (1) : 15 but(s) confirme(s).
+```
+
+Beyond a single day, the day becomes the only heading and the competition
+moves into a column: grouping by day **and** by competition would put a title
+every other line. The detection time gives way to the minute of the match,
+which says more once the evening is over.
+
+### A month: one line a day
+
+Thirty days of Ligue 1 are three hundred goals: the detail would not fit on a
+screen. The density is therefore decided on what there is to show, not on the
+window asked for - as long as the list fits on a screen it is given, beyond
+that each day comes down to its own line:
+
+```
+butbutbut : buts signales du dim. 09/08/2026 au lun. 07/09/2026
+
+  sam. 29/08   9 but(s)          Premier League 4, Ligue 1 3, LaLiga 2
+  dim. 30/08   9 but(s)          Ligue 1 4, Serie A 3, Bundesliga 2
+  mar. 01/09   2 but(s)          Premier League 2
+  mer. 02/09   2 but(s)  -1 VAR  Ligue 1 2
+  sam. 05/09   8 but(s)  -1 VAR  Ligue 1 3, Premier League 3, Bundesliga 2
+  dim. 06/09   6 but(s)          Ligue 1 3, LaLiga 2, Serie A 1
+  lun. 07/09   2 but(s)          Ligue 1 2
+
+38 but(s) signale(s), 7 jour(s), 5 competition(s).
+'-N VAR' = but retire par la VAR (2) : 36 but(s) confirme(s).
+```
+
+A shorter window gives the detail back, and `--top-scorers` gives the names.
+
+---
+
+## The scorers' ranking
+
+```bash
+butbutbut --top-scorers               # the whole log
+butbutbut --top-scorers --week        # over the last 7 days
+butbutbut --top-scorers --teams om    # only Marseille's matches
+```
+
+```
+butbutbut : buteurs vus passer depuis le debut du journal
+
+    1  G. Laborde                  3  Nice
+    2  F. Thauvin                  2  Lens
+    2  H. Lepaul                   2  Angers
+    2  K. Havertz                  2  Arsenal
+    2  L. Martinez                 2  Inter
+    2  M. Greenwood                2  Marseille
+    2  M. Odegaard                 2  Arsenal
+    2  P. Schick                   2  Bayer 04 Leverkusen
+    9  A. Kalimuendo               1  Stade Rennais
+    9  A. Rabiot                   1  Marseille
+    9  B. Saka                     1  Arsenal
+    9  C. Arcus                    1  Angers
+    9  C. Gakpo                    1  Liverpool
+    9  C. Palmer                   1  Chelsea
+    9  D. Zapata                   1  Torino
+    9  E. Guessand                 1  Nice
+    9  F. Wirtz                    1  Bayer 04 Leverkusen
+    9  H. Kane                     1  Bayern
+    9  J. Bellingham               1  Real Madrid
+    9  J. David                    1  Lille
+  ... et 7 autre(s) buteur(s) plus bas au classement.
+
+27 buteur(s) pour 36 but(s) confirme(s) sur 38 signale(s).
+2 but(s) retire(s) par la VAR, deduit(s) du classement.
+```
+
+Without a window, it is the **whole log**: a ranking is only worth something
+once it has piled up. Ties share their place, and the ranking combines with a
+window as well as with the team filter (`--teams`, `--exclude-teams`), which
+also applies to `--today`, `--week`, `--month` and `--since`.
+
+**A goal the VAR took back stays with nobody.** The log does not say which goal
+an annulment erases - the `BUT ANNULE` line carries neither the scorer nor the
+minute of the original goal, only the score gone backwards. The match is
+therefore positional, exactly as the video referee does it: an annulment takes
+back the last goal still standing for that team in that match. An annulment
+whose goal fell before the window opened is deducted from nobody, and the
+footer says so rather than stealing a goal from someone at random.
+
+Finally, the source publishes its plays a few seconds late: a goal detected
+before it is written without a scorer, and stays that way. Those goals count in
+the total, never in the ranking, and the footer announces them.
 
 ---
 
