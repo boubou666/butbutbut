@@ -288,6 +288,35 @@ class TestWhenItWaitsForTheHorn(unittest.TestCase):
         self.assertLessEqual(waits[0], speech.MAX_DELAY)
 
 
+class TestTheWaitNeverOutlivesThePromise(unittest.TestCase):
+    """Quinze secondes au plus, y compris quand les flottants arrondissent.
+
+    L'attente est une soustraction entre deux `monotonic()`, et le resultat
+    peut depasser ce qu'on y avait mis. Ce n'est pas une question de duree -
+    trente picosecondes ne s'entendent pas - mais de promesse verifiable : le
+    test qui la controlait echouait au hasard des machines, une fois sur
+    quinze environ, et c'est le calcul qu'il fallait reparer, pas le test.
+    """
+
+    # Une machine allumee depuis trois jours : c'est la que l'addition arrondit.
+    UPTIME = 262141.38968954512
+
+    def test_the_floats_never_push_it_over(self):
+        # La soustraction nue depasse : c'est le defaut, il est reel.
+        self.assertGreater((self.UPTIME + speech.MAX_DELAY) - self.UPTIME,
+                           speech.MAX_DELAY)
+        self.assertEqual(
+            speech.wait_before(self.UPTIME + speech.MAX_DELAY, self.UPTIME),
+            speech.MAX_DELAY)
+
+    def test_a_deadline_already_past_waits_for_nothing(self):
+        # Un but annonce en retard part tout de suite, il n'attend pas a rebours.
+        self.assertEqual(speech.wait_before(100.0, 112.0), 0.0)
+
+    def test_otherwise_it_is_simply_the_time_left(self):
+        self.assertEqual(speech.wait_before(112.0, 100.0), 12.0)
+
+
 # ------------------------------------------------------------- degradation ---
 
 class TestNothingKillsTheDaemon(unittest.TestCase):

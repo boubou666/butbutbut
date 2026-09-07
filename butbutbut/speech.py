@@ -231,6 +231,25 @@ def _first_line(output) -> str:
     return lines[0][:OUTPUT_LIMIT] if lines else ""
 
 
+def wait_before(deadline: float, now: float) -> float:
+    """Ce qu'il reste a attendre avant `deadline`, jamais plus de MAX_DELAY.
+
+    Le plafond est pose deux fois, et la seconde n'est pas une precaution de
+    trop. `say()` retient `monotonic() + MAX_DELAY` ; le fil de la voix en
+    retranche un `monotonic()` pris juste apres. En arithmetique flottante,
+    cette soustraction ne rend pas toujours ce qu'on y a mis : pour un
+    `monotonic()` de 262 141,39 - une machine allumee depuis trois jours -
+    (t + 15,0) - t vaut 15,000000000029. Trente picosecondes de trop, personne
+    ne les entend, mais la promesse "jamais plus de quinze secondes" cessait
+    d'etre vraie au sens strict, et la CI a fini par tomber dessus.
+
+    Le calcul vit donc ici, hors du fil et hors de l'horloge : c'est ce qui
+    permet de le verifier sur les valeurs qui font mal plutot que sur celles
+    du jour.
+    """
+    return min(max(0.0, deadline - now), MAX_DELAY)
+
+
 # ------------------------------------------------------------- la voix -------
 
 class Voice:
@@ -343,7 +362,7 @@ class Voice:
                 if self._stop.is_set() or not self._pending:
                     return      # arret net, ou plus rien a dire avant l'arret
                 deadline, phrase = self._pending.popleft()
-            waiting = deadline - time.monotonic()
+            waiting = wait_before(deadline, time.monotonic())
             if waiting > 0:
                 self._pause(waiting)
                 if self._stop.is_set():
