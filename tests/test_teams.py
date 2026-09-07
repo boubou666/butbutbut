@@ -1,10 +1,11 @@
 import unittest
 
-from butbutbut import espn, leagues, teams, watcher
+from butbutbut import espn, journal, leagues, teams, watcher
 
 from helpers import bump, event, opener_for, payload
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
+LIGUE2 = leagues.BY_SLUG["fra.2"]
 
 # Un catalogue reduit, ecrit comme la source le rend : (nom, court, abreviation).
 CATALOGUE = [
@@ -346,6 +347,138 @@ class TestWomensTeams(unittest.TestCase):
     def test_the_filter_does_not_confuse_two_clubs_of_the_same_city(self):
         found, _orphans = teams.Filter(wanted="paris fc").resolve(self.WOMEN)
         self.assertEqual(found["paris fc"], ["Paris FC"])
+
+
+class TestScopedWords(unittest.TestCase):
+    """Une equipe bornee a une competition : `--teams ligue2:sochaux`.
+
+    Le cas qui a amene l'ecriture : suivre les cinq grands championnats ET
+    Sochaux en Ligue 2. Sans bornage, `--teams sochaux` faisait taire les cinq
+    autres - ajouter un club revenait a tout perdre.
+    """
+
+    LIGUE2_TEAMS = [
+        ("Sochaux", "Sochaux", "SOC"),
+        ("Grenoble", "Grenoble", "GRE"),
+        ("Metz", "Metz", "METZ"),
+    ]
+
+    def match(self, home="Sochaux", away="Grenoble", league=None):
+        return espn.parse(payload(event(home=home, away=away)),
+                          league or LIGUE2)[0]
+
+    def test_the_prefix_is_cut_at_the_last_separator(self):
+        self.assertEqual(teams.split_scope("ligue2:sochaux"),
+                         ("ligue2", "sochaux"))
+        self.assertEqual(teams.split_scope("hockey:nhl:rangers"),
+                         ("hockey:nhl", "rangers"))
+        self.assertEqual(teams.split_scope("om"), ("", "om"))
+
+    def test_a_half_written_prefix_stays_a_team_word(self):
+        # Ni "ligue2:" ni ":om" ne bornent quoi que ce soit : le jeton repart
+        # entier, et sera signale comme un club introuvable.
+        self.assertEqual(teams.split_scope("ligue2:"), ("", "ligue2:"))
+        self.assertEqual(teams.split_scope(":om"), ("", ":om"))
+
+    def test_a_word_carries_the_competitions_of_its_prefix(self):
+        word = teams.Word("ligue2:sochaux")
+        self.assertEqual(word.token, "sochaux")
+        self.assertEqual(word.scope, frozenset({"fra.2"}))
+        # Sans prefixe, aucun bornage - et surtout pas un ensemble vide, qui
+        # voudrait dire "borne a rien du tout".
+        self.assertIsNone(teams.Word("om").scope)
+
+    def test_the_bounded_competition_keeps_only_that_club(self):
+        followed = teams.Filter(wanted="ligue2:sochaux")
+        self.assertTrue(followed.matches(self.match(home="Sochaux")))
+        self.assertTrue(followed.matches(self.match(home="Grenoble",
+                                                    away="Sochaux")))
+        self.assertFalse(followed.matches(self.match(home="Grenoble",
+                                                     away="Metz")))
+
+    def test_the_other_competitions_are_left_alone(self):
+        """Le coeur du sujet : un mot borne ne restreint que chez lui."""
+        followed = teams.Filter(wanted="ligue2:sochaux")
+        self.assertTrue(followed.matches(
+            self.match(home="Lens", away="Lille", league=LIGUE1)))
+
+    def test_a_word_without_prefix_still_rules_everywhere(self):
+        followed = teams.Filter(wanted="om,ligue2:sochaux")
+        self.assertTrue(followed.matches(
+            self.match(home="Marseille", away="Lille", league=LIGUE1)))
+        # La Ligue 1 est desormais restreinte a l'OM, elle, parce qu'un mot
+        # sans prefixe la vise aussi.
+        self.assertFalse(followed.matches(
+            self.match(home="Lens", away="Lille", league=LIGUE1)))
+        self.assertTrue(followed.matches(self.match(home="Sochaux")))
+
+    def test_an_exclusion_can_be_bounded_too(self):
+        blocked = teams.Filter(excluded="ligue2:metz")
+        self.assertFalse(blocked.matches(self.match(home="Metz",
+                                                    away="Sochaux")))
+        # Le meme club en Ligue 1 n'a rien demande a personne.
+        self.assertTrue(blocked.matches(
+            self.match(home="Metz", away="Lille", league=LIGUE1)))
+
+    def test_a_journal_line_is_bounded_by_its_label(self):
+        """Une ligne relue n'a garde que l'etiquette de la carte."""
+        followed = teams.Filter(wanted="ligue2:sochaux")
+        entry = journal.Entry(day="2026-09-06", time="18:43:27",
+                              kind=watcher.GOAL, league="LIGUE 2",
+                              home="Sochaux", away="Grenoble",
+                              home_score=1, away_score=0, team="Sochaux",
+                              detail="But de M. Kalulu", minute="12'")
+        self.assertTrue(followed.matches(entry))
+        entry.home, entry.away, entry.team = "Metz", "Grenoble", "Metz"
+        self.assertFalse(followed.matches(entry))
+
+    def test_an_unknown_competition_only_keeps_the_free_words(self):
+        # Rien ne dit de quelle competition il s'agit : le mot borne se tait
+        # plutot que de faire disparaitre le match.
+        followed = teams.Filter(wanted="ligue2:sochaux")
+
+        class Unknown:
+            home, away, league = "Sochaux", "Grenoble", ""
+        self.assertTrue(followed.matches(Unknown()))
+
+    def test_the_club_word_travels_without_its_prefix(self):
+        # C'est lui que porte un fichier son : sochaux.mp3, pas ligue2.mp3.
+        chosen = teams.Filter(wanted="ligue2:sochaux,om", excluded="ligue2:metz")
+        self.assertEqual(chosen.team_words(), ["sochaux", "om", "metz"])
+
+    def test_a_bounded_word_is_checked_in_its_own_competition(self):
+        by_league = {"fra.1": CATALOGUE, "fra.2": self.LIGUE2_TEAMS}
+        flat = CATALOGUE + self.LIGUE2_TEAMS
+
+        found, orphans = teams.Filter(wanted="ligue2:sochaux").resolve(
+            flat, by_league)
+        self.assertEqual(orphans, [])
+        self.assertEqual(found["ligue2:sochaux"], ["Sochaux"])
+
+        # L'OM existe, mais pas en Ligue 2 : sans le catalogue par competition,
+        # ce mot passerait pour bon et ne servirait jamais a rien.
+        _found, orphans = teams.Filter(wanted="ligue2:om").resolve(
+            flat, by_league)
+        self.assertEqual(orphans, ["ligue2:om"])
+
+    def test_a_prefix_that_names_nothing_is_reported(self):
+        self.assertEqual(teams.Filter(wanted="ligu2:sochaux").bad_scopes(),
+                         ["ligu2:sochaux"])
+        self.assertEqual(teams.Filter(wanted="ligue2:sochaux").bad_scopes(), [])
+
+    def test_a_prefix_outside_the_selection_is_reported(self):
+        chosen = teams.Filter(wanted="ligue2:sochaux,om")
+        self.assertEqual(chosen.outside([LIGUE1]), ["ligue2:sochaux"])
+        self.assertEqual(chosen.outside([LIGUE1, LIGUE2]), [])
+
+    def test_listing_marks_the_club_only_in_its_competition(self):
+        chosen = teams.Filter(wanted="ligue2:sochaux")
+        names = ("Sochaux", "Sochaux", "SOC")
+        self.assertTrue(chosen.team_matches(names, LIGUE2))
+        self.assertFalse(chosen.team_matches(names, LIGUE1))
+        # Sans competition, la question redevient celle du vocabulaire : ce mot
+        # designe-t-il ce club ? Oui, et c'est ce dont le son a besoin.
+        self.assertTrue(chosen.team_matches(names))
 
 
 if __name__ == "__main__":

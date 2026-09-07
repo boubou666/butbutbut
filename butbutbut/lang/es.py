@@ -218,6 +218,14 @@ MESSAGES = {
     "Voir 'butbutbut --list-teams'.":
         "butbutbut : ningun equipo coincide con {} en {}. "
         "Ver 'butbutbut --list-teams'.",
+    "butbutbut : aucune competition ne correspond au prefixe de {}. "
+    "Voir 'butbutbut --list'.":
+        "butbutbut : ninguna competicion coincide con el prefijo de {}. "
+        "Ver 'butbutbut --list'.",
+    "butbutbut : {} vise une competition qui n'est pas suivie : "
+    "ajoute-la a --leagues, ou retire le prefixe.":
+        "butbutbut : {} apunta a una competicion que no se sigue: "
+        "anadela a --leagues, o quita el prefijo.",
     "{} - {} equipe(s)": "{} - {} equipo(s)",
     "  (la source ne publie pas de liste pour cette competition)":
         "  (la fuente no publica lista para esta competicion)",
@@ -491,11 +499,17 @@ MESSAGES = {
     "liste les competitions surveillables et leurs noms":
         "lista las competiciones vigilables y sus nombres",
     "ne signaler que les matchs de ces equipes, separees par des virgules. "
-    "Un match compte des qu'une des deux equipes y est. Ex : --teams om,psg":
+    "Un match compte des qu'une des deux equipes y est, et un mot prefixe ne "
+    "vaut que dans sa competition. Ex : --teams om,psg ou --teams "
+    "ligue2:sochaux":
         "avisar solo de los partidos de estos equipos, separados por comas. "
-        "Un partido cuenta en cuanto juega uno de los dos. Ej: --teams om,psg",
-    "ne rien signaler des matchs de ces equipes":
-        "no avisar de los partidos de estos equipos",
+        "Un partido cuenta en cuanto juega uno de los dos, y una palabra con "
+        "prefijo solo vale en su competicion. Ej: --teams om,psg o --teams "
+        "ligue2:sochaux",
+    "ne rien signaler des matchs de ces equipes, prefixe compris "
+    "(ligue2:metz)":
+        "no avisar de los partidos de estos equipos, con prefijo incluido "
+        "(ligue2:metz)",
     "garde a l'ecran une carte qui suit les matchs de cette equipe : elle "
     "apparait au coup d'envoi, se met a jour a chaque releve et s'en va "
     "quelques minutes apres la fin. Une seule equipe, et jamais de son. Ex : "

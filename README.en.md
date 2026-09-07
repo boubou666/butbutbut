@@ -472,6 +472,41 @@ competitions it was looked for in: a typo should not turn into a daemon that
 stays silent for three weeks. `butbutbut --list-teams --teams om` also shows
 what each word catches (`*` followed, `-` excluded).
 
+#### One club inside a single competition
+
+```bash
+butbutbut --leagues big5,ligue2 --teams ligue2:sochaux
+```
+
+Adding a second division for **one club only** did not work: the team list
+applies to every followed competition at once, so `--teams sochaux` silenced the
+big five in the same breath. A word **prefixed with a competition** only
+applies - and above all only restricts - inside that one:
+
+| You write | What you get |
+| --- | --- |
+| `--teams sochaux` | nothing anywhere any more, except Sochaux |
+| `--teams ligue2:sochaux` | the followed leagues carry on whole, and Ligue 2 narrows down to Sochaux |
+| `--teams om,ligue2:sochaux` | OM everywhere, plus Sochaux in Ligue 2 |
+| `--exclude-teams ligue2:metz` | Metz disappears from Ligue 2, and from nowhere else |
+
+The prefix is written **the way `--leagues` is**: `l1:`, `ligue2:`, an ESPN code
+(`por.1:`), a whole group (`feminines:lyon`), and `/` works too. For another
+sport the competition keeps its own prefix and the club comes after:
+`hockey:nhl:rangers` - the cut is made at the last colon. `--pin` and
+`--spoiler-free` accept the same notation.
+
+Three mistakes are rejected at startup, the first two **without a single
+request**, because each of them would leave the word inert without ever saying
+so:
+
+- a prefix that names no competition: `ligu2:sochaux`;
+- a prefix that names one that is not followed: `ligue2:sochaux` without
+  `ligue2` in `--leagues`;
+- a club that is absent from the competition it was given: `ligue2:om`, checked
+  against the Ligue 2 catalogue alone rather than against every competition
+  lumped together.
+
 ### Spoiler-free mode
 
 There is one moment where butbutbut turns against you: you are watching the
@@ -1357,6 +1392,10 @@ exclude = seriea
 teams = om,psg
 exclude_teams = psg
 spoiler_free = om
+
+# One club inside a single competition: the rest carries on whole.
+# leagues = big5,ligue2
+# teams = ligue2:sochaux
 
 # The card that stays on screen for the duration of the match (one team)
 pin = om

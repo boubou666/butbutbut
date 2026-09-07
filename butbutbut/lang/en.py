@@ -318,6 +318,14 @@ MESSAGES = {
     "Voir 'butbutbut --list-teams'.":
         "butbutbut : no team matches {} in {}. "
         "See 'butbutbut --list-teams'.",
+    "butbutbut : aucune competition ne correspond au prefixe de {}. "
+    "Voir 'butbutbut --list'.":
+        "butbutbut : no competition matches the prefix of {}. "
+        "See 'butbutbut --list'.",
+    "butbutbut : {} vise une competition qui n'est pas suivie : "
+    "ajoute-la a --leagues, ou retire le prefixe.":
+        "butbutbut : {} points at a competition that is not followed: "
+        "add it to --leagues, or drop the prefix.",
 
     # ----------------------------------------------------------- --screens --
     "butbutbut : {} ecran(s) detecte(s)": "butbutbut : {} screen(s) detected",
@@ -474,11 +482,17 @@ MESSAGES = {
     "liste les competitions surveillables et leurs noms":
         "list the leagues that can be watched, with their names",
     "ne signaler que les matchs de ces equipes, separees par des virgules. "
-    "Un match compte des qu'une des deux equipes y est. Ex : --teams om,psg":
+    "Un match compte des qu'une des deux equipes y est, et un mot prefixe ne "
+    "vaut que dans sa competition. Ex : --teams om,psg ou --teams "
+    "ligue2:sochaux":
         "only report matches involving these teams, comma separated. A match "
-        "counts as soon as either side is in the list. E.g. --teams om,psg",
-    "ne rien signaler des matchs de ces equipes":
-        "report nothing from matches involving these teams",
+        "counts as soon as either side is in the list, and a prefixed word "
+        "only applies inside its competition. E.g. --teams om,psg or --teams "
+        "ligue2:sochaux",
+    "ne rien signaler des matchs de ces equipes, prefixe compris "
+    "(ligue2:metz)":
+        "report nothing from matches involving these teams, prefix included "
+        "(ligue2:metz)",
     "garde a l'ecran une carte qui suit les matchs de cette equipe : elle "
     "apparait au coup d'envoi, se met a jour a chaque releve et s'en va "
     "quelques minutes apres la fin. Une seule equipe, et jamais de son. Ex : "

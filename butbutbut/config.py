@@ -123,10 +123,14 @@ OPTIONS = (
            "liga,seriea", fallback="rien"),
     Option("teams", _text,
            "Ne signaler que les matchs de ces equipes, separees par des "
-           "virgules. Un match compte des qu'une des deux equipes y est.",
+           "virgules. Un match compte des qu'une des deux equipes y est. Un "
+           "mot prefixe ne vaut que dans sa competition, et n'y touche "
+           "qu'elle : 'ligue2:sochaux' ajoute Sochaux sans faire taire les "
+           "championnats deja suivis.",
            "om,psg", fallback="toutes les equipes"),
     Option("exclude_teams", _text,
-           "Ne rien signaler des matchs de ces equipes.",
+           "Ne rien signaler des matchs de ces equipes. Meme prefixe : "
+           "'ligue2:metz' n'exclut Metz qu'en Ligue 2.",
            "psg", fallback="aucune"),
     Option("pin", _text,
            "Garder a l'ecran une carte qui suit les matchs de cette equipe : "
