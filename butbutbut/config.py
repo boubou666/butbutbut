@@ -124,6 +124,7 @@ OPTIONS = (
            "elle apparait au coup d'envoi, se met a jour a chaque releve et "
            "s'en va quelques minutes apres la fin. Une seule equipe, et une "
            "seule carte epinglee.",
+           "om", fallback="aucune"),
     Option("spoiler_free", _text,
            "Equipes regardees en differe : aucune carte ni aucun son pour "
            "leurs matchs, quel que soit l'evenement. Le journal garde tout, "

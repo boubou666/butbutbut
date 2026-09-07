@@ -44,7 +44,7 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Interne
 
-- 502 -> **544 tests**.
+- 701 -> **743 tests**.
 
 
 

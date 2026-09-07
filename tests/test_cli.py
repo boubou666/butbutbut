@@ -703,7 +703,8 @@ class TestSpoilerFreeLoops(unittest.TestCase):
         guard = self.guard_with_one_goal(stopping, spoiler_free)
         with mock.patch.object(cli, "play_goal_sound") as horn:
             with mock.patch.object(cli, "log") as journal:
-                cli._watch_headless(guard, self.args, stopping, self.reporter())
+                cli._watch_headless(guard, self.args, stopping,
+                                    self.reporter(), pinned.Pin(""))
         return horn, journal
 
     def run_with_cards(self, spoiler_free):
@@ -714,7 +715,7 @@ class TestSpoilerFreeLoops(unittest.TestCase):
         with mock.patch.object(cli, "play_goal_sound") as horn:
             with mock.patch.object(cli, "log") as journal:
                 cli._watch_with_cards(guard, self.args, stopping, stack,
-                                      self.reporter())
+                                      self.reporter(), pinned.Pin(""))
         return stack, horn, journal
 
     def test_headless_loop_stays_silent(self):
