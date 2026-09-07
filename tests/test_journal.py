@@ -307,5 +307,235 @@ class TestGoalsOfTheDay(unittest.TestCase):
         self.assertEqual(len(grouped[1][1]), 2)
 
 
+def line(text, day=DAY, clock="20:00:00"):
+    """Une ligne de journal fabriquee, deja analysee."""
+    entry = journal.parse_line("{} {}  {}".format(day, clock, text))
+    assert entry is not None, text
+    return entry
+
+
+def goal(minute="20'", league="Ligue 1", home="Angers", away="Stade Rennais",
+         team=None, scorer="C. Arcus", head="BUT", day=DAY, clock="20:00:00"):
+    """Un but a la carte, pour eprouver survey() sans ecrire un journal entier."""
+    team = home if team is None else team
+    text = "{} [{}] {} 1 - 0 {} pour {} - But de {}".format(
+        head, league, home, away, team, scorer)
+    if minute:
+        text += " ({})".format(minute)
+    return line(text, day=day, clock=clock)
+
+
+def cancel(league="Ligue 1", home="Angers", away="Stade Rennais", team=None,
+           day=DAY, clock="20:05:00"):
+    team = home if team is None else team
+    return line("BUT ANNULE [{}] {} 0 - 0 {} pour {} - Score corrige".format(
+        league, home, away, team), day=day, clock=clock)
+
+
+class TestNatureOfAGoal(unittest.TestCase):
+    """Le journal ne dit la nature d'un but que dans l'en-tete de sa ligne."""
+
+    def test_the_head_of_the_line_is_kept(self):
+        self.assertEqual(goal(head="BUT").key, "title_goal")
+        self.assertEqual(goal(head="BUT SUR PENALTY").key, "title_penalty")
+        self.assertEqual(goal(head="BUT CONTRE SON CAMP").key,
+                         "title_own_goal")
+        self.assertEqual(cancel().key, "title_cancelled")
+
+    def test_the_rugby_heads_are_read_too(self):
+        self.assertEqual(goal(head="ESSAI").key, "title_try")
+        self.assertEqual(goal(head="PENALITE").key, "title_penalty_goal")
+        self.assertEqual(goal(head="DROP").key, "title_drop_goal")
+
+    def test_a_nature_is_named_with_a_word_not_a_shout(self):
+        # Le titre de carte crie ("BUT SUR PENALTY !") : dans un tableau on
+        # veut le mot du catalogue.
+        self.assertEqual(journal.label_of("title_goal"), "But")
+        self.assertEqual(journal.label_of("title_penalty"), "Penalty")
+        self.assertEqual(journal.label_of("title_own_goal"),
+                         "But contre son camp")
+        # "POINTS !" n'a pas de mot court : on retombe sur le titre, calme.
+        self.assertEqual(journal.label_of("title_points"), "Points")
+
+
+class TestMinuteOfAGoal(unittest.TestCase):
+    def test_a_plain_minute_is_read(self):
+        self.assertEqual(goal(minute="50'").clock, (50, 0))
+        self.assertEqual(goal(minute="7'").clock, (7, 0))
+
+    def test_added_time_keeps_its_base_minute(self):
+        self.assertEqual(goal(minute="90+3'").clock, (90, 3))
+        self.assertEqual(goal(minute="45+2'").clock, (45, 2))
+
+    def test_what_is_not_a_minute_of_play_is_not_read_as_one(self):
+        # L'horloge d'un match de hockey, un libelle de phase, un but sans
+        # minute du tout : rien de tout cela n'est une minute de jeu.
+        self.assertIsNone(goal(minute="12:34").clock)
+        self.assertIsNone(goal(minute="Mi-temps").clock)
+        self.assertIsNone(goal(minute="").clock)
+        self.assertIsNone(goal(minute="FT").clock)
+
+
+class TestEvenings(unittest.TestCase):
+    """Une soiree n'est pas un jour de calendrier."""
+
+    def test_a_goal_after_midnight_belongs_to_the_night_before(self):
+        self.assertEqual(journal.evening_of(
+            goal(day="2026-09-07", clock="00:12:00")), "2026-09-06")
+        self.assertEqual(journal.evening_of(
+            goal(day="2026-09-06", clock="23:50:00")), "2026-09-06")
+
+    def test_the_morning_belongs_to_its_own_day(self):
+        # 6h du matin coupe la nuit : un match d'apres est celui du jour meme.
+        self.assertEqual(journal.evening_of(
+            goal(day="2026-09-07", clock="06:00:00")), "2026-09-07")
+        self.assertEqual(journal.evening_of(
+            goal(day="2026-09-07", clock="13:30:00")), "2026-09-07")
+
+    def test_a_match_across_midnight_is_one_evening_not_two(self):
+        found = journal.survey([
+            goal(day="2026-09-06", clock="23:50:00", minute="88'"),
+            goal(day="2026-09-07", clock="00:12:00", minute="90+4'"),
+        ])
+        self.assertEqual(found.evenings, [("2026-09-06", 2)])
+        self.assertEqual(found.matches, 1)
+
+    def test_an_unreadable_stamp_keeps_its_day(self):
+        entry = goal()
+        entry.time = "??"
+        self.assertEqual(journal.evening_of(entry), DAY)
+
+
+class TestSurvey(unittest.TestCase):
+    def test_an_empty_window_says_nothing_and_divides_by_nothing(self):
+        found = journal.survey([])
+        self.assertEqual(found.confirmed, 0)
+        self.assertEqual(found.matches, 0)
+        self.assertEqual(found.per_match, 0.0)
+        self.assertEqual(found.leagues, [])
+        self.assertEqual(found.evenings, [])
+        self.assertEqual(found.natures, [])
+        # L'histogramme garde son cadre : quatre-vingt-dix minutes, a zero.
+        self.assertEqual(len(found.buckets), 9)
+        self.assertEqual({count for _low, _high, count in found.buckets}, {0})
+
+    def test_goals_fall_in_the_slice_a_commentator_would_name(self):
+        found = journal.survey([goal(minute="1'"), goal(minute="10'"),
+                                goal(minute="11'"), goal(minute="90'")])
+        counts = {(low, high): count for low, high, count in found.buckets}
+        self.assertEqual(counts[(1, 10)], 2)
+        self.assertEqual(counts[(11, 20)], 1)
+        self.assertEqual(counts[(81, 90)], 1)
+        self.assertEqual(found.timed, 4)
+
+    def test_the_histogram_always_covers_a_whole_match(self):
+        """Une tranche vide est une forme : "aucun but en fin de match"."""
+        found = journal.survey([goal(minute="12'")])
+        self.assertEqual(found.buckets[0][:2], (1, 10))
+        self.assertEqual(found.buckets[-1][:2], (81, 90))
+
+    def test_extra_time_stretches_the_histogram(self):
+        found = journal.survey([goal(minute="112'")])
+        self.assertEqual(found.buckets[-1], (111, 120, 1))
+
+    def test_added_time_stays_in_the_minute_it_belongs_to(self):
+        found = journal.survey([goal(minute="90+3'")])
+        counts = {(low, high): count for low, high, count in found.buckets}
+        self.assertEqual(counts[(81, 90)], 1)
+        self.assertEqual(found.added, 1)
+
+    def test_a_goal_without_a_readable_minute_is_set_aside(self):
+        found = journal.survey([goal(minute="50'"), goal(minute="Mi-temps")])
+        self.assertEqual(found.timed, 1)
+        self.assertEqual(found.untimed, 1)
+        self.assertEqual(found.confirmed, 2)
+
+    def test_the_var_takes_its_goal_out_of_every_count(self):
+        found = journal.survey([
+            goal(minute="50'"),
+            goal(minute="70'", scorer="H. Lepaul"),
+            cancel(),
+        ])
+        self.assertEqual(found.confirmed, 1)
+        self.assertEqual(found.signalled, 2)
+        self.assertEqual(found.cancelled, 1)
+        self.assertEqual(found.timed, 1)
+        counts = {(low, high): count for low, high, count in found.buckets}
+        self.assertEqual(counts[(61, 70)], 0)       # le dernier but est parti
+        self.assertEqual(counts[(41, 50)], 1)
+        self.assertEqual(found.leagues, [("Ligue 1", 1)])
+
+    def test_a_cancellation_without_a_goal_to_remove_is_counted_apart(self):
+        found = journal.survey([cancel()])
+        self.assertEqual(found.orphans, 1)
+        self.assertEqual(found.confirmed, 0)
+        self.assertEqual(found.cancelled, 1)
+        # Le match a bien ete suivi : une annulation le prouve.
+        self.assertEqual(found.matches, 1)
+
+    def test_leagues_are_ranked_and_ties_are_alphabetical(self):
+        found = journal.survey([
+            goal(league="Ligue 1"),
+            goal(league="Serie A", home="Inter", away="Torino"),
+            goal(league="LaLiga", home="Girona", away="Real Madrid"),
+            goal(league="Serie A", home="Inter", away="Torino",
+                 clock="20:10:00"),
+        ])
+        self.assertEqual(found.leagues,
+                         [("Serie A", 2), ("LaLiga", 1), ("Ligue 1", 1)])
+
+    def test_evenings_are_ranked_and_ties_are_chronological(self):
+        found = journal.survey([
+            goal(day="2026-09-05"),
+            goal(day="2026-09-06", home="Nice", away="Lens"),
+            goal(day="2026-09-04", home="Lille", away="Brest"),
+        ])
+        self.assertEqual(found.evenings, [("2026-09-04", 1),
+                                          ("2026-09-05", 1),
+                                          ("2026-09-06", 1)])
+
+    def test_the_best_evening_comes_first(self):
+        found = journal.survey([
+            goal(day="2026-09-05"),
+            goal(day="2026-09-06", home="Nice", away="Lens"),
+            goal(day="2026-09-06", home="Nice", away="Lens",
+                 clock="20:30:00"),
+        ])
+        self.assertEqual(found.evenings[0], ("2026-09-06", 2))
+
+    def test_the_same_fixture_on_two_evenings_makes_two_matches(self):
+        found = journal.survey([goal(day="2026-09-05"),
+                                goal(day="2026-09-30")])
+        self.assertEqual(found.matches, 2)
+        self.assertAlmostEqual(found.per_match, 1.0)
+
+    def test_the_same_teams_in_two_competitions_make_two_matches(self):
+        found = journal.survey([goal(league="Ligue 1"),
+                                goal(league="Coupe de France",
+                                     clock="20:30:00")])
+        self.assertEqual(found.matches, 2)
+
+    def test_natures_follow_the_catalogue_not_the_counts(self):
+        found = journal.survey([
+            goal(head="BUT CONTRE SON CAMP"),
+            goal(head="BUT CONTRE SON CAMP", clock="20:10:00"),
+            goal(head="BUT", clock="20:20:00"),
+            goal(head="BUT SUR PENALTY", clock="20:30:00"),
+        ])
+        self.assertEqual(found.natures, [("title_goal", 1),
+                                         ("title_own_goal", 2),
+                                         ("title_penalty", 1)])
+
+    def test_a_line_no_version_can_read_never_reaches_the_survey(self):
+        """Le parseur la laisse tomber : survey() ne la voit jamais passer."""
+        with TemporaryDirectory() as tmp:
+            path = log_file(tmp, LOG + (
+                "2026-09-06 21:00:00  BUUUT {Ligue 1} Angers <-> Rennes\n"))
+            found = journal.survey(journal.goals(path, DAY))
+        self.assertEqual(found.signalled, 3)
+        self.assertEqual(found.confirmed, 2)    # la VAR en a repris un
+        self.assertEqual(found.cancelled, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
