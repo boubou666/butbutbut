@@ -168,6 +168,42 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   de surveillance, jamais de celui qui dessine les cartes : ni la carte, ni le
   releve suivant ne l'attendent.
 
+### Ajoute
+
+- **`--sound-for om=~/sons/om.wav` : un son a soi pour un club ou une
+  competition.** Un but de son equipe et un but dans un match qu'on suit de
+  loin sonnaient pareil - or on ne se leve pas pour les deux. Les sons par
+  contexte de la 1.7.0 repondaient deja a la question, mais seulement en
+  renommant un fichier depose dans le dossier `sound`, donc en laissant
+  butbutbut deviner ce que `om` veut dire. La paire se dit maintenant
+  directement, et le fichier reste ou il est.
+- Plusieurs paires d'un coup (`om=...,ucl=...`), les memes mots que `--teams`
+  et `--leagues`, et `contre` pour un but encaisse par une equipe suivie.
+- **L'equipe l'emporte sur sa competition** quand un but coche les deux : ce
+  sont les **memes quatre etages** que les noms de fichiers - equipe, `contre`,
+  competition, fond sonore - et non un second mecanisme pose a cote. A etage
+  egal, ce qui est nomme couvre ce qui est devine dans un nom de fichier :
+  celui qui ecrit la paire vient de dire lequel il voulait. `--sound-for` n'a
+  en revanche pas d'etage general - un son nomme vise quelqu'un, il ne devient
+  jamais le bruit de fond des autres buts.
+- **Un chemin fautif est refuse au demarrage**, comme un nom d'equipe mal
+  orthographie (`check_teams`) : le fichier doit exister, etre lisible et
+  porter une extension jouable, et une equipe nommee a `--sound-for` est
+  confrontee au meme catalogue que `--teams`. Toutes les paires fautives sont
+  dites d'un coup.
+- Un fichier qui **disparait en cours de route** ne fait rien tomber : le but
+  retombe sur le son d'en dessous et le journal garde une ligne. Le disque
+  n'est consulte que pour les paires que le but arme, donc jamais pour une
+  equipe qui ne joue pas ce soir-la.
+- Cle durable `sound_for` dans le fichier de configuration : toutes les paires
+  dans une seule cle, separees par des virgules ou une par ligne. Une virgule
+  ne coupe que devant une nouvelle paire, pour qu'un chemin qui en contient une
+  reste ecrivable. `--status` dit ce que chaque paire arme, et ce qui cloche -
+  c'est la seule commande que le refus au demarrage epargne, sans quoi la seule
+  capable de repondre sortirait en erreur avant d'avoir rien affiche.
+- `--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
+  sons nommes.
+
 ## [1.8.0] - 2026-09-07
 
 ### Ajoute

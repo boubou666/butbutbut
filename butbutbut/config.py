@@ -163,6 +163,13 @@ OPTIONS = (
     Option("opacity", _number,
            "Opacite des cartes, de 0.0 a 1.0.",
            "1.0"),
+    Option("sound_for", _text,
+           "Un son a soi pour une equipe ou une competition : des paires "
+           "'nom=chemin' separees par des virgules, ou une par ligne quand la "
+           "liste s'allonge. Les noms sont ceux de 'teams' et de 'leagues', et "
+           "l'equipe l'emporte sur sa competition. Le fichier doit exister au "
+           "demarrage, sinon butbutbut refuse de partir.",
+           "om=~/sons/om.wav, ucl=~/sons/ucl.mp3", fallback="aucun"),
     Option("volume", _number,
            "Volume de la corne synthetisee, de 0.0 a 1.0. Sans effet sur un "
            "son depose dans le dossier 'sound'.",
