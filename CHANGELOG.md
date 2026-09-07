@@ -9,6 +9,38 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Ajoute
 
+- **`--next` : les prochains matchs.** `--scores` disait ce qui se joue
+  aujourd'hui, `--next` repond a la question d'apres - c'est quand, le prochain
+  match ? Groupe par jour puis par competition, a l'heure locale de la machine,
+  avec le temps qui reste avant chaque coup d'envoi.
+- `--next om` cible une equipe (les memes noms que `--teams` : `om`, `barca`,
+  `manu`, les noms sans accents, un debut de mot), `--next 14` allonge la
+  fenetre, et les deux se disent d'un coup : `--next om,psg,3`.
+- Le tableau de bord d'ESPN sait servir un intervalle de dates
+  (`?dates=20260908-20260915`) : `espn.fetch()` et `espn.scoreboard()`
+  l'acceptent, et une semaine entiere tient donc dans **une** requete par
+  competition au lieu de sept.
+
+### Notes
+
+- Fenetre par defaut : **sept jours**, la maille du calendrier. Un club joue
+  une fois par semaine, deux quand il a une coupe : sept jours contiennent
+  toujours le prochain match de qui que ce soit, sans deverser un mois
+  d'affiches. Elle se compte en jours entiers et non en tranches de 24 h, sans
+  quoi elle couperait une soiree en deux.
+- Les competitions sont interrogees les unes apres les autres, espacees comme
+  au demarrage du daemon : avec `--leagues all` ce sont 36 requetes. **Une
+  competition injoignable n'emporte pas les autres** - le calendrier sort quand
+  meme, avec ce qui manque dit en toutes lettres, et seule une source
+  entierement muette rend un code d'erreur.
+- Rien au programme donne une phrase qui redit ce qui a ete cherche, ou, et sur
+  combien de temps, plutot qu'un tableau vide - c'est aussi la que se voit une
+  faute de frappe dans le nom d'equipe.
+
+
+
+### Ajoute
+
 - **Le journal se relit plus loin que le jour meme** : `butbutbut --week` (les
   7 derniers jours), `--month` (les 30 derniers), et `--since 2026-09-01`
   depuis une date. Meme lecture, meme analyseur que `--today` : seule la

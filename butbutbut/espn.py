@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
@@ -38,6 +39,12 @@ TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/teams"
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
+
+# Le tableau de bord accepte un parametre `dates` : un jour (AAAAMMJJ) ou un
+# intervalle (AAAAMMJJ-AAAAMMJJ), bornes comprises. Sans lui, il ne sert que la
+# journee en cours - assez pour surveiller les buts, pas pour dire quand tombe
+# le prochain match.
+DAY_FORMAT = "%Y%m%d"
 
 # Etats renvoyes par ESPN.
 PRE, LIVE, POST = "pre", "in", "post"
@@ -327,17 +334,46 @@ def download(url: str, timeout: float = DEFAULT_TIMEOUT, label: str = "") -> byt
             type(exc).__name__, label, exc)) from exc
 
 
+def day_code(moment) -> str:
+    """Un jour dans la forme attendue par `dates` : AAAAMMJJ."""
+    return moment.strftime(DAY_FORMAT)
+
+
+def date_span(first, last=None) -> str:
+    """La valeur du parametre `dates` : un jour, ou un intervalle.
+
+    Verifie contre la source : `?dates=20260906` rend le programme de ce
+    jour-la, `?dates=20260906-20260919` celui de toute la periode, les deux
+    bornes comprises. C'est ce qui permet a `--next` de couvrir une semaine
+    entiere en **une** requete par competition la ou un jour a la fois en
+    couterait sept.
+    """
+    start = day_code(first)
+    if last is None:
+        return start
+    end = day_code(last)
+    # Un intervalle d'un seul jour n'apporte rien : autant poser la forme
+    # courte, celle qu'on lit dans les journaux et dans les tests.
+    return start if end == start else "{}-{}".format(start, end)
+
+
 def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
-          sport=None) -> dict:
+          sport=None, dates=None) -> dict:
     """Recupere le tableau de bord brut d'une competition.
 
     `sport` : un sports.Sport, ou None pour le football. Il n'y a rien d'autre
     a passer : le sport n'est qu'un segment d'URL a ce niveau-la.
 
+    `dates` (voir date_span) demande une autre periode que la journee
+    en cours.
+
     `opener` sert aux tests et a l'enregistrement : n'importe quel
     callable(url, timeout) -> bytes.
     """
-    url = SCOREBOARD_URL.format(sport=(sport or sports.DEFAULT).code, slug=slug)
+    url = SCOREBOARD_URL.format(sport=(sport or sports.DEFAULT).code,
+                                slug=slug)
+    if dates:
+        url += "?" + urllib.parse.urlencode({"dates": dates})
 
     if opener is not None:
         try:
@@ -675,11 +711,12 @@ def parse(payload: dict, league) -> list:
     return matches
 
 
-def scoreboard(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:
+def scoreboard(league, timeout: float = DEFAULT_TIMEOUT, opener=None,
+               dates=None) -> list:
     """fetch + parse, pour une competition, quel que soit son sport."""
     sport = getattr(league, "sport", None) or sports.DEFAULT
     return parse(fetch(league.slug, timeout=timeout, opener=opener,
-                       sport=sport), league)
+                       sport=sport, dates=dates), league)
 
 
 def catalogue(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:

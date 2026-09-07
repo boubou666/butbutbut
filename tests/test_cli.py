@@ -6,7 +6,7 @@ import threading
 import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -14,7 +14,7 @@ from unittest import mock
 from butbutbut import (cli, espn, hook, i18n, leagues, pinned, sound,
                        state, watcher)
 
-from helpers import event, goal_detail, payload
+from helpers import at_local_hour, event, goal_detail, in_minutes, payload
 
 
 _LANGUE = {}
@@ -1281,6 +1281,256 @@ class TestContextualSound(unittest.TestCase):
         rows = dict(cli._sound_arming(sound.custom_sounds(self.folder),
                                       self.args(), [leagues.BY_SLUG["fra.1"]]))
         self.assertIn("non suivie", rows["pl.mp3"])
+
+
+def fixtures(*rows, **kwargs):
+    """Des matchs a venir, tels que la source les decrit.
+
+    `rows` : des (identifiant, domicile, exterieur, date ISO). L'etat est "pre"
+    partout - un prochain match n'a par definition pas commence.
+    """
+    slug = kwargs.pop("slug", "fra.1")
+    events = [event(match_id=str(match_id), home=home, away=away, state="pre",
+                    detail="a venir", clock="", date=when)
+              for match_id, home, away, when in rows]
+    return espn.parse(payload(*events), leagues.BY_SLUG[slug])
+
+
+def run_next(argv, answers, pause=0.0):
+    """Lance --next sur des reponses fabriquees, et rend (code, sortie).
+
+    `answers` : slug -> liste de matchs, ou une exception a lever pour ce
+    slug-la. La pause entre deux competitions est neutralisee par defaut :
+    c'est la cadence qui est testee ailleurs, pas ici.
+    """
+    def scoreboard(league, **_kwargs):
+        answer = answers[league.slug]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    buffer = io.StringIO()
+    with mock.patch.object(cli, "NEXT_PAUSE", pause):
+        with mock.patch.object(espn, "scoreboard", side_effect=scoreboard):
+            with redirect_stdout(buffer):
+                code = cli.main(argv)
+    return code, buffer.getvalue()
+
+
+class TestNextRequest(unittest.TestCase):
+    """Ce que --next accepte : rien, une equipe, un nombre de jours."""
+
+    def test_nothing_asks_for_the_default_window(self):
+        self.assertEqual(cli._next_request(""), (cli.DEFAULT_NEXT_DAYS, ""))
+
+    def test_a_word_is_a_team(self):
+        self.assertEqual(cli._next_request("om"), (cli.DEFAULT_NEXT_DAYS, "om"))
+
+    def test_a_number_is_a_window(self):
+        self.assertEqual(cli._next_request("3"), (3, ""))
+
+    def test_both_can_be_said_at_once(self):
+        self.assertEqual(cli._next_request("om,psg,3"), (3, "om,psg"))
+
+    def test_the_window_is_bounded(self):
+        self.assertEqual(cli._next_request("0"), (1, ""))
+        self.assertEqual(cli._next_request("999"), (cli.MAX_NEXT_DAYS, ""))
+
+
+class TestNextWindow(unittest.TestCase):
+    """La fenetre de jours, et ce qui n'est pas un prochain match."""
+
+    def setUp(self):
+        self.now = datetime.now(timezone.utc)
+        self.today = datetime.now().date()
+
+    def keep(self, matches, days):
+        return cli.next_matches(matches, self.now, days, today=self.today)
+
+    def test_a_match_beyond_the_window_is_left_out(self):
+        matches = fixtures(("1", "Angers", "Rennes", at_local_hour(3, 21)))
+        self.assertEqual(len(self.keep(matches, 7)), 1)
+        # Le dernier jour de --next 1, c'est aujourd'hui : dans trois jours,
+        # c'est dehors.
+        self.assertEqual(self.keep(matches, 1), [])
+
+    def test_the_window_counts_whole_local_days(self):
+        # A la fin du 7e jour, tard : dedans quand meme. Une fenetre qui se
+        # fermerait "dans 7 fois 24 h" couperait la soiree en deux.
+        matches = fixtures(("1", "Angers", "Rennes", at_local_hour(6, 23, 45)))
+        self.assertEqual(len(self.keep(matches, 7)), 1)
+        self.assertEqual(self.keep(matches, 6), [])
+
+    def test_a_match_already_under_way_is_not_a_next_match(self):
+        live = espn.parse(payload(event(state="in", date=in_minutes(-30))),
+                          leagues.BY_SLUG["fra.1"])
+        self.assertEqual(self.keep(live, 7), [])
+
+    def test_a_kickoff_already_passed_is_not_announced(self):
+        # L'heure est passee mais rien n'a demarre (retard, report) : ce n'est
+        # pas une reponse a "c'est quand, le prochain ?".
+        late = fixtures(("1", "Angers", "Rennes", in_minutes(-30)))
+        self.assertEqual(self.keep(late, 7), [])
+
+    def test_a_match_without_a_date_is_left_out(self):
+        undated = fixtures(("1", "Angers", "Rennes", ""))
+        self.assertEqual(self.keep(undated, 7), [])
+
+    def test_matches_come_out_in_kickoff_order(self):
+        matches = fixtures(("1", "Angers", "Rennes", at_local_hour(2, 21)),
+                           ("2", "Lyon", "Nice", at_local_hour(1, 17)))
+        kept = self.keep(matches, 7)
+        self.assertEqual([match.home for match in kept], ["Lyon", "Angers"])
+
+
+class TestNextGrouping(unittest.TestCase):
+    """Le regroupement par jour puis par competition."""
+
+    def test_one_group_per_day_in_chronological_order(self):
+        matches = cli.next_matches(
+            fixtures(("1", "Angers", "Rennes", at_local_hour(1, 21)),
+                     ("2", "Lyon", "Nice", at_local_hour(3, 17))),
+            datetime.now(timezone.utc), 7)
+        grouped = cli.group_by_day(matches)
+        self.assertEqual(len(grouped), 2)
+        self.assertLess(grouped[0][0], grouped[1][0])
+
+    def test_a_day_holds_one_row_per_competition(self):
+        matches = cli.next_matches(
+            fixtures(("1", "Angers", "Rennes", at_local_hour(1, 21)))
+            + fixtures(("2", "Arsenal", "Chelsea", at_local_hour(1, 18)),
+                       slug="eng.1"),
+            datetime.now(timezone.utc), 7)
+        grouped = cli.group_by_day(matches)
+        self.assertEqual(len(grouped), 1)
+        rows = grouped[0][1]
+        # L'ordre des competitions suit le premier match de chacune.
+        self.assertEqual([name for name, _ in rows],
+                         ["Premier League", "Ligue 1"])
+        self.assertEqual([len(group) for _, group in rows], [1, 1])
+
+
+class TestNextFormatting(unittest.TestCase):
+    """Les petits textes de l'affichage, pris un par un."""
+
+    def test_the_day_title_names_today_and_tomorrow(self):
+        today = date(2026, 9, 7)          # un lundi
+        self.assertEqual(cli._day_title(today, today),
+                         "lundi 07/09 (aujourd'hui)")
+        self.assertEqual(cli._day_title(today + timedelta(days=1), today),
+                         "mardi 08/09 (demain)")
+        self.assertEqual(cli._day_title(today + timedelta(days=5), today),
+                         "samedi 12/09")
+
+    def test_the_countdown_changes_unit_with_the_distance(self):
+        self.assertEqual(cli._delay_text(35 * 60), "dans 35 min")
+        self.assertEqual(cli._delay_text(3 * 3600), "dans 3 h")
+        self.assertEqual(cli._delay_text(5 * 86400), "dans 5 j")
+        # Jamais "dans 0 min" : un match imminent reste a venir.
+        self.assertEqual(cli._delay_text(20), "dans 1 min")
+
+
+class TestNextCommand(unittest.TestCase):
+    """--next de bout en bout, sans reseau."""
+
+    def test_it_groups_by_day_then_by_competition(self):
+        code, printed = run_next(
+            ["--next", "--leagues", "l1,pl"],
+            {"fra.1": fixtures(("1", "Angers", "Rennes", at_local_hour(1, 21))),
+             "eng.1": fixtures(("2", "Arsenal", "Chelsea", at_local_hour(1, 18)),
+                               slug="eng.1")})
+        self.assertEqual(code, 0)
+        self.assertIn("Ligue 1", printed)
+        self.assertIn("Premier League", printed)
+        self.assertIn("Angers", printed)
+        self.assertIn("Chelsea", printed)
+        # Heure locale, pas celle de la source.
+        self.assertIn("21:00", printed)
+        self.assertIn("18:00", printed)
+        self.assertIn("2 match(s) a venir dans 2 competition(s), sur 7 jour(s).",
+                      printed)
+        # Un seul jour : un seul en-tete.
+        self.assertEqual(printed.count("(demain)"), 1)
+
+    def test_a_team_can_be_named_right_after_next(self):
+        code, printed = run_next(
+            ["--next", "om", "--leagues", "l1"],
+            {"fra.1": fixtures(
+                ("1", "Marseille", "Paris FC", at_local_hour(1, 21)),
+                ("2", "Lyon", "Nice", at_local_hour(2, 17)))})
+        self.assertEqual(code, 0)
+        self.assertIn("Marseille", printed)
+        self.assertNotIn("Lyon", printed)
+
+    def test_a_number_right_after_next_is_the_window(self):
+        answers = {"fra.1": fixtures(
+            ("1", "Angers", "Rennes", at_local_hour(1, 21)),
+            ("2", "Lyon", "Nice", at_local_hour(5, 17)))}
+
+        code, printed = run_next(["--next", "2", "--leagues", "l1"], answers)
+        self.assertEqual(code, 0)
+        self.assertIn("Angers", printed)
+        self.assertNotIn("Lyon", printed)
+        self.assertIn("sur 2 jour(s)", printed)
+
+        _, wider = run_next(["--next", "7", "--leagues", "l1"], answers)
+        self.assertIn("Lyon", wider)
+
+    def test_an_empty_calendar_is_a_sentence_not_a_table(self):
+        code, printed = run_next(["--next", "om", "--leagues", "l1"],
+                                 {"fra.1": []})
+        self.assertEqual(code, 0)
+        self.assertIn("Rien au programme dans les 7 prochains jours", printed)
+        # Le mot cherche est repete : c'est la qu'une faute de frappe se voit.
+        self.assertIn("om", printed)
+
+    def test_one_unreachable_competition_does_not_stop_the_others(self):
+        code, printed = run_next(
+            ["--next", "--leagues", "l1,pl"],
+            {"fra.1": fixtures(("1", "Angers", "Rennes", at_local_hour(1, 21))),
+             "eng.1": espn.SourceError("HTTP 500")})
+        self.assertEqual(code, 0)
+        self.assertIn("Angers", printed)
+        self.assertIn("Premier League injoignable : HTTP 500", printed)
+        self.assertIn("incomplet", printed)
+
+    def test_everything_unreachable_is_an_error(self):
+        code, printed = run_next(["--next", "--leagues", "l1"],
+                                 {"fra.1": espn.SourceError("pas de reseau")})
+        self.assertEqual(code, 1)
+        self.assertIn("Aucune competition n'a repondu", printed)
+
+    def test_the_whole_window_is_asked_in_one_request_per_competition(self):
+        seen = []
+
+        def scoreboard(league, **kwargs):
+            seen.append((league.slug, kwargs.get("dates")))
+            return []
+
+        with mock.patch.object(cli, "NEXT_PAUSE", 0.0):
+            with mock.patch.object(espn, "scoreboard", side_effect=scoreboard):
+                with redirect_stdout(io.StringIO()):
+                    cli.main(["--next", "7", "--leagues", "l1,pl"])
+
+        self.assertEqual([slug for slug, _ in seen], ["fra.1", "eng.1"])
+        for _, dates in seen:
+            self.assertRegex(dates, r"^\d{8}-\d{8}$")
+        # La fenetre est elargie d'un jour de chaque cote : `dates` compte les
+        # jours dans le fuseau de la source, pas dans le notre.
+        first, last = seen[0][1].split("-")
+        today = datetime.now().date()
+        self.assertEqual(first, espn.day_code(today - timedelta(days=1)))
+        self.assertEqual(last, espn.day_code(today + timedelta(days=7)))
+
+    def test_the_requests_are_spaced_out(self):
+        # Avec --leagues all ce sont 36 requetes : une rafale se ferait jeter.
+        with mock.patch.object(cli.time, "sleep") as sleeping:
+            with mock.patch.object(espn, "scoreboard", return_value=[]):
+                with redirect_stdout(io.StringIO()):
+                    cli.main(["--next", "--leagues", "l1,pl,liga"])
+        self.assertEqual(sleeping.call_count, 2)
+        for call in sleeping.call_args_list:
+            self.assertEqual(call[0][0], cli.NEXT_PAUSE)
 
 
 if __name__ == "__main__":

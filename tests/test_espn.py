@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from butbutbut import espn, i18n, leagues
+from butbutbut import espn, i18n, leagues, sports
 
 from helpers import event, goal_detail, opener_for, payload, red_card_detail
 
@@ -253,6 +253,55 @@ class TestFetch(unittest.TestCase):
     def test_non_dict_json_becomes_source_error(self):
         with self.assertRaises(espn.SourceError):
             espn.fetch("fra.1", opener=lambda *_: b"[1, 2, 3]")
+
+
+class TestDates(unittest.TestCase):
+    """Le parametre `dates`, sur lequel repose --next."""
+
+    def test_a_single_day_is_written_plainly(self):
+        day = datetime(2026, 9, 6, tzinfo=timezone.utc)
+        self.assertEqual(espn.day_code(day), "20260906")
+        self.assertEqual(espn.date_span(day), "20260906")
+        # Les deux bornes egales : pas d'intervalle inutile.
+        self.assertEqual(espn.date_span(day, day), "20260906")
+
+    def test_a_window_becomes_an_interval(self):
+        first = datetime(2026, 9, 6, tzinfo=timezone.utc)
+        last = datetime(2026, 9, 13, tzinfo=timezone.utc)
+        self.assertEqual(espn.date_span(first, last), "20260906-20260913")
+
+    def test_the_url_carries_the_window(self):
+        seen = []
+
+        def opener(url, _timeout):
+            seen.append(url)
+            return b'{"events": []}'
+
+        espn.fetch("fra.1", opener=opener, dates="20260906-20260913")
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0].startswith(
+            espn.SCOREBOARD_URL.format(sport=sports.DEFAULT.code, slug="fra.1")), seen[0])
+        self.assertIn("dates=20260906-20260913", seen[0])
+
+    def test_without_dates_the_url_does_not_change(self):
+        seen = []
+
+        def opener(url, _timeout):
+            seen.append(url)
+            return b'{"events": []}'
+
+        espn.fetch("fra.1", opener=opener)
+        self.assertEqual(seen, [espn.SCOREBOARD_URL.format(sport=sports.DEFAULT.code, slug="fra.1")])
+
+    def test_scoreboard_passes_the_window_along(self):
+        seen = []
+
+        def opener(url, _timeout):
+            seen.append(url)
+            return b'{"events": []}'
+
+        espn.scoreboard(LIGUE1, opener=opener, dates="20260906-20260913")
+        self.assertIn("dates=20260906-20260913", seen[0])
 
 
 if __name__ == "__main__":

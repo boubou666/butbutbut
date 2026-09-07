@@ -41,6 +41,21 @@ def in_minutes(minutes) -> str:
     return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def at_local_hour(days_ahead, hour, minute=0) -> str:
+    """Une date ISO UTC pour un coup d'envoi a l'heure LOCALE voulue.
+
+    in_minutes() suffit pour un compte a rebours, pas pour verifier un
+    regroupement par jour : "dans 120 min" tombe la veille ou le lendemain
+    selon l'heure a laquelle la suite est lancee. Ici le jour local est choisi,
+    donc le test dit la meme chose a 9 h et a 23 h, sous tous les fuseaux.
+    """
+    local = (datetime.now().replace(hour=hour, minute=minute, second=0,
+                                    microsecond=0)
+             + timedelta(days=days_ahead))
+    # Un datetime naif est lu comme une heure locale par astimezone().
+    return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def team(name, color="", alternate="", logo=""):
     """Un competiteur, tel que la source le decrit.
 
