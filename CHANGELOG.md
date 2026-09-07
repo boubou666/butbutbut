@@ -64,7 +64,7 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   sans qu'une seule ligne des deux boucles de surveillance ne change : elles
   continuent d'appeler `tick()` et `plan_wait()`, et l'attente qu'on leur passe
   avance l'horloge de l'enregistrement.
-- 502 -> **554 tests**.
+- 573 -> **627 tests**.
 
 
 

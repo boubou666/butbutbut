@@ -122,7 +122,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
-from . import __version__, espn, leagues as catalogue
+from . import __version__, espn, leagues as catalogue, sports
 
 # Le numero du format du fichier. A n'incrementer que si une version future
 # cesse de pouvoir lire ce qu'on ecrit ici : ajouter une cle n'est pas un
@@ -151,15 +151,26 @@ class RecordingError(RuntimeError):
 # ------------------------------------------------------------- outillage -----
 
 def slug_of(url) -> str:
-    """Le code de la competition, extrait de l'URL du tableau de bord.
+    """La cle de la competition, extraite de l'URL du tableau de bord.
 
     Le `Recorder` ne voit passer que des URL : c'est ce que l'`opener` recoit.
-    Le code ESPN est le segment qui suit "/soccer/".
+    Depuis que le catalogue s'ouvre aux autres sports, deux competitions
+    peuvent porter le meme code ESPN : la cle est donc celle de `League.ref` -
+    "fra.1" au football, ou le sport est sous-entendu, "hockey:nhl" ailleurs.
+    Sans quoi un enregistrement pris en `--leagues all-sports` servirait la
+    NHL a qui demande la Ligue 1.
     """
-    parts = str(url).split("/soccer/")
+    parts = str(url).split("/sports/")
     if len(parts) < 2:
         return ""
-    return parts[1].split("/")[0].split("?")[0].strip()
+    segments = [part for part in parts[1].split("/") if part]
+    if len(segments) < 2:
+        return ""
+    sport = segments[0].split("?")[0].strip()
+    slug = segments[1].split("?")[0].strip()
+    if not sport or not slug:
+        return ""
+    return slug if sport == sports.DEFAULT.code else sport + ":" + slug
 
 
 def _is_gzip(path) -> bool:
@@ -223,7 +234,7 @@ class Recorder:
         self.clock = clock or time.time
         self.dedupe = bool(dedupe)
         self.on_log = on_log or (lambda message: None)
-        self.leagues = [getattr(league, "slug", str(league)) for league in leagues]
+        self.leagues = [getattr(league, "ref", str(league)) for league in leagues]
 
         self.polls = 0        # releves ecrits, marqueurs compris
         self.repeats = 0      # ... dont reponses identiques a la precedente

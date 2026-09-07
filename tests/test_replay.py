@@ -15,12 +15,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from butbutbut import cli, espn, i18n, leagues, replay, state, watcher
+from butbutbut import cli, espn, i18n, leagues, replay, sports, state, watcher
 
 from helpers import FakeClock, event, goal_detail, payload, red_card_detail
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
-URL = espn.SCOREBOARD_URL.format(slug="fra.1")
+URL = espn.SCOREBOARD_URL.format(sport=sports.DEFAULT.code, slug="fra.1")
 
 
 def setUpModule():
@@ -528,16 +528,24 @@ class TestTheReplayIsTheLiveRun(Sandbox):
         record_a_match(self.path)
         player = replay.Player(replay.Recording.load(self.path))
         with self.assertRaises(espn.SourceError):
-            player.opener(espn.SCOREBOARD_URL.format(slug="eng.1"))
+            player.opener(espn.SCOREBOARD_URL.format(sport=sports.DEFAULT.code, slug="eng.1"))
 
 
 class TestUrls(unittest.TestCase):
     def test_the_league_is_read_back_from_the_url(self):
         self.assertEqual(replay.slug_of(URL), "fra.1")
         self.assertEqual(
-            replay.slug_of(espn.TEAMS_URL.format(slug="uefa.champions")),
+            replay.slug_of(espn.TEAMS_URL.format(
+                sport=sports.DEFAULT.code, slug="uefa.champions")),
             "uefa.champions")
         self.assertEqual(replay.slug_of("https://exemple.test/rien"), "")
+
+    def test_another_sport_keeps_its_prefix(self):
+        """Deux sports peuvent partager un code ESPN : la cle doit les separer."""
+        self.assertEqual(
+            replay.slug_of(espn.SCOREBOARD_URL.format(
+                sport=sports.HOCKEY.code, slug="nhl")),
+            "hockey:nhl")
 
 
 class TestReadableSizes(unittest.TestCase):
