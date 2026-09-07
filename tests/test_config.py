@@ -351,11 +351,13 @@ class TestNoOptionIsForgotten(unittest.TestCase):
     """
 
     # Ce qui n'a aucun sens dans un fichier : les commandes ponctuelles, et le
-    # chemin du fichier lui-meme.
+    # chemin du fichier lui-meme. L'enregistrement et le rejeu en font partie :
+    # ce sont des sessions, pas des reglages - personne ne veut que tous ses
+    # samedis soirs partent sur le disque parce que la cle est restee la.
     ACTIONS = {
         "test", "scores", "status", "stop", "paths", "screens", "today",
         "list_leagues", "list_teams", "regen_sound", "write_config", "config",
-        "update", "check_update", "dev",
+        "update", "check_update", "dev", "record", "replay", "speed",
     }
 
     def test_every_lasting_option_has_its_key(self):

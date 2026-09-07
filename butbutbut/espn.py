@@ -297,6 +297,36 @@ class Match:
 
 # ---------------------------------------------------------------- reseau -----
 
+def headers() -> dict:
+    """Les en-tetes de toutes nos requetes, en un seul endroit."""
+    return {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json",
+        "Accept-Language": "fr,en;q=0.8",
+        "Cache-Control": "no-cache",
+    }
+
+
+def download(url: str, timeout: float = DEFAULT_TIMEOUT, label: str = "") -> bytes:
+    """La requete brute vers la source, sans rien interpreter.
+
+    Sortie du corps de fetch() pour qu'il existe un seul endroit ou le reseau
+    est touche : c'est ce qu'appelle `replay.Recorder` quand il se pose entre
+    le programme et la source. `label` n'est la que pour le message d'erreur -
+    le code du championnat parle mieux qu'une URL de cent caracteres.
+    """
+    label = label or url
+    request = urllib.request.Request(url, headers=headers())
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        raise SourceError("HTTP {} sur {}".format(exc.code, label)) from exc
+    except Exception as exc:          # URLError, socket.timeout, ssl...
+        raise SourceError("{} sur {} : {}".format(
+            type(exc).__name__, label, exc)) from exc
+
+
 def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
           sport=None) -> dict:
     """Recupere le tableau de bord brut d'une competition.
@@ -304,32 +334,20 @@ def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
     `sport` : un sports.Sport, ou None pour le football. Il n'y a rien d'autre
     a passer : le sport n'est qu'un segment d'URL a ce niveau-la.
 
-    `opener` sert aux tests : n'importe quel callable(url, timeout) -> bytes.
+    `opener` sert aux tests et a l'enregistrement : n'importe quel
+    callable(url, timeout) -> bytes.
     """
     url = SCOREBOARD_URL.format(sport=(sport or sports.DEFAULT).code, slug=slug)
 
     if opener is not None:
         try:
             raw = opener(url, timeout)
+        except SourceError:
+            raise
         except Exception as exc:
             raise SourceError(str(exc)) from exc
     else:
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/json",
-                "Accept-Language": "fr,en;q=0.8",
-                "Cache-Control": "no-cache",
-            },
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                raw = response.read()
-        except urllib.error.HTTPError as exc:
-            raise SourceError("HTTP {} sur {}".format(exc.code, slug)) from exc
-        except Exception as exc:      # URLError, socket.timeout, ssl...
-            raise SourceError("{} sur {} : {}".format(type(exc).__name__, slug, exc)) from exc
+        raw = download(url, timeout, label=slug)
 
     try:
         if isinstance(raw, bytes):
@@ -677,16 +695,7 @@ def catalogue(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> list:
         if opener is not None:
             raw = opener(url, timeout)
         else:
-            request = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": "application/json",
-                    "Accept-Language": "fr,en;q=0.8",
-                },
-            )
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                raw = response.read()
+            raw = download(url, timeout, label=league.slug)
         if isinstance(raw, bytes):
             raw = raw.decode("utf-8", "replace")
         payload = json.loads(raw)

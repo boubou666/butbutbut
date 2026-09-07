@@ -344,7 +344,7 @@ class Watcher:
                  idle_interval=DEFAULT_IDLE_INTERVAL,
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
                  opener=None, on_log=None, teams=None, clock=None,
-                 red_cards=False, before_kickoff=0.0):
+                 red_cards=False, before_kickoff=0.0, monotonic=None):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
@@ -362,6 +362,11 @@ class Watcher:
         # L'horloge murale, surchargeable : elle sert a reperer les trous, et
         # les tests ne peuvent pas endormir la machine pour de vrai.
         self.clock = clock or time.time
+        # L'horloge de cadence, surchargeable elle aussi. C'est ce qui permet
+        # au rejeu d'un enregistrement (voir replay.py) d'avancer le temps plus
+        # vite que la montre sans qu'on touche aux boucles de surveillance :
+        # elles continuent d'appeler tick() et plan_wait() comme d'habitude.
+        self.monotonic = monotonic or time.monotonic
 
         # Les competitions sont indexees par leur `ref` et non par leur `slug` :
         # deux sports pourraient un jour partager un code ESPN, et leurs matchs
@@ -378,12 +383,12 @@ class Watcher:
     # ------------------------------------------------------------ cadence ---
 
     def due_leagues(self, now=None) -> list:
-        now = now if now is not None else time.monotonic()
+        now = now if now is not None else self.monotonic()
         return [l for l in self.leagues if self._due.get(l.ref, 0.0) <= now]
 
     def next_delay(self, now=None) -> float:
         """Secondes a attendre avant le prochain passage, bornees."""
-        now = now if now is not None else time.monotonic()
+        now = now if now is not None else self.monotonic()
         if not self.leagues:
             return self.idle_interval
         soonest = min(self._due.get(l.ref, 0.0) for l in self.leagues)
@@ -456,7 +461,7 @@ class Watcher:
 
     def refresh(self, league, now=None) -> list:
         """Relit un championnat et renvoie les evenements qui en decoulent."""
-        now = now if now is not None else time.monotonic()
+        now = now if now is not None else self.monotonic()
         try:
             matches = espn.scoreboard(league, timeout=self.timeout, opener=self.opener)
         except espn.SourceError as exc:
@@ -487,7 +492,7 @@ class Watcher:
 
     def tick(self, now=None) -> list:
         """Passe sur tous les championnats dont l'heure est venue."""
-        now = now if now is not None else time.monotonic()
+        now = now if now is not None else self.monotonic()
         self._check_gap()
         events = []
         for league in self.due_leagues(now):
@@ -512,16 +517,20 @@ class Watcher:
         self._planned_at = None
         return gap
 
-    def prime(self, pause: float = 0.2) -> None:
+    def prime(self, pause: float = 0.2, now=None) -> None:
         """Premier passage sur tout : photographie l'existant, sans alerte.
 
         Les appels sont espaces, et les prochains releves decales les uns des
         autres : avec tout le catalogue, trente-six requetes tirees en rafale
         finissent par se faire jeter par la source.
+
+        `now` et `pause` sont la pour le rejeu : il photographie a l'heure de
+        l'enregistrement, et n'a personne a menager en attendant entre deux
+        competitions.
         """
         total = len(self.leagues)
         for index, league in enumerate(self.leagues):
-            self.refresh(league)
+            self.refresh(league, now=now)
             self._due[league.ref] += index * SPREAD
             if pause and index + 1 < total:
                 time.sleep(pause)
