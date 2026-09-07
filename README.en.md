@@ -533,8 +533,16 @@ Ligue 1 (2026-27)
 The word after `--table` is read as a **competition** if the catalogue
 recognises it, and as a **team** otherwise. These are exactly the names
 `--leagues` and `--teams` already accept: `l1`, `nhl`, `top14` on one side,
-`om`, `barca`, `manu` on the other. No club is called `big5`, so the ambiguity
-never arises.
+`om`, `barca`, `manu` on the other. No club is called `big5`.
+
+A country is another matter. `france` is shorthand for Ligue 1 as much as it is
+the name of a national side: the competition wins, so `--table france` prints
+Ligue 1 - and so does `--table france --leagues 6nations`, the word given to
+`--table` quietly taking precedence over `--leagues`. The same goes for
+`angleterre`, `espagne`, `italie`, `allemagne`, `portugal`, `ecosse`, `bresil`,
+`argentine`, `mexique`, `japon` and `usa`. For a table of national sides,
+naming the competition answers better anyway: `--table 6nations` shows France's
+row among the ones that give it meaning.
 
 Naming a team does not show that team's row alone: a rank on its own means
 nothing, it is the table of their competition that answers the question. Their

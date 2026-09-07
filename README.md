@@ -533,8 +533,16 @@ Ligue 1 (2026-27)
 Le mot qui suit `--table` est lu comme une **competition** si le catalogue le
 reconnait, comme une **equipe** sinon. Ce sont exactement les noms de
 `--leagues` et de `--teams` : `l1`, `nhl`, `top14` d'un cote, `om`, `barca`,
-`manu` de l'autre. Aucun club ne s'appelle `big5`, l'ambiguite ne se produit
-pas.
+`manu` de l'autre. Aucun club ne s'appelle `big5`.
+
+Un pays, si. `france` est le raccourci de la Ligue 1 autant que le nom d'une
+selection : la competition l'emporte, donc `--table france` sort la Ligue 1, et
+`--table france --leagues 6nations` aussi - le mot donne a `--table` passe avant
+`--leagues`, sans le dire. Meme sort pour `angleterre`, `espagne`, `italie`,
+`allemagne`, `portugal`, `ecosse`, `bresil`, `argentine`, `mexique`, `japon` et
+`usa`. Pour un classement de selections, nommer la competition repond mieux de
+toute facon : `--table 6nations` montre la ligne de la France au milieu de
+celles qui lui donnent son sens.
 
 Une equipe nommee ne montre pas sa seule ligne : un rang tout seul ne veut rien
 dire, c'est le classement de sa competition qui repond a la question. Elle est
