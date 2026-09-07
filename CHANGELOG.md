@@ -7,6 +7,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.9.0] - 2026-09-07
+
 ### Corrige
 
 - **La boucle a cartes rendait la main pendant que son fil ecrivait encore.**
@@ -1139,7 +1141,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.8.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/boubou666/butbutbut/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/boubou666/butbutbut/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/boubou666/butbutbut/compare/v1.5.0...v1.7.0
 [1.5.0]: https://github.com/boubou666/butbutbut/compare/v1.4.0...v1.5.0
