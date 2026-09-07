@@ -2,6 +2,8 @@ import os
 import unittest
 from unittest import mock
 
+import io
+import contextlib
 import pathlib
 
 from butbutbut import (cli, espn, i18n, journal, lang, leagues, overlay,
@@ -109,9 +111,16 @@ class TestChoix(unittest.TestCase):
             self.assertEqual(i18n.use(None), "it")
 
     def test_describe_nomme_la_langue(self):
+        # Le nom suit la langue : une interface allemande n'annonce pas
+        # "de (allemand)". On ne fige pas le mot allemand lui-meme, qu'un
+        # traducteur peut vouloir reformuler -- seulement le fait qu'il ne
+        # soit plus francais.
         i18n.use("de")
-        self.assertIn("de", i18n.describe())
-        self.assertIn("allemand", i18n.describe())
+        rendu = i18n.describe()
+        self.assertTrue(rendu.startswith("de ("), rendu)
+        self.assertNotIn("allemand", rendu)
+        i18n.use("fr")
+        self.assertEqual(i18n.describe(), "fr (francais)")
 
 
 class TestDetection(unittest.TestCase):
@@ -338,23 +347,54 @@ class TestLaProseDeLaLigneDeCommande(unittest.TestCase):
     """Le francais sert de cle : les catalogues doivent lui coller."""
 
     def phrases(self):
-        """Les phrases que cli.py passe a tr(), extraites du code."""
+        """Les phrases que le programme passe a tr(), extraites du code.
+
+        Tout le paquet, et pas seulement cli.py : --status affiche aussi ce que
+        lui rendent state, screens et leagues, et ces trois-la traduisent leurs
+        valeurs eux-memes.
+        """
         import ast
 
-        source = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
         trouvees = []
-        for noeud in ast.walk(ast.parse(source)):
-            if (isinstance(noeud, ast.Call)
-                    and getattr(noeud.func, "id", None) == "tr"
-                    and noeud.args
-                    and isinstance(noeud.args[0], ast.Constant)
-                    and isinstance(noeud.args[0].value, str)):
-                trouvees.append(noeud.args[0].value)
+        dossier = pathlib.Path(cli.__file__).parent
+        for fichier in sorted(dossier.glob("*.py")):
+            source = fichier.read_text(encoding="utf-8")
+            for noeud in ast.walk(ast.parse(source)):
+                if (isinstance(noeud, ast.Call)
+                        and getattr(noeud.func, "id", None) == "tr"
+                        and noeud.args
+                        and isinstance(noeud.args[0], ast.Constant)
+                        and isinstance(noeud.args[0].value, str)):
+                    trouvees.append(noeud.args[0].value)
         return trouvees
 
     def test_il_y_a_de_la_prose_a_traduire(self):
         # Garde-fou : si quelqu'un defait l'extraction, ce test le dit.
         self.assertGreater(len(set(self.phrases())), 80)
+
+    def test_l_aide_suit_la_langue_demandee(self):
+        """--lang doit porter jusqu'a --help.
+
+        Ecrit apres avoir constate le contraire : les textes d'aide sont
+        traduits au moment ou argparse les recoit, donc a la construction du
+        parseur. Tant que la langue etait reglee apres l'analyse, --help
+        sortait en francais quoi qu'on demande et seule BUTBUTBUT_LANG
+        marchait. Le test ne compare pas a une traduction precise -- il
+        verifie seulement que les deux aides different, ce qui suffit a dire
+        que la langue a ete prise en compte, et ne casse pas si un traducteur
+        reformule.
+        """
+        aides = {}
+        for code in ("fr", "en"):
+            sortie = io.StringIO()
+            with contextlib.redirect_stdout(sortie):
+                with self.assertRaises(SystemExit):
+                    cli.main(["--lang", code, "--help"])
+            aides[code] = sortie.getvalue()
+
+        self.assertIn("--lang", aides["fr"])
+        self.assertNotEqual(aides["fr"], aides["en"],
+                            "--help ne suit pas --lang")
 
     def test_aucune_traduction_orpheline(self):
         """Une cle qui ne correspond a aucune phrase du code est morte.

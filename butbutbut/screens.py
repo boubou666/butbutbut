@@ -19,6 +19,8 @@ import re
 import subprocess
 import sys
 
+from .i18n import tr
+
 # Coins possibles pour la carte, et la marge qu'on garde avec le bord.
 CORNERS = ("bottom-right", "bottom-left", "top-right", "top-left", "center")
 MARGIN = 24
@@ -252,9 +254,9 @@ def pick(found: list, preference=None) -> Monitor:
 def describe(found: list) -> str:
     if len(found) == 1:
         monitor = found[0]
-        return "1 ecran ({}x{})".format(monitor.width, monitor.height)
+        return tr("1 ecran ({}x{})", monitor.width, monitor.height)
     parts = ", ".join(
         "{}:{} {}x{}{}".format(i, m.name, m.width, m.height, "*" if m.primary else "")
         for i, m in enumerate(found)
     )
-    return "{} ecrans [{}]".format(len(found), parts)
+    return tr("{} ecrans [{}]", len(found), parts)

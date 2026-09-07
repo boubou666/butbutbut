@@ -416,14 +416,15 @@ Le **filtre par equipe** s'applique a ces trois cartes comme aux buts : avec
 `--teams om`, seules les expulsions, annonces et fins de match de l'OM
 remontent.
 
-### La langue des cartes
+### La langue
 
-Les cartes parlent la langue de la machine, parmi les cinq des cinq grands
-championnats - francais, anglais, espagnol, italien, allemand - et le francais
-quand ce n'est aucune des cinq.
+Les cartes **et la ligne de commande** parlent la langue de la machine, parmi
+les cinq des cinq grands championnats - francais, anglais, espagnol, italien,
+allemand - et le francais quand ce n'est aucune des cinq.
 
 ```bash
 butbutbut --lang de       # force l'allemand
+butbutbut --lang de --help   # l'aide aussi
 butbutbut --status        # la ligne "langue" dit ce qui a ete retenu
 ```
 
@@ -438,11 +439,17 @@ la Coupe du monde WELTMEISTERSCHAFT. Celles dont le nom est un nom propre n'y
 touchent pas - la Bundesliga, la Serie A ou la Coupe de France s'ecrivent
 pareil partout.
 
-**Ce qui n'est pas traduit** : cette aide, `--status`, `--scores` et le
-journal. Le journal reste en francais **par choix** : `--today` le relit, et un
-fichier ecrit avant un changement de langue resterait sinon a moitie illisible
-pour le relecteur. Une carte peut donc afficher `TOR!` pendant que le journal
-note `BUT`.
+L'aide, `--status`, `--scores`, `--screens`, `--list` et `--today` suivent, y
+compris les valeurs qu'ils affichent - `il y a 12 s` devient `vor 12 s`, pas
+seulement l'etiquette devant.
+
+**Ce qui reste en francais** : le journal, et **par choix**. `--today` le
+relit, et un fichier ecrit avant un changement de langue resterait sinon a
+moitie illisible pour le relecteur. Une carte peut donc afficher `TOR!` pendant
+que le journal note `BUT`.
+
+Une phrase qu'un catalogue ne porte pas retombe sur le francais plutot que de
+disparaitre : une traduction incomplete laisse le programme utilisable.
 
 L'ordre de decision, du plus fort au plus faible :
 

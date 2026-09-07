@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 
 from . import i18n
+from .i18n import tr
 
 # Un code ESPN ressemble a "fra.1", "uefa.champions", "fra.coupe_de_france".
 SLUG_SHAPE = re.compile(r"^[a-z]{2,8}(?:\.[a-z0-9_]+)+$")
@@ -251,25 +252,26 @@ def resolve(tokens=None, exclude=None) -> list:
     if not kept:
         if blocked:
             raise NoLeagueLeft(
-                "plus aucune competition a surveiller apres exclusion.")
-        raise NoLeagueLeft("aucune competition selectionnee.")
+                tr("plus aucune competition a surveiller apres exclusion."))
+        raise NoLeagueLeft(tr("aucune competition selectionnee."))
     return kept
 
 
 def describe(selection) -> str:
     if list(selection) == list(LEAGUES):
-        return "les 5 grands championnats"
+        return tr("les 5 grands championnats")
     if list(selection) == list(CATALOGUE):
-        return "tout le catalogue ({} competitions)".format(len(CATALOGUE))
+        return tr("tout le catalogue ({} competitions)", len(CATALOGUE))
     names = [league.name for league in selection]
     if len(names) > 6:
-        return "{} et {} autres".format(", ".join(names[:6]), len(names) - 6)
+        return tr("{} et {} autres", ", ".join(names[:6]), len(names) - 6)
     return ", ".join(names)
 
 
 def catalogue_lines() -> list:
     """Le catalogue, pretes a afficher : (groupe, nom, code, alias)."""
-    rows = [("Les 5 grands (defaut)", LEAGUES), ("Aussi disponibles", EXTRA)]
+    rows = [(tr("Les 5 grands (defaut)"), LEAGUES),
+            (tr("Aussi disponibles"), EXTRA)]
     lines = []
     for title, group in rows:
         lines.append((title, None, None, None))

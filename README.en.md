@@ -286,7 +286,7 @@ The **full-time** card goes a little further: it lists each side's scorers
 under the score, because a bare `1 - 2` does not say who scored, and that is
 precisely the question when you haven't watched the match.
 
-The cards speak the language of the machine, French among five (see [Card language](#card-language)); this help, `--status` and the log stay in French.
+The cards speak the language of the machine, French among five (see [Language](#language)); the log stays in French.
 
 ```
 FIN DU MATCH   LIGUE 1                                        90'+4'
@@ -418,15 +418,16 @@ The **team filter** applies to these three cards just as it does to goals:
 with `--teams om`, only OM's sendings-off, announcements and full-time cards
 come through.
 
-### Card language
+### Language
 
-The cards speak the language of the machine, among the five of the big-five
-leagues - French, English, Spanish, Italian, German - falling back to French
-when it is none of them.
+The cards **and the command line** speak the language of the machine, among the
+five of the big-five leagues - French, English, Spanish, Italian, German -
+falling back to French when it is none of them.
 
 ```bash
 butbutbut --lang de       # force German
-butbutbut --status        # the "langue" line says which one was picked
+butbutbut --lang de --help   # the help too
+butbutbut --status        # the "language" line says which one was picked
 ```
 
 ```
@@ -440,10 +441,16 @@ World Cup WELTMEISTERSCHAFT. The ones whose name is a proper noun are left
 alone - the Bundesliga, Serie A or the Coupe de France are spelled the same
 everywhere.
 
-**What is not translated**: this help, `--status`, `--scores` and the log. The
-log stays in French **by choice**: `--today` reads it back, and a file written
-before a language change would otherwise be half unreadable to the parser. So a
-card can read `TOR!` while the log records `BUT`.
+The help, `--status`, `--scores`, `--screens`, `--list` and `--today` follow,
+down to the values they print - `il y a 12 s` becomes `vor 12 s`, not just the
+label in front of it.
+
+**What stays in French**: the log, and **by choice**. `--today` reads it back,
+and a file written before a language change would otherwise be half unreadable
+to the parser. So a card can read `TOR!` while the log records `BUT`.
+
+A phrase a catalogue does not carry falls back to French rather than
+disappearing: an unfinished translation leaves the program usable.
 
 Precedence, strongest first:
 
