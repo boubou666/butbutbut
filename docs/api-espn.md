@@ -390,6 +390,86 @@ absent a chaque fois - pas vide : absent. On a le score, l'horloge et la
 periode, jamais le buteur. La carte le dit en ne disant rien. (Les buteurs du
 hockey existent pourtant ailleurs : voir la section 7.)
 
+### L'enjeu : `competitions[0].notes`
+
+Releve le **8 septembre 2026** sur **9 601 matchs** - 6 267 joues et 3 334 a
+venir, 20 competitions de football, la NHL et 5 de rugby.
+
+```json
+"notes": [ { "type": "event", "headline": "1st Leg", "text": "1st Leg" } ]
+```
+
+La cle est **sur chaque match**, sans exception, et c'est **toujours un
+tableau**. Une seule entree quand il y en a une, `type` vaut invariablement
+`"event"`, et `headline` repete `text` (sur les 238 notes du premier releve :
+233 fois les deux, 5 fois `headline` seul, jamais `text` seul).
+
+**Elle est vide 97 fois sur 100** - 245 notes sur 9 601 matchs - et surtout :
+elle ne contient jamais ce qu'on esperait y trouver.
+
+| Ou | Matchs | Avec une note |
+| --- | --- | --- |
+| Championnats (fra.1, eng.1, esp.1, ita.1, ger.1, bra.1, por.1, ned.1, eng.w.1, nwsl, qualifs CDM) | 4 866 | **2** |
+| Rugby (Top 14, Six Nations, URC, Champions Cup, tests) | 611 | **0** |
+| Coupes et phases finales (UCL, UEL, FA Cup, Copa del Rey, DFB-Pokal, Coupe de France, Nations League, UWCL, MLS) | 2 124 | 231 |
+| NHL | 2 000 | 12 |
+
+Les deux notes du premier rang ne sont pas des exceptions a la regle, elles la
+confirment : ce sont un barrage d'Eredivisie et un playoff de NWSL, publies
+dans le flux du championnat mais decides aux tirs au but.
+
+**Il n'y a ni journee ni tour la-dedans.** Pas un "Matchday 4", pas un "Round
+of 16" sur 9 601 matchs ; aucun championnat n'en publie une seule, et pas un
+match de rugby non plus. Le reste de la reponse ne les porte pas davantage :
+`season.slug` dit `"2026-27-ligue-1"` ou `"league-phase"`, `season.type.name`
+repete le nom de la competition, `week` n'existe pas et `?week=N` reste sans
+effet (voir plus haut). **La journee n'est pas dans cette reponse**, et ce
+n'est donc pas un arbitrage d'affichage : c'est une donnee qui n'existe pas.
+
+Ce que la note contient vraiment, ce sont trois familles :
+
+| Famille | Exemples | Occurrences |
+| --- | --- | --- |
+| Le match d'une confrontation | `1st Leg` | 78 |
+| **Un resultat** | `2nd Leg - Real Madrid advance 3-1 on aggregate`, `Leeds United advance 4-2 on penalties`, `Series tied 1-1`, `PHI win series 2-0` | 155 |
+| Un evenement de marque, au hockey | `NHL Global Series`, `Discover NHL Winter Classic`, `Heritage Classic`, `Kraft Hockeyville`, `Makeup date March 9` | 12 |
+
+La deuxieme famille est la plus nombreuse, et c'est **le contraire de ce qu'on
+veut** : une carte qui reprend la note telle quelle raconte la fin du match.
+Elle n'apparait, il est vrai, qu'apres coup - sur les 3 224 matchs **a venir**
+releves, 7 seulement portaient une note, et les 7 etaient des evenements de
+marque de la NHL.
+
+**La langue, enfin.** Le tableau du bas de la section 2 vaut ici mot pour mot :
+`1st Leg` devient `Ida` en `lang=es` et en `lang=pt`, et reste `1st Leg` en
+`fr`, `de` et `it`. `Leeds United advance 4-2 on penalties` devient
+`Leeds United avanza 4-3 en tiros de penal` en espagnol et ne bouge pas
+ailleurs. Les evenements de marque de la NHL ne bougent dans aucune langue.
+Autrement dit : deux langues servies sur les cinq du programme, et **aucune des
+deux n'est le francais**.
+
+### Le stade : `competitions[0].venue`
+
+```json
+"venue": { "id": "2323", "fullName": "Roazhon Park",
+           "address": { "city": "Rennes", "country": "France" },
+           "indoor": false }
+```
+
+Presente sur **6 265 matchs sur 6 267**, avec `fullName` a chaque fois et
+`address.city` sur 6 240. `indoor` n'accompagne que le hockey et le rugby
+(1 439 fois), `address.state` porte l'etat au hockey ("ON") et, curieusement,
+le pays au rugby ("France"). L'evenement porte parfois sa propre copie
+(`events[].venue`, 4 826 fois) : celle de `competitions[0]` est la plus
+souvent remplie des deux.
+
+**`fullName` n'est traduit dans aucune langue** - "RAMS Park" et "Stadium MK"
+restent tels quels en `lang=es` comme en `lang=pt`. Seule l'adresse bouge :
+`city` devient "Estambul" et `country` "Inglaterra" en espagnol. Un nom de
+stade ne se traduit d'ailleurs pas, ce qui n'est pas le probleme : le probleme
+est sa longueur ("Decathlon Arena - Stade Pierre-Mauroy", "Stade du Moustoir -
+Yves Allainmat"), et le fait qu'il ne se resume pas.
+
 ---
 
 ## 4. Les equipes
@@ -682,6 +762,7 @@ voici, avec l'endroit qui les lit - c'est aussi la liste que surveille
 | `status.type.shortDetail` / `detail` / `description` | `espn.parse` | la ligne d'etat |
 | `status.displayClock` | `espn.parse` | la minute de jeu |
 | `competitions[0].date` | `_parse_date` | l'heure du coup d'envoi |
+| `competitions[0].notes[].headline` / `text` | `match_note` | l'enjeu, dans le coin de l'avant-match |
 | `details[].type.id` / `text` | `_soccer_details`, `_rugby_details` | la nature de l'action |
 | `details[].scoringPlay` / `redCard` / `ownGoal` / `penaltyKick` / `shootout` | `_soccer_details` | l'habillage de la carte |
 | `details[].clock.displayValue` | `_detail_common` | la minute du but |
@@ -697,6 +778,11 @@ voici, avec l'endroit qui les lit - c'est aussi la liste que surveille
 Les cinq dernieres lignes ne viennent pas du tableau de bord mais du resume
 d'un match (section 7), et ne sont lues que pour le hockey, qu'apres un but, et
 que pour le match qui vient de l'encaisser.
+
+De `notes`, il ne garde que ce qu'il sait redire dans les cinq langues : deux
+libelles, `1st Leg` et `2nd Leg`, et rien d'autre. Tout ce qui suit un " - "
+est coupe avant meme d'etre regarde, parce que c'est la que vivent les
+resultats (voir `espn.NOTE_KEYS`).
 
 Et surtout, ce qu'il **ne** lit pas : le score n'est jamais deduit des actions.
 Un score qui monte est un but, meme si `details` n'a pas encore rattrape -
@@ -737,7 +823,7 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
 
 ## 12. Ce qu'on pourrait en tirer
 
-Quatre pistes que ce releve ouvre, avec leur arbitrage. Chacune dit ou elle en
+Cinq pistes que ce releve ouvre, avec leur arbitrage. Chacune dit ou elle en
 est.
 
 **Demander gzip - fait.** Huit fois moins d'octets sur le fil, pour une ligne
@@ -788,6 +874,41 @@ carte ira la chercher.
 sont servis, le francais ne l'est pas, et **les noms d'equipes ne sont jamais
 traduits** dans aucune langue. `i18n.py` garde donc son travail, et `teams.py`
 son rapprochement sur les libelles anglais.
+
+**La journee sur la carte d'avant-match.** Repondu, et c'est non - mais pas
+pour la raison qu'on croyait. Ce n'etait pas un arbitrage de place : **la
+journee n'existe pas dans cette reponse**. Ni `notes`, ni `season`, ni `week`
+ne la portent, sur 9 601 matchs de trois sports, et aucun championnat ne
+publie une seule note (section 3). Une piste qui se ferme parce que la donnee
+n'est pas la, et non parce qu'on a prefere autre chose.
+
+Ce que `notes` publie vraiment, en revanche, a donne une reponse plus petite et
+qui tient : **l'aller et le retour d'une confrontation de coupe**. Deux
+libelles - `1st Leg`, `2nd Leg` - reconnus et reecrits par `i18n.py`, jamais
+recopies de l'anglais, et poses dans le **coin de l'en-tete que la carte
+d'avant-match laissait vide** faute de minute de jeu a montrer. La carte ne
+grandit donc pas d'un pixel (153 px avec la forme, comme avant), et le compte
+a rebours reste la troisieme ligne. Deux entrees dans la table et pas une de
+plus : ce sont les deux seules qui aient ete observees, et le depot ne suppose
+pas ce qu'il n'a pas vu.
+
+Trois refus vont avec, et ils sont du meme mouvement :
+
+- **le reste des notes se jette**, parce qu'on ne sait pas le dire. `Kraft
+  Hockeyville` ou `NHL Global Series` en clair sur une carte allemande, ce
+  serait la faute que la section 2 apprend a ne pas commettre ;
+- **ce qui suit un " - " est coupe avant lecture.** La note dit le plus souvent
+  un resultat - `2nd Leg - Real Madrid advance 3-1 on aggregate` - et une
+  carte d'avant-match ne raconte pas la fin. La coupe est une garantie, pas une
+  commodite : elle vaut aussi le jour ou la source collera un resultat sur un
+  match a venir ;
+- **le stade est ecarte.** Il est pourtant la, presque toujours (6 265 matchs
+  sur 6 267) et gratuit comme le reste. Mais il ne se resume pas - "Decathlon
+  Arena - Stade Pierre-Mauroy" ne se raccourcit pas sans mentir - et il
+  couterait donc une ligne entiere sur la carte deja la plus haute du
+  programme. Quatre avant-matchs empiles feraient un mur. Ce que le stade
+  apprend a qui regarde un match, ce n'est de toute facon pas ce que la carte
+  est la pour dire : elle dit qu'un match commence dans cinq minutes.
 
 ---
 
@@ -1175,6 +1296,30 @@ for event in data.get("events") or []:
         for detail in competition.get("details") or []:
             kind = detail.get("type") or {}
             seen[(kind.get("id"), kind.get("text"))] += 1
+for key, count in seen.most_common():
+    print(key, count)
+EOF
+```
+
+Les notes d'une competition, comptees par libelle - c'est ainsi qu'a ete faite
+la section 3. Il faut balayer large : sur un championnat, le compteur reste a
+zero quel que soit l'intervalle, et c'est precisement ce qu'on cherchait a
+savoir.
+
+```bash
+python - <<'EOF'
+import collections, json, urllib.request
+UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
+url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions"
+       "/scoreboard?dates=20250801-20260601&limit=1000")
+page = urllib.request.urlopen(
+    urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
+data = json.load(page)
+seen = collections.Counter()
+for event in data.get("events") or []:
+    for competition in event.get("competitions") or []:
+        for note in competition.get("notes") or []:
+            seen[(note.get("type"), note.get("headline"))] += 1
 for key, count in seen.most_common():
     print(key, count)
 EOF

@@ -384,6 +384,85 @@ absent every time - not empty: absent. We get the score, the clock and the
 period, never the scorer. The card says so by saying nothing. (Hockey scorers
 do exist elsewhere, though: see section 7.)
 
+### The stake: `competitions[0].notes`
+
+Surveyed on **8 September 2026** over **9,601 matches** - 6,267 played and
+3,334 upcoming, across 20 football competitions, the NHL and 5 rugby ones.
+
+```json
+"notes": [ { "type": "event", "headline": "1st Leg", "text": "1st Leg" } ]
+```
+
+The key is on **every match**, without exception, and it is **always an
+array**. One entry when there is one, `type` is invariably `"event"`, and
+`headline` repeats `text` (over the 238 notes of the first survey: 233 times
+both, 5 times `headline` alone, never `text` alone).
+
+**It is empty 97 times out of 100** - 245 notes over 9,601 matches - and above
+all: it never holds what we hoped to find there.
+
+| Where | Matches | With a note |
+| --- | --- | --- |
+| Leagues (fra.1, eng.1, esp.1, ita.1, ger.1, bra.1, por.1, ned.1, eng.w.1, nwsl, WC qualifiers) | 4,866 | **2** |
+| Rugby (Top 14, Six Nations, URC, Champions Cup, tests) | 611 | **0** |
+| Cups and knockout stages (UCL, UEL, FA Cup, Copa del Rey, DFB-Pokal, Coupe de France, Nations League, UWCL, MLS) | 2,124 | 231 |
+| NHL | 2,000 | 12 |
+
+The two notes in the first row are not exceptions to the rule, they confirm
+it: an Eredivisie play-off and an NWSL play-off, published in the league feed
+but settled on penalties.
+
+**There is neither a matchday nor a round in there.** Not one "Matchday 4",
+not one "Round of 16" over 9,601 matches; no league publishes a single note,
+and neither does any rugby match. The rest of the answer does not carry them
+either: `season.slug` says `"2026-27-ligue-1"` or `"league-phase"`,
+`season.type.name` repeats the competition name, `week` does not exist and
+`?week=N` has no effect (see above). **The matchday is not in this answer**, so
+this is not a display trade-off: it is a field that does not exist.
+
+What the note actually holds falls into three families:
+
+| Family | Examples | Occurrences |
+| --- | --- | --- |
+| Which leg of a tie | `1st Leg` | 78 |
+| **A result** | `2nd Leg - Real Madrid advance 3-1 on aggregate`, `Leeds United advance 4-2 on penalties`, `Series tied 1-1`, `PHI win series 2-0` | 155 |
+| A branded event, in hockey | `NHL Global Series`, `Discover NHL Winter Classic`, `Heritage Classic`, `Kraft Hockeyville`, `Makeup date March 9` | 12 |
+
+The second family is the largest, and it is **the opposite of what we want**: a
+card that repeats the note verbatim gives away the ending. It does only appear
+afterwards, admittedly - of the 3,224 **upcoming** matches surveyed, only 7
+carried a note, and all 7 were NHL branded events.
+
+**And the language.** The table at the bottom of section 2 applies here word
+for word: `1st Leg` becomes `Ida` under `lang=es` and `lang=pt`, and stays
+`1st Leg` under `fr`, `de` and `it`. `Leeds United advance 4-2 on penalties`
+becomes `Leeds United avanza 4-3 en tiros de penal` in Spanish and does not
+move elsewhere. The NHL branded events move in no language at all. In other
+words: two languages served out of the program's five, and **neither of them is
+French**.
+
+### The ground: `competitions[0].venue`
+
+```json
+"venue": { "id": "2323", "fullName": "Roazhon Park",
+           "address": { "city": "Rennes", "country": "France" },
+           "indoor": false }
+```
+
+Present on **6,265 matches out of 6,267**, with `fullName` every time and
+`address.city` on 6,240. `indoor` only comes with hockey and rugby (1,439
+times), `address.state` carries the state in hockey ("ON") and, oddly, the
+country in rugby ("France"). The event sometimes carries its own copy
+(`events[].venue`, 4,826 times): the `competitions[0]` one is the more often
+filled of the two.
+
+**`fullName` is translated in no language** - "RAMS Park" and "Stadium MK" stay
+as they are under `lang=es` as under `lang=pt`. Only the address moves: `city`
+becomes "Estambul" and `country` "Inglaterra" in Spanish. A ground's name is
+not something you translate anyway, which is not the problem: the problem is
+its length ("Decathlon Arena - Stade Pierre-Mauroy", "Stade du Moustoir - Yves
+Allainmat"), and the fact that it does not shorten.
+
 ---
 
 ## 4. Teams
@@ -672,6 +751,7 @@ watches.
 | `status.type.shortDetail` / `detail` / `description` | `espn.parse` | the status line |
 | `status.displayClock` | `espn.parse` | the minute of play |
 | `competitions[0].date` | `_parse_date` | the kick-off time |
+| `competitions[0].notes[].headline` / `text` | `match_note` | the stake, in the pre-match corner |
 | `details[].type.id` / `text` | `_soccer_details`, `_rugby_details` | the nature of the play |
 | `details[].scoringPlay` / `redCard` / `ownGoal` / `penaltyKick` / `shootout` | `_soccer_details` | dressing the card |
 | `details[].clock.displayValue` | `_detail_common` | the minute of the goal |
@@ -687,6 +767,11 @@ watches.
 The last five lines do not come from the scoreboard but from a match summary
 (section 7), and are read only for hockey, only after a goal, and only for the
 match that has just conceded one.
+
+Of `notes`, it keeps only what it can say back in all five languages: two
+labels, `1st Leg` and `2nd Leg`, and nothing else. Everything after a " - " is
+cut before it is even looked at, because that is where results live (see
+`espn.NOTE_KEYS`).
 
 And above all, what it does **not** read: the score is never derived from the
 plays. A score that goes up is a goal, even if `details` has not caught up -
@@ -727,7 +812,7 @@ The ones that have already cost something, or that would.
 
 ## 12. What could be done with this
 
-Four leads this survey opens, with their trade-off. Each one says where it
+Five leads this survey opens, with their trade-off. Each one says where it
 stands.
 
 **Ask for gzip - done.** Eight times fewer bytes on the wire, for one line in
@@ -777,6 +862,39 @@ will go looking for it.
 Portuguese are served, French is not, and **team names are never translated**
 in any language. So `i18n.py` keeps its job, and `teams.py` keeps matching on
 the English labels.
+
+**The matchday on the pre-match card.** Answered, and the answer is no - but
+not for the reason we expected. It was not a trade-off about space: **the
+matchday does not exist in this answer**. Neither `notes`, nor `season`, nor
+`week` carries it, over 9,601 matches across three sports, and no league
+publishes a single note (section 3). A lead that closes because the data is not
+there, not because we preferred something else.
+
+What `notes` does publish, on the other hand, yielded a smaller answer that
+holds: **which leg of a cup tie this is**. Two labels - `1st Leg`, `2nd Leg` -
+recognised and rewritten by `i18n.py`, never copied from the English, and
+placed in the **header corner that the pre-match card was leaving empty** for
+want of a minute of play to show. So the card does not grow by a single pixel
+(153 px with the form, as before), and the countdown remains the third line.
+Two entries in the table and not one more: they are the only two ever observed,
+and the repository does not assume what it has not seen.
+
+Three refusals come with it, and they are all of a piece:
+
+- **the rest of the notes are dropped**, because we cannot say them. `Kraft
+  Hockeyville` or `NHL Global Series` verbatim on a German card would be
+  exactly the mistake section 2 teaches you not to make;
+- **anything after a " - " is cut before reading.** The note most often states
+  a result - `2nd Leg - Real Madrid advance 3-1 on aggregate` - and a pre-match
+  card does not give away the ending. The cut is a guarantee, not a
+  convenience: it holds on the day the source pins a result to an upcoming
+  match too;
+- **the ground is set aside.** It is there, almost always (6,265 matches out of
+  6,267) and free like the rest. But it does not shorten - "Decathlon Arena -
+  Stade Pierre-Mauroy" cannot be trimmed without lying - so it would cost a
+  whole line on the tallest card in the program. Four stacked pre-match cards
+  would be a wall. And what a ground tells someone watching a match is not what
+  the card is there to say anyway: it says a match starts in five minutes.
 
 ---
 
@@ -1162,6 +1280,29 @@ for event in data.get("events") or []:
         for detail in competition.get("details") or []:
             kind = detail.get("type") or {}
             seen[(kind.get("id"), kind.get("text"))] += 1
+for key, count in seen.most_common():
+    print(key, count)
+EOF
+```
+
+A competition's notes, counted by label - this is how section 3 was made. You
+have to sweep wide: on a league the counter stays at zero whatever the date
+range, and that was precisely what we were trying to find out.
+
+```bash
+python - <<'EOF'
+import collections, json, urllib.request
+UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
+url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions"
+       "/scoreboard?dates=20250801-20260601&limit=1000")
+page = urllib.request.urlopen(
+    urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
+data = json.load(page)
+seen = collections.Counter()
+for event in data.get("events") or []:
+    for competition in event.get("competitions") or []:
+        for note in competition.get("notes") or []:
+            seen[(note.get("type"), note.get("headline"))] += 1
 for key, count in seen.most_common():
     print(key, count)
 EOF

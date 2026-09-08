@@ -2,7 +2,7 @@ import unittest
 
 from butbutbut import espn, i18n, leagues, teams, watcher
 
-from helpers import (FakeClock, bump, event, goal_detail, in_minutes,
+from helpers import (FakeClock, bump, event, goal_detail, in_minutes, note,
                      opener_for, payload, red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
@@ -591,6 +591,63 @@ class TestPrematchCard(unittest.TestCase):
         self.assertTrue(announce.sober)
         self.assertFalse(announce.goal)
         self.assertFalse(announce.phase)          # son propre interrupteur
+
+    def test_the_leg_takes_the_corner_the_minute_left_empty(self):
+        # L'enjeu se pose dans l'en-tete et nulle part ailleurs : c'est le seul
+        # endroit de la carte la plus haute du programme qui soit encore libre.
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            notes=[note("1st Leg")]))
+        announce = self.guard().refresh(LIGUE1)[0]
+        self.assertEqual(announce.minute, "Match aller")
+
+    def test_the_countdown_stays_the_third_line_whatever_the_note_says(self):
+        # La garantie du chantier : l'enjeu ne double pas le compte a rebours,
+        # ni ne pousse la forme d'une ligne.
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            home_form="LLWWW", away_form="WWDWL",
+            home_record="1-0-2", away_record="2-1-0",
+            notes=[note("2nd Leg")]))
+        announce = self.guard().refresh(LIGUE1)[0]
+        self.assertEqual(announce.minute, "Match retour")
+        self.assertEqual(announce.detail_line(), "Coup d'envoi dans 5 min")
+        self.assertEqual(announce.extra_lines(),
+                         ["Angers : PPGGG  1G 0N 2P",
+                          "Stade Rennais : GGNGP  2G 1N 0P"])
+
+    def test_a_note_nobody_can_translate_leaves_the_corner_empty(self):
+        # Un libelle inconnu se jette : il ne s'affiche pas tel quel.
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            notes=[note("Kraft Hockeyville")]))
+        self.assertEqual(self.guard().refresh(LIGUE1)[0].minute, "")
+
+    def test_the_leg_is_said_in_the_language_of_the_card(self):
+        # La carte espagnole ne porte pas un mot anglais - c'est tout l'objet
+        # de la table de espn.py, la source ne traduisant que deux langues sur
+        # cinq et jamais celles-la.
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            notes=[note("1st Leg")]))
+        announce = self.guard().refresh(LIGUE1)[0]
+        self.assertEqual(announce.minute_text(lang="es"), "Ida")
+        self.assertEqual(announce.minute_text(lang="de"), "Hinspiel")
+        self.assertEqual(announce.minute_text(lang="it"), "Andata")
+        self.assertEqual(announce.minute_text(lang="en"), "First leg")
+
+    def test_the_journal_keeps_the_leg_in_french(self):
+        # Le journal reste francais quelle que soit la langue des cartes.
+        self.state["payload"] = payload(event(
+            state="pre", clock="0'", date=in_minutes(5),
+            notes=[note("1st Leg")]))
+        announce = self.guard().refresh(LIGUE1)[0]
+        i18n.use("de")
+        try:
+            self.assertEqual(announce.minute, "Hinspiel")
+            self.assertIn("(Match aller)", announce.log_line())
+        finally:
+            i18n.use("fr")
 
     def test_the_team_filter_applies(self):
         self.assertEqual(self.guard(teams=teams.Filter("lens")).refresh(LIGUE1), [])

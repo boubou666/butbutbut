@@ -334,17 +334,34 @@ class Event:
     @property
     def minute(self) -> str:
         """La minute du but, sinon l'horloge du match."""
+        return self.minute_text()
+
+    def minute_text(self, lang=None) -> str:
+        """Le coin droit de l'en-tete, dans `lang`.
+
+        C'est la minute du but presque partout, mais pas partout : deux cartes
+        n'ont aucune minute de jeu a montrer et se servent du coin pour dire ce
+        qui, chez elles, situe le match. D'ou une methode qui prend une langue,
+        la ou une simple minute n'en aurait pas eu besoin - le journal veut la
+        sienne (voir log_line).
+        """
         if self.kind == PREMATCH:
             # Rien n'a commence : l'horloge d'un match a venir ne dit rien, et
-            # la date complete que la source y met deborde de l'en-tete.
-            return ""
+            # la date complete que la source y met deborde de l'en-tete. Le
+            # coin est donc libre, et c'est le seul endroit de la carte la plus
+            # haute du programme qui le soit encore : l'enjeu s'y pose sans
+            # couter un pixel de hauteur ni pousser le compte a rebours d'une
+            # ligne. Presque toujours vide, comme avant (voir espn.match_note).
+            return (i18n.text(self.match.note, lang=lang)
+                    if self.match.note else "")
         if self.kind == CATCHUP:
             # Une carte de resume couvre plusieurs matchs : aucune minute de
             # jeu ne lui appartient. On y met la duree du trou, qui dit d'un
             # coup d'oeil de quelle absence on parle.
             if not self.gap:
                 return ""
-            return i18n.text("catchup_gap", minutes=int(self.gap // 60))
+            return i18n.text("catchup_gap", lang=lang,
+                             minutes=int(self.gap // 60))
         if self.play is not None and self.play.minute:
             return self.play.minute
         return self.match.clock or self.match.detail or ""
@@ -499,8 +516,9 @@ class Event:
         extra = self.extra_lines(lang=i18n.FALLBACK)
         if extra:
             parts.append("- " + " ; ".join(extra))
-        if self.minute:
-            parts.append("(" + self.minute + ")")
+        minute = self.minute_text(lang=i18n.FALLBACK)
+        if minute:
+            parts.append("(" + minute + ")")
         return " ".join(parts)
 
     def __repr__(self):

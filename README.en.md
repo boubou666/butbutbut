@@ -1562,6 +1562,25 @@ the form of both sides goes underneath, as at
 programme, and the only one whose height depends on what the source publishes:
 a match it says nothing about gives back the three lines from before.
 
+**Which leg of a cup tie this is shows up in the corner**, where every other
+card puts the minute of play:
+
+```
+LE MATCH VA COMMENCER   LIGUE DES CHAMPIONS            Match aller
+Real Madrid         0 - 0                    Benfica
+Coup d'envoi dans 5 min
+Real Madrid : GGNGG  3G 1N 0P
+Benfica : GPGGN  2G 1N 1P
+```
+
+Nothing has started, so that corner is free: the stake goes in without costing
+the tallest card in the programme one more line. It is also everything the
+source publishes about a match's stake - **there is no matchday there**, no
+round either, and not a single league says anything at all (see
+[docs/api-espn.en.md](docs/api-espn.en.md), section 3). What else it writes is
+in English and most often a result: a label the programme cannot say back in
+all five languages is dropped, never shown verbatim.
+
 Like the red card, this card has its own switch and does not depend on
 `--no-phase-cards`. Set to more than a quarter of an hour ahead, it also
 speeds up the polling rate so that the time you asked for is actually met.
@@ -3125,11 +3144,12 @@ neither into the name nor into the score. Each one is right, none of them says
 what the card looks like, and a two-pixel shift slipped between them without a
 single test blinking.
 
-So ten cards are frozen as **ASCII blueprints** under `tests/plans/`: the goal
-card, the pinned card, the pre-match card, kick-off, full time, a rugby card, a
-card with red cards on both sides, names long enough to be truncated, and the
-goal card at two other `--scale` values. Every blueprint carries a drawing and
-a table.
+So eleven cards are frozen as **ASCII blueprints** under `tests/plans/`: the
+goal card, the pinned card, the pre-match card (twice: with and without the
+stake in the corner, so that the identical height reads in plain sight),
+kick-off, full time, a rugby card, a card with red cards on both sides, names
+long enough to be truncated, and the goal card at two other `--scale` values.
+Every blueprint carries a drawing and a table.
 
 ```
      0         80        160       240       320       400       480

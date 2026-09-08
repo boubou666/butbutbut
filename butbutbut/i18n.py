@@ -103,6 +103,13 @@ MESSAGES = {
         "kickoff_in": "Coup d'envoi dans {minutes} min",
         "catchup_before": "avant {score}",
         "catchup_gap": "{minutes} min",
+        # L'enjeu d'un match de coupe, dans le coin de l'en-tete. Deux cles et
+        # pas une de plus : ce sont les deux seuls libelles que la source ait
+        # ete vue publier et qu'on sache redire (voir espn.NOTE_KEYS). Elle les
+        # traduit d'ailleurs en espagnol - "Ida" est son propre mot - mais pas
+        # dans les quatre autres, d'ou la table plutot que la confiance.
+        "note_first_leg": "Match aller",
+        "note_second_leg": "Match retour",
         "shootout_won": "Tirs au but {score} : ",
         "shootout_winner": "Vainqueur aux tirs au but : ",
         "shootout": "Tirs au but",
@@ -187,6 +194,8 @@ MESSAGES = {
         "kickoff_in": "Kick-off in {minutes} min",
         "catchup_before": "was {score}",
         "catchup_gap": "{minutes} min",
+        "note_first_leg": "First leg",
+        "note_second_leg": "Second leg",
         "shootout_won": "Shootout {score}: ",
         "shootout_winner": "Shootout winner: ",
         "shootout": "Shootout",
@@ -271,6 +280,8 @@ MESSAGES = {
         "kickoff_in": "Comienza en {minutes} min",
         "catchup_before": "antes {score}",
         "catchup_gap": "{minutes} min",
+        "note_first_leg": "Ida",
+        "note_second_leg": "Vuelta",
         "shootout_won": "Tanda de penaltis {score}: ",
         "shootout_winner": "Gana en la tanda: ",
         "shootout": "Tanda de penaltis",
@@ -355,6 +366,8 @@ MESSAGES = {
         "kickoff_in": "Inizio tra {minutes} min",
         "catchup_before": "prima {score}",
         "catchup_gap": "{minutes} min",
+        "note_first_leg": "Andata",
+        "note_second_leg": "Ritorno",
         "shootout_won": "Rigori {score}: ",
         "shootout_winner": "Vince ai rigori: ",
         "shootout": "Calci di rigore",
@@ -439,6 +452,8 @@ MESSAGES = {
         "kickoff_in": "Anpfiff in {minutes} min",
         "catchup_before": "vorher {score}",
         "catchup_gap": "{minutes} min",
+        "note_first_leg": "Hinspiel",
+        "note_second_leg": "Rueckspiel",
         "shootout_won": "Elfmeterschiessen {score}: ",
         "shootout_winner": "Sieger im Elfmeterschiessen: ",
         "shootout": "Elfmeterschiessen",

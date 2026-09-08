@@ -337,6 +337,13 @@ class TestMissingKeys(unittest.TestCase):
         self.assertEqual(code, 1, report)
         self.assertIn("aucun buteur nomme", report)
 
+    def test_a_disappearing_notes_array_is_caught(self):
+        # Le tableau est sur chaque match, meme vide. C'est lui qu'on surveille,
+        # pas la note : une note qui n'arrive plus ne casse rien, un tableau
+        # devenu autre chose se lirait de travers.
+        report = self.amputate("events", 0, "competitions", 0, "notes")
+        self.assertIn("competition.notes", report)
+
     def test_a_renamed_state_is_caught(self):
         report = self.amputate("events", 0, "competitions", 0, "status",
                                "type", "state")

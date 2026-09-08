@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from butbutbut import espn, i18n, leagues, sports
 
 from helpers import (event, goal_detail, hockey_noise, hockey_play,
-                     hockey_summary, opener_for, payload, red_card_detail)
+                     hockey_summary, note, opener_for, payload,
+                     red_card_detail)
 
 LIGUE1 = leagues.BY_SLUG["fra.1"]
 NHL = leagues.BY_SLUG["nhl"]
@@ -167,6 +168,84 @@ class TestFormAndRecord(unittest.TestCase):
             {"name": "All Splits", "type": "total", "summary": "1-0-2"},
         ]
         self.assertEqual(espn.parse(raw, LIGUE1)[0].home_record, "1-0-2")
+
+
+class TestTheMatchNote(unittest.TestCase):
+    """`notes` : ce qu'on en garde, et surtout tout ce qu'on en jette."""
+
+    def parse(self, **kwargs):
+        return espn.parse(payload(event(**kwargs)), LIGUE1)[0]
+
+    def raw(self, notes):
+        """Une note posee a la main : les formes que la fabrique ne fait pas."""
+        made = payload(event())
+        made["events"][0]["competitions"][0]["notes"] = notes
+        return espn.parse(made, LIGUE1)[0]
+
+    def test_a_leg_is_read_as_a_key_not_as_english(self):
+        # Une cle, jamais le texte de la source : c'est ce qui permet a la
+        # carte espagnole de dire "Ida" la ou l'allemande dit "Hinspiel".
+        self.assertEqual(self.parse(notes=[note("1st Leg")]).note,
+                         "note_first_leg")
+        self.assertEqual(self.parse(notes=[note("2nd Leg")]).note,
+                         "note_second_leg")
+
+    def test_the_result_glued_behind_the_leg_is_cut_off(self):
+        # "2nd Leg - Arsenal advance 3-1 on aggregate" : la tete situe le
+        # match, la queue raconte la fin. On ne garde que la tete, et c'est ce
+        # qui garantit qu'un resultat ne peut pas atteindre une carte.
+        match = self.parse(
+            notes=[note("2nd Leg - Arsenal advance 3-1 on aggregate")])
+        self.assertEqual(match.note, "note_second_leg")
+
+    def test_a_headline_the_program_cannot_say_is_thrown_away(self):
+        # Anglais, non traduit, et sans equivalent dans les cinq langues :
+        # l'afficher tel quel mettrait ce mot sur une carte allemande.
+        for headline in ("Kraft Hockeyville", "NHL Global Series",
+                         "Series tied 1-1", "Makeup date March 9",
+                         "Leeds United advance 4-2 on penalties"):
+            self.assertEqual(self.parse(notes=[note(headline)]).note, "")
+
+    def test_an_empty_list_is_the_normal_case(self):
+        # 96 matchs sur 100, et tous les championnats.
+        self.assertEqual(self.parse().note, "")
+        self.assertEqual(self.raw([]).note, "")
+
+    def test_a_note_without_a_text_is_still_read(self):
+        # Cinq notes sur 238 n'ont que `headline`.
+        self.assertEqual(self.raw([{"type": "event",
+                                    "headline": "1st Leg"}]).note,
+                         "note_first_leg")
+
+    def test_an_empty_headline_falls_back_on_the_text(self):
+        self.assertEqual(self.raw([{"headline": "", "text": "1st Leg"}]).note,
+                         "note_first_leg")
+
+    def test_an_empty_note_says_nothing(self):
+        self.assertEqual(self.raw([{"headline": "", "text": ""}]).note, "")
+        self.assertEqual(self.raw([{}]).note, "")
+
+    def test_a_shape_the_source_has_never_had_does_not_kill_the_parse(self):
+        # Le jour ou `notes` deviendrait une chaine, elle ne doit pas etre
+        # decoupee lettre par lettre - ni faire tomber le releve entier.
+        for shape in ("1st Leg", {"headline": "1st Leg"}, 7, None):
+            match = self.raw(shape)
+            self.assertEqual(match.note, "")
+            self.assertEqual(match.home, "Angers")   # le match, lui, est la
+
+    def test_a_stray_entry_does_not_hide_the_one_we_can_read(self):
+        self.assertEqual(self.raw(["1st Leg", None,
+                                   note("2nd Leg")]).note, "note_second_leg")
+
+    def test_the_missing_key_is_a_missing_note_and_nothing_more(self):
+        made = payload(event())
+        del made["events"][0]["competitions"][0]["notes"]
+        self.assertEqual(espn.parse(made, LIGUE1)[0].note, "")
+
+    def test_the_case_does_not_matter(self):
+        # La source ecrit "1st Leg" ; rien ne promet qu'elle l'ecrira toujours.
+        self.assertEqual(self.parse(notes=[note("1ST LEG")]).note,
+                         "note_first_leg")
 
 
 class TestPlays(unittest.TestCase):

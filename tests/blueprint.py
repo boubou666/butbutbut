@@ -356,6 +356,21 @@ def _scenarios():
                              [("Stade Rennais : ", False),
                               ("GGNGP  2G 1N 0P", True)]])),
 
+        ("avant-match-aller", 1.0,
+         "Le meme avant-match, celui d'un match aller : l'enjeu se pose dans le"
+         " coin laisse vide par la minute, et la carte ne grandit pas d'un"
+         " pixel en hauteur.",
+         overlay.Card(title="LE MATCH VA COMMENCER",
+                      league="LIGUE DES CHAMPIONS", minute="Match aller",
+                      home="Real Madrid", away="Benfica",
+                      home_score=0, away_score=0, side=None,
+                      detail=[("Coup d'envoi dans 5 min", False)],
+                      accent="#4c6ef5", title_color=overlay.MUTED,
+                      extra=[[("Real Madrid : ", False),
+                              ("GGNGG  3G 1N 0P", True)],
+                             [("Benfica : ", False),
+                              ("GPGGN  2G 1N 1P", True)]])),
+
         ("coup-d-envoi", 1.0,
          "Le coup d'envoi : une ligne par camp sous le score, sa forme et son"
          " bilan, et pas de troisieme ligne au-dessus d'elles.",
