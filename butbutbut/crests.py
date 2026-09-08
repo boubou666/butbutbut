@@ -28,6 +28,7 @@ import os
 import re
 import struct
 import threading
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -140,6 +141,29 @@ def _usable_png(data: bytes) -> bool:
     return width > 0 and height > 0
 
 
+# Les codes qui disent "reviens plus tard" plutot que "il n'y a rien ici".
+RETRY_STATUS = frozenset((408, 429))
+
+
+def _permanent(exc) -> bool:
+    """Vrai si cette erreur condamne l'URL, faux si elle ne fait que passer.
+
+    Un 404 ou un 403 sont des REPONSES : l'ecusson n'est pas la, et le
+    redemander a chaque but ne le fera pas apparaitre. Une requete qui n'arrive
+    pas a destination - DNS muet, reseau pas encore leve, timeout, 503 - ne dit
+    rien de l'ecusson, seulement du moment ou on a demande.
+
+    La difference se voit surtout sous Linux, seule plateforme ou butbutbut
+    demarre par une unite systemd accrochee a la session graphique, donc
+    parfois avant que le reseau soit la. Condamner ces URL-la, c'etait un
+    daemon sans le moindre ecusson pendant des jours - alors que tout etait
+    rentre dans l'ordre au bout de dix secondes.
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code < 500 and exc.code not in RETRY_STATUS
+    return False
+
+
 # ------------------------------------------------------------- combineur ----
 
 # ESPN publie ses ecussons en 500x500 et sert le meme fichier redimensionne
@@ -232,7 +256,7 @@ class Cache:
         self.on_log = on_log or (lambda message: None)
         self._lock = threading.Lock()
         self._running = {}          # url -> Thread en cours
-        self._failed = set()        # urls a ne pas redemander dans cette session
+        self._failed = set()        # urls condamnees, voir _permanent
 
     # ---------------------------------------------------------- lecture ----
 
@@ -289,9 +313,10 @@ class Cache:
     def prefetch(self, url) -> bool:
         """Lance le telechargement en tache de fond. Vrai s'il a demarre.
 
-        Un meme ecusson n'est demande qu'une fois a la fois, et une URL qui a
-        echoue n'est plus retentee : sinon chaque but d'un club dont l'ecusson
-        n'existe pas relancerait la meme requete perdue.
+        Un meme ecusson n'est demande qu'une fois a la fois, et une URL que la
+        source a condamnee n'est plus retentee : sinon chaque but d'un club
+        dont l'ecusson n'existe pas relancerait la meme requete perdue. Une
+        panne passagere, elle, se retente au but suivant : voir `_permanent`.
         """
         if not self.enabled or not url:
             return False
@@ -309,29 +334,46 @@ class Cache:
 
         C'est le corps de la tache de fond, isole pour etre testable sans fil
         ni reseau : il suffit de passer un `fetcher`.
+        """
+        return self._attempt(url)[0]
 
-        C'est aussi ici que se joue le repli du combineur : on essaie les URL
-        de `candidates` dans l'ordre et on garde la premiere qui rend un PNG
+    def _attempt(self, url):
+        """(chemin, definitif) : ce qu'on a obtenu, et si ca vaut d'y revenir.
+
+        C'est ici que se joue le repli du combineur : on essaie les URL de
+        `candidates` dans l'ordre et on garde la premiere qui rend un PNG
         exploitable. Une URL fabriquee qui repond 404, qui rend un corps vide
         ou qui rend autre chose qu'une image ne coute donc qu'une requete
         perdue, jamais un ecusson casse.
+
+        `definitif` ne se lit que sur l'URL ANNONCEE, jamais sur celle qu'on
+        fabrique : le combineur est une preference, et ce qu'il refuse ne dit
+        rien de l'ecusson lui-meme. Seule l'annonce d'ESPN fait foi, donc seule
+        elle peut condamner. C'est `_work` qui en tire les consequences.
         """
         if not url:
-            return None
+            return (None, False)
         fetcher = self.fetcher or _download
+        permanent = False
         for candidate in self.candidates(url):
             try:
                 data = fetcher(candidate, self.timeout)
             except Exception as exc:
                 self.on_log("ecusson injoignable ({}) : {}".format(candidate, exc))
+                if candidate == url:
+                    permanent = _permanent(exc)
                 continue
             found = self.store(url, data)
             if found is not None:
-                return found
-            if candidate != url:
+                return (found, False)
+            if candidate == url:
+                # La source a repondu, et ce n'est pas une image : la
+                # redemander a chaque but n'y changera rien.
+                permanent = True
+            else:
                 self.on_log("ecusson redimensionne inutilisable ({}) : "
                             "on reprend celui qu'ESPN annonce".format(candidate))
-        return None
+        return (None, permanent)
 
     def store(self, url, data):
         """Range des octets deja recuperes. Rend le chemin ecrit, ou None.
@@ -370,13 +412,13 @@ class Cache:
             thread.join(timeout)
 
     def _work(self, url) -> None:
-        found = None
+        found, permanent = None, False
         try:
-            found = self.fetch_now(url)
+            found, permanent = self._attempt(url)
         finally:
             with self._lock:
                 self._running.pop(url, None)
-                if not found:
+                if not found and permanent:
                     self._failed.add(url)
 
 

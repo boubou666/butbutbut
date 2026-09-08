@@ -9,6 +9,18 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Corrige
 
+- **Une panne de reseau ne coute plus les ecussons de toute la session.** Le
+  cache rayait une URL des qu'un telechargement echouait, sans distinguer ce
+  qui est definitif de ce qui ne fait que passer. Or sous Linux - la seule
+  plateforme ou butbutbut demarre par une unite systemd accrochee a la session
+  graphique, donc parfois avant que le reseau soit leve - les ecussons
+  demandes dans cette premiere minute etaient condamnes pour toute la vie du
+  daemon. Des jours sans le moindre ecusson, alors que tout etait rentre dans
+  l'ordre dix secondes plus tard. Desormais seule une REPONSE condamne : un
+  404, un 403, ou des octets qui ne sont pas une image. Un DNS muet, un
+  timeout, un 503, un 429 se retentent au but suivant. Et seule l'URL annoncee
+  par ESPN peut condamner : le combineur n'est qu'une preference, ce qu'il
+  refuse ne prouve rien sur l'ecusson.
 - **La suite de tests ne lit plus la machine de qui la lance.** Vingt-cinq
   tests tombaient sur un poste ou butbutbut est installe et configure, et
   nulle part ailleurs : ils traversaient `cli.main()`, qui lit le vrai fichier
