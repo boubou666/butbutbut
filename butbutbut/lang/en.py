@@ -529,6 +529,14 @@ MESSAGES = {
     "opacite, 0.0 a 1.0": "opacity, 0.0 to 1.0",
     "pas de carte : seulement le son et le journal":
         "no card: sound and log only",
+    "ecrire les cartes dans le terminal au lieu d'ouvrir une fenetre (SSH, "
+    "tmux, machine sans ecran)":
+        "write the cards in the terminal instead of opening a window (SSH, "
+        "tmux, machine with no screen)",
+    "butbutbut : la carte epinglee ne s'ecrit pas dans le terminal - elle "
+    "vaut par le fait de rester a l'ecran.":
+        "butbutbut: the pinned card is not written in the terminal - it is "
+        "worth having only by staying on screen.",
     "pas de carte au coup d'envoi, a la mi-temps, a la reprise ni a la fin du "
     "match (les buts, si)":
         "no card at kick-off, half-time, the restart or full-time (goals "

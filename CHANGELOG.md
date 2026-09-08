@@ -72,6 +72,105 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - Aucune option nouvelle, pour la raison de la 1.12.0 : `--before-kickoff`
   existe deja, et personne n'a envie de choisir si son avant-match dit "Match
   aller".
+- **Un mode terminal : sans ecran ou poser une fenetre, la carte s'ecrit dans
+  le terminal.** Une machine sans serveur graphique, un SSH, un tmux, un
+  conteneur : jusqu'ici un but n'y laissait qu'une ligne de journal.
+  `--no-overlay` existait, mais il coupe l'affichage, il ne le remplace pas. La
+  meme carte y passe entiere - titre, competition, minute, score au centre,
+  noms de part et d'autre, buteur, liste des buteurs de fin de match, et un
+  `[]` par expulsion contre le chiffre de l'equipe qui l'a prise.
+- **Le mode se declenche de deux facons, et c'est un arbitrage.** `--terminal`
+  le demande, et alors aucune fenetre n'est meme tentee - c'est ce qu'on veut
+  depuis un SSH vers une machine qui a pourtant un ecran. Sans l'option, le
+  repli est **automatique** le jour ou aucune fenetre ne s'ouvre. Automatique
+  parce qu'il ne prend rien a personne : a cet instant la carte etait deja
+  perdue - le code se contentait de noter "pas de carte" et de continuer - et
+  une option qu'il aurait fallu lire d'avance n'aurait sauve que ceux qui
+  l'avaient lue. Il n'est pas silencieux pour autant : le journal dit
+  pourquoi il a bascule. `--no-overlay` garde son sens exact, aucune carte
+  nulle part, et l'emporte sur `--terminal` quand les deux sont donnes.
+- **La cle `terminal` dans le fichier de configuration**, comme toute option
+  durable.
+
+### Corrige
+
+- **Une session sans `DISPLAY` n'emporte plus le daemon.** `tkinter`
+  s'importait bien - c'est le seul cas que `TkinterMissing` couvrait - mais
+  `Tk()` levait une `TclError` que rien n'attrapait, et butbutbut mourait au
+  demarrage sur la machine meme ou il aurait servi. Les deux pannes ont
+  desormais un parent commun, `overlay.DisplayUnavailable`, parce que
+  l'appelant en fait la meme chose : il ecrit ses cartes dans le terminal.
+
+### A propos du rendu : pourquoi un second dessinateur, et pas le premier
+
+Le depot savait deja rendre une carte en ASCII : `tests/blueprint.py` transcrit
+`overlay._draw` dans une grille de caracteres, et c'est ce qui produit
+`tests/plans/*.txt`. Le reutiliser ici etait la premiere idee, et elle a ete
+essayee avant d'etre ecartee, en la faisant tourner sur les cartes du depot.
+
+Elle ne marche pas, pour une raison de fond : un plan transcrit une geometrie
+**en pixels**, a raison d'un caractere pour huit pixels. Le ramener a la
+hauteur d'un terminal revient a rendre la grille plus grossiere, et une grille
+plus grossiere fait entrer les traces les uns dans les autres - "LIGUE 1" perd
+son chiffre sous le bord de la carte, la ligne des buteurs passe par-dessus le
+score. C'est normal : `blueprint` est fait pour qu'un decalage de deux pixels
+saute aux yeux dans un diff de PR, pas pour mettre du texte en page. Lui
+demander les deux aurait coute la qualite pour laquelle il a ete ecrit, et les
+dix plans figes en auraient paye le prix.
+
+`butbutbut/terminal.py` pose donc les memes elements dans la meme geometrie -
+le score au centre, la place des noms reservee a l'identique des deux cotes,
+les cartons colles au chiffre de leur equipe, le nom trop long qui cede - mais
+il la calcule en **caracteres**. Ce qui reste unique, et c'est le seul partage
+qui compte, c'est la source : la meme `overlay.Card`, fabriquee par le meme
+`Card.from_event`. Aucun contenu n'est refabrique, rien n'est retraduit.
+
+Le garde-fou contre la derive silencieuse - le vrai risque, celui que la 1.12.1
+vient de payer sur sept lignes recopiees a la main - est que
+`tests/test_terminal.py` rend en terminal **les memes cartes figees** que
+`blueprint.SCENARIOS`, et verifie que chacune y porte encore son titre, ses
+deux equipes, son score et son detail. Une forme de carte ajoutee aux plans
+arrive donc ici toute seule. Et une carte de terminal etant du texte, sa
+reference n'a besoin d'aucun fichier a cote : les tests la figent en toutes
+lettres, et un decalage se lit dans le diff de la PR comme un plan.
+`tools/plans.py` et `tests/test_plans.py` ne bougent pas d'une ligne.
+
+### Ce que la carte de terminal ne montre pas, et pourquoi
+
+- **Les ecussons** : un terminal n'affiche pas d'image, et un sigle a la place
+  ferait dire au dessin autre chose que ce que la carte dit.
+- **Les couleurs**, et c'est un choix, pas un oubli. Tout le choix de couleur
+  du programme repose sur une certitude : le fond de la carte vaut
+  `overlay.CARD_BG`, et `crests.pick_accent` ne garde la couleur d'un club que
+  si elle se lit sur CE fond-la. Un terminal n'a pas de fond connu - il peut
+  etre blanc - donc la question n'a plus de reponse et on ne parie pas sur le
+  theme de quelqu'un d'autre. Rien n'ecrit de code d'echappement : il n'y a
+  donc rien a degrader pour `NO_COLOR`, pour une console Windows ou pour un
+  tuyau, et le jour ou la couleur reviendra, elle reviendra en sachant ce
+  qu'elle fait.
+- **La carte epinglee** : elle vaut par le fait de RESTER a l'ecran, et un
+  terminal ne fait que derouler. `--pin` continue de suivre son match - la
+  ligne "epinglee" de `--status` dit toujours la verite - mais aucune carte
+  epinglee ne s'ecrit, et `--test --pin --terminal` le dit plutot que de
+  bricoler un equivalent.
+
+### Ce que le mode ne coupe pas
+
+Le son, la voix, le crochet et le journal sont d'un autre etage : `--speak`
+parle, `--on-goal` part, le fichier de journal se remplit a l'identique, et
+`--no-phase-cards`, `--spoiler-free` et `--quiet-hours` s'appliquent
+exactement pareil. Un test compare les deux journaux, avec et sans le mode, et
+exige qu'ils soient identiques. `--quiet`, lui, l'emporte : il dit "n'ecrire
+que dans le journal", et une carte est de l'ecriture dans le terminal.
+
+La carte part sur la **sortie d'erreur**, le journal garde la sortie standard.
+C'est la regle deja ecrite pour `--export` et `--table` - les donnees sur la
+sortie standard, et rien d'autre - appliquee telle quelle : la carte est de la
+mise en forme, la ligne de journal est la donnee. `butbutbut --terminal >
+soiree.log` rend donc le meme fichier qu'avant, et `| grep BUT` marche comme
+avant. La largeur, elle, suit le terminal (30 a 78 colonnes, relue a chaque
+carte) ; une sortie qui n'est pas un terminal n'a pas de largeur et prend la
+largeur maximale, ce qui rend le meme fichier d'une machine a l'autre.
 
 ## [1.12.1] - 2026-09-08
 

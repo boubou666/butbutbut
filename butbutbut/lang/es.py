@@ -548,6 +548,14 @@ MESSAGES = {
     "opacite, 0.0 a 1.0": "opacidad, 0.0 a 1.0",
     "pas de carte : seulement le son et le journal":
         "sin tarjeta: solo el sonido y el registro",
+    "ecrire les cartes dans le terminal au lieu d'ouvrir une fenetre (SSH, "
+    "tmux, machine sans ecran)":
+        "escribir las tarjetas en el terminal en vez de abrir una ventana "
+        "(SSH, tmux, maquina sin pantalla)",
+    "butbutbut : la carte epinglee ne s'ecrit pas dans le terminal - elle "
+    "vaut par le fait de rester a l'ecran.":
+        "butbutbut: la tarjeta fijada no se escribe en el terminal: vale por "
+        "quedarse en la pantalla.",
     "pas de carte au coup d'envoi, a la mi-temps, a la reprise ni a la fin du "
     "match (les buts, si)":
         "sin tarjeta en el comienzo, el descanso, la reanudacion ni el final "
