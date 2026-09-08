@@ -10,5 +10,5 @@ restreindre a quelques equipes.
 Zero dependance : uniquement la bibliotheque standard de Python.
 """
 
-__version__ = "1.13.0"
+__version__ = "1.13.1"
 __all__ = ["__version__"]
