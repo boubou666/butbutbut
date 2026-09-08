@@ -628,6 +628,59 @@ class TestTheEndOfAHockeyMatch(unittest.TestCase):
         self.assertEqual(keeper.refresh(NHL)[0].extra_lines(), [])
 
 
+class TestTheStatisticsOfTheOtherSports(unittest.TestCase):
+    """Un champ present n'est pas un champ lisible.
+
+    La surprise du releve : le hockey et le rugby remplissent `statistics`
+    aussi, mais avec de tout autres nombres. Ces tests verrouillent le fait
+    que leur carte de fin de match reste exactement celle d'avant.
+    """
+
+    # Ce que la NHL publie vraiment, releve sur 332 camps : six nombres, dont
+    # `ytdGoals` qui est un total de SAISON. Poser "551" a cote d'un score de
+    # 3-2 ne voudrait rien dire.
+    HOCKEY = {"saves": "24", "savePct": ".800", "goals": "8",
+              "ytdGoals": "551", "assists": "13", "points": "21"}
+
+    def test_hockey_publishes_statistics_and_shows_none(self):
+        board = payload(hockey_event(stats=self.HOCKEY))
+        match = espn.parse(board, NHL)[0]
+        self.assertEqual((match.home_stats, match.away_stats), ({}, {}))
+
+    def test_the_hockey_final_card_has_not_moved(self):
+        source = {"payload": payload(hockey_event(home_score=1,
+                                                  stats=self.HOCKEY))}
+        keeper = watcher.Watcher([NHL], opener=opener_for(source))
+        keeper.prime()
+        source["payload"] = payload(hockey_event(
+            home_score=1, state="post", status_name="STATUS_FINAL",
+            detail="Final", period=3, stats=self.HOCKEY))
+        self.assertEqual(keeper.refresh(NHL)[0].extra_lines(), [])
+
+    def test_the_rugby_final_card_has_not_moved(self):
+        # Le Tournoi des Six Nations publie 193 noms, le Top 14 un tableau
+        # vide : une ligne qui ne dirait quelque chose que dans une
+        # competition sur cinq serait une loterie, pas une carte.
+        stats = {"cleanBreaks": "12", "carriesMetres": "480",
+                 "possessionPct": "51.5"}
+        source = {"payload": payload(event(home_score=14, away_score=14,
+                                           home_stats=stats,
+                                           away_stats=stats))}
+        keeper = watcher.Watcher([TOP14], opener=opener_for(source))
+        keeper.prime()
+        source["payload"] = payload(event(
+            home_score=14, away_score=14, state="post",
+            status_name="STATUS_FULL_TIME", detail="FT",
+            home_stats=stats, away_stats=stats))
+        self.assertEqual(keeper.refresh(TOP14)[0].extra_lines(), [])
+
+    def test_only_football_declares_any(self):
+        self.assertEqual(sports.SOCCER.team_stats,
+                         ("possessionPct", "shotsOnTarget"))
+        self.assertEqual(sports.HOCKEY.team_stats, ())
+        self.assertEqual(sports.RUGBY.team_stats, ())
+
+
 # ------------------------------------------------------------------- rugby ---
 
 class TestRugbyPayload(unittest.TestCase):

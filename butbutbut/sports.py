@@ -88,7 +88,11 @@ Le strict necessaire pour que le reste du programme n'ait jamais a demander
     sans en avoir besoin : le football a deja ses buteurs sous la main, il ne
     doit pas depenser 450 ko pour les relire ;
   - `table` : les colonnes du classement, parce qu'un classement de hockey et
-    un classement de football ne comptent pas les memes choses.
+    un classement de football ne comptent pas les memes choses ;
+  - `team_stats` : les statistiques de match que la carte de fin de match
+    affiche, et vide partout sauf au football. Le champ existe chez les trois
+    sports mais ne compte pas les memes choses, et le releve qui a decide de
+    ces deux noms-la est juste au-dessus de STATS_SOCCER.
 
 Ce module ne connait ni les competitions ni les cartes : il ne fait que dire
 comment un sport se comporte. Le catalogue vit dans leagues.py.
@@ -168,17 +172,53 @@ TABLE_RUGBY = (
     ("table_points", ("points",)),
 )
 
+# Les statistiques d'equipe posees sur la carte de fin de match, dans l'ordre
+# ou elles s'y lisent. Le tableau de bord en publie neuf par camp au football,
+# dans la meme reponse que le score ; sept sont ecartees, et pas au jugement -
+# le releve est dans docs/api-espn.md, section 3.
+#
+#   - `wonCorners` n'explique rien : sur 1 764 matchs termines sans match nul,
+#     le vainqueur avait plus de corners que le perdant 45% du temps,
+#     c'est-a-dire moins souvent qu'a pile ou face ;
+#   - `totalShots` explique un peu (57%), `shotsOnTarget` explique mieux (69%)
+#     et coute le meme nombre de signes. Empiler les deux ferait trois paires
+#     de chiffres sur une ligne qu'on lit en huit secondes ;
+#   - `totalGoals` repete le score deja ecrit au-dessus, et le contredit 13
+#     fois sur 4 788 camps ;
+#   - `appearances` vaut "0" sur les 2 762 camps releves, sans exception ;
+#   - `foulsCommitted`, `goalAssists` et `shotAssists` ne commentent pas un
+#     score. Le dernier depasse parfois le nombre de tirs du meme camp :
+#     personne ne saurait dire ce qu'il compte, et on n'affiche pas un nombre
+#     qu'on ne sait pas nommer.
+#
+# Reste la possession, qui ne designe le vainqueur que 50% du temps - a pile ou
+# face, exactement. C'est ce qui la garde : elle ne dit pas qui a gagne, elle
+# dit COMMENT, et un 2-1 gagne avec 39% de ballon raconte quelque chose que le
+# score seul ne raconte pas. Seule elle mentirait par sous-entendu ; a cote des
+# tirs cadres, elle dit si la domination est devenue du danger.
+STATS_SOCCER = ("possessionPct", "shotsOnTarget")
+
+# Le hockey et le rugby ne declarent rien, et ce n'est pas parce que la source
+# se tait - c'est meme le contraire, et c'est la surprise du releve. Le hockey
+# publie six nombres par camp (`saves`, `savePct`, `goals`, `ytdGoals`,
+# `assists`, `points`), dont deux sont des totaux de SAISON melanges au reste :
+# poser "551" a cote d'un score de 3-2 serait incomprehensible. Le rugby, lui,
+# publie 193 noms au Tournoi des Six Nations et un tableau VIDE au Top 14, en
+# Premiership, en URC et en Super Rugby - une carte qui ne dirait quelque chose
+# que dans une competition sur cinq n'est pas une carte, c'est une loterie.
+
 
 class Sport:
     """Un sport d'ESPN : son segment d'URL et ses quelques particularites."""
 
     __slots__ = ("code", "name", "aliases", "plays", "breaks", "shootout",
                  "unit_score", "red_cards", "summary_plays", "logo_pattern",
-                 "table", "_titles")
+                 "table", "team_stats", "_titles")
 
     def __init__(self, code, name, aliases=(), plays=PLAYS_FLAGS, breaks=(),
                  shootout=(), unit_score=True, logo_pattern="", titles=None,
-                 table=TABLE_SOCCER, red_cards=True, summary_plays=False):
+                 table=TABLE_SOCCER, red_cards=True, summary_plays=False,
+                 team_stats=()):
         self.code = code                  # "soccer", "hockey", "rugby"
         self.name = name                  # "football", en francais, pour le journal
         self.aliases = tuple(aliases)     # ce qu'on peut taper a --leagues
@@ -208,6 +248,12 @@ class Sport:
         # Les colonnes du classement. Le football sert de socle ici aussi : un
         # sport qui n'a rien de particulier a compter herite des siennes.
         self.table = tuple(table)
+        # Les statistiques de match a lire, et un tuple vide par defaut : un
+        # sport n'en affiche que si quelqu'un est alle voir ce qu'il publie.
+        # Le defaut ne peut pas etre celui du football - le hockey remplit le
+        # meme champ avec de tout autres nombres, et il sortirait des chiffres
+        # de gardien sous un score de football.
+        self.team_stats = tuple(team_stats)
         self._titles = dict(titles or {})
 
     def title_key(self, key: str) -> str:
@@ -239,6 +285,7 @@ SOCCER = Sport(
     plays=PLAYS_FLAGS,
     shootout=SHOOTOUT_SOCCER,
     logo_pattern="https://a.espncdn.com/i/teamlogos/soccer/500/{id}.png",
+    team_stats=STATS_SOCCER,
 )
 
 # --- Le hockey sur glace ----------------------------------------------------

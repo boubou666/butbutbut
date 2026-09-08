@@ -1,6 +1,6 @@
-# Le sifflet final : une ligne de buteurs par camp, sous le score.
+# Le sifflet final : une ligne de buteurs par camp, puis la ligne qui explique le score - trois lignes sous le score, le maximum du programme.
 # echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
-# carte 464 x 128 px - grille 8 x 8 px par caractere
+# carte 464 x 149 px - grille 8 x 8 px par caractere
 
      0         80        160       240       320       400
   0 |+--------------------------------------------------------+|
@@ -18,12 +18,15 @@
  96 |##                                                       ||
 104 |##  Stade Rennais : A. Kalimuendo 58', L. Blas 77'       ||
 112 |##                                                       ||
-120 |##-------------------------------------------------------+|
+120 |##  Possession 39% - 61%   Tirs cadres 4 - 9             ||
+128 |##                                                       ||
+136 |##                                                       ||
+144 |+--------------------------------------------------------+|
 
 boite              x0     y0     x1     y1  contenu
 ------------------------------------------  ------------------------------
-carte               0      0    463    127
-filet               3      7     10    121
+carte               0      0    463    148
+filet               3      7     10    142
 titre              29     16    137     31  "FIN DU MATCH"
 competition       151   17.5    200   29.5  "LIGUE 1"
 minute            400   17.5    442   29.5  "90'+4'"
@@ -36,3 +39,7 @@ ligne 1            29   76.5    101   90.5  "Angers : "
 ligne 1           101     76    209     91  "M. Lopez 12'"
 ligne 2            29   97.5    157  111.5  "Stade Rennais : "
 ligne 2           157     97    427    112  "A. Kalimuendo 58', L. Blas 77'"
+ligne 3            29  118.5    117  132.5  "Possession "
+ligne 3           117    118    198    133  "39% - 61%"
+ligne 3           198  118.5    310  132.5  "  Tirs cadres "
+ligne 3           310    118    355    133  "4 - 9"

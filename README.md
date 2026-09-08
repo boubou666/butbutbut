@@ -394,6 +394,7 @@ disent pas la meme chose, et butbutbut ne fait jamais semblant du contraire.
 | Tableau d'actions | oui | **non** (voir plus bas) | oui, mais sans drapeaux |
 | Buteur, minute de l'action | oui | oui, via le resume du match | oui |
 | Passeurs | non | **oui** | non |
+| Statistiques sur la carte de fin | oui | non (voir plus bas) | non |
 | Cartons rouges (`--red-cards`) | oui | sans objet | oui |
 | Classement (`--table`) | oui | oui, par conference | oui, points de bonus compris |
 
@@ -424,6 +425,16 @@ un but par `scoringPlay` et une expulsion par `redCard`, le rugby ne donne
 qu'un `type.id` (1 essai, 2 transformation, 3 penalite, 4 drop, 6 carton
 rouge). Lu avec le lecteur du football, un match de rugby n'aurait aucune
 action du tout - c'est pour ca qu'il a le sien.
+
+**Les trois publient des statistiques d'equipe, et pas les memes du tout.** Le
+football en donne neuf par camp, toujours les memes, dont la possession et les
+tirs cadres qui finissent sur la
+[carte de fin de match](#les-temps-forts-du-match). Le hockey en donne six,
+dont deux totaux de **saison** melanges aux nombres du match : "551 buts" a
+cote d'un 3-2 ne veut rien dire. Le rugby en donne 193 au Tournoi des Six
+Nations et **aucune** au Top 14, en Premiership, en URC ou en Super Rugby -
+une ligne qui ne dirait quelque chose que dans une competition sur cinq serait
+une loterie. Les deux se taisent donc, et c'est un choix, pas un oubli.
 
 Et **ce qui ne s'applique pas s'eteint tout seul** : `--red-cards` sur du
 hockey ne plante pas, il ne trouve simplement rien a signaler, la source ne
@@ -1487,12 +1498,45 @@ FIN DU MATCH   LIGUE 1                                        90'+4'
 Angers              1 - 2              Stade Rennais
 Angers : M. Lopez 12'
 Stade Rennais : A. Kalimuendo 58', L. Blas 77'
+Possession 39% - 61%  Tirs cadres 4 - 9
 ```
 
 Un camp qui n'a pas marque n'a pas de ligne, un csc est note `(csc)` et un
 penalty `(sp)`. La carte gagne une ligne par camp buteur, mais jamais un pixel
 de plus que sa largeur maximale : une liste trop longue est coupee par des
 points de suspension plutot que de deborder.
+
+La derniere ligne **explique** le score au lieu de le repeter : `1 - 2` est
+deja dit, `39% - 61%, 4 tirs cadres a 9` raconte le match. Elle vient apres
+les buteurs parce que "qui a marque" est la question qu'on se pose en arrivant
+devant la carte, et "comment" seulement ensuite. C'est **la seule carte** qui
+la porte, et la raison est la meme que pour la forme au coup d'envoi : c'est
+la seule ou le match n'a plus rien de neuf a raconter. Une carte de but a huit
+secondes pour annoncer un buteur, et a la mi-temps le match n'est pas fini.
+
+Deux statistiques, pas quatre, et le choix n'est pas une question de gout :
+sur 1 764 matchs termines, le vainqueur avait plus de **tirs cadres** que le
+perdant 69% du temps, plus de **tirs** 57%, et plus de **corners** 45% -
+c'est-a-dire moins souvent qu'a pile ou face. La **possession**, elle, ne
+predit rien du tout (50%), et c'est exactement ce qui la garde : elle ne dit
+pas qui a gagne, elle dit comment, et un 2-1 gagne avec 39% de ballon raconte
+quelque chose. Le detail du releve est dans
+[docs/api-espn.md](docs/api-espn.md), section 3.
+
+Comme la forme et le bilan, ces chiffres arrivent dans **la meme reponse que
+le score** : ils ne coutent pas une requete de plus. Et comme partout ailleurs,
+on se tait plutot que d'a-peu-pres : si un seul camp publie une statistique,
+la paire entiere est jetee - `39%` tout seul laisserait deviner `61%`, qui
+peut etre n'importe quoi. Un bloc entierement a zero (la source en publie, y
+compris sur des matchs bel et bien termines) ne s'affiche pas non plus, et un
+nombre de tirs cadres inferieur au nombre de buts du meme camp est jete : la
+carte porte le score juste au-dessus, elle ne va pas se dementir toute seule.
+Quand il ne reste rien, la carte est exactement celle d'avant.
+
+Le football seulement : le hockey et le rugby remplissent le meme champ, mais
+avec de tout autres nombres - des arrets de gardien et des totaux de saison
+chez l'un, 193 statistiques au Tournoi des Six Nations et rien du tout au Top
+14 chez l'autre. Leur carte de fin de match ne bouge pas d'un pixel.
 
 Un soir de coupe, cette meme carte porte en plus le verdict de la seance de
 tirs au but - `Tirs au but 3 - 5 : Stade de Reims` - parce qu'un `1 - 1` ne dit

@@ -325,7 +325,7 @@ position.
 | `winner` | `false` | absent avant la fin |
 | `form` | `"LWDLW"` | les cinq derniers matchs, football seulement |
 | `records` | `[{"summary": "1-1-1"}]` | |
-| `statistics` | possession, tirs, corners... | football seulement, et jamais avant le coup d'envoi |
+| `statistics` | possession, tirs, corners... | tableau **vide** avant le coup d'envoi ; voir ci-dessous |
 | `team` | l'objet ci-dessous | |
 
 L'equipe elle-meme :
@@ -342,6 +342,83 @@ L'equipe elle-meme :
 Le football donne `alternateColor`, le hockey non ; la couleur est parfois une
 chaine vide. Rien la-dedans n'est garanti, et `crests.py` sait retomber sur la
 couleur de la competition.
+
+### Les statistiques d'equipe : `competitors[].statistics`
+
+Releve sur **5 366 matchs termines**, 29 competitions de football et trois
+periodes (aout-septembre 2026, mars-mai 2026, octobre-novembre 2025), soit
+10 732 camps et 96 588 objets ; plus 418 matchs a venir pour l'etat `pre`.
+
+Un objet n'a que **trois cles** - `name`, `abbreviation`, `displayValue` - et
+**il n'y a pas de `value` numerique** : c'est une chaine qu'on lit, toujours.
+
+```json
+{ "name": "possessionPct", "abbreviation": "PP", "displayValue": "60.1" }
+```
+
+Le football en publie **neuf par camp**, ni plus ni moins : sur les 10 732
+camps releves, aucun n'en avait huit ni dix, et aucune des neuf ne manquait
+d'un seul cote quand l'autre l'avait.
+
+| `name` | `abbreviation` | `displayValue` | Lu par butbutbut |
+| --- | --- | --- | --- |
+| `possessionPct` | `PP` | `"60.1"` - toujours un chiffre apres la virgule | **oui** |
+| `shotsOnTarget` | `SOG` | `"7"` | **oui** |
+| `totalShots` | `SHOT` | `"20"` | non |
+| `wonCorners` | `CW` | `"7"` | non |
+| `foulsCommitted` | `FC` | `"16"` | non |
+| `goalAssists` | `A` | `"1"` | non |
+| `shotAssists` | `SHAST` | `"14"` | non |
+| `totalGoals` | `G` | `"1"` | non |
+| `appearances` | `APP` | `"0"` sur les 10 732 camps, sans exception | non |
+
+Trois choses que ce releve apprend, et qu'on ne pouvait pas deviner :
+
+1. **Avant le coup d'envoi, la cle est la et le tableau est VIDE** - jamais
+   absente, sur les 418 matchs a venir regardes. Trois d'entre eux avaient
+   pourtant un bloc **rempli de zeros**, ce qui n'est pas la meme chose.
+2. **Un bloc entierement a zero existe aussi sur des matchs termines** : 24 sur
+   5 366, dont des `STATUS_POSTPONED` mais aussi de vrais `STATUS_FULL_TIME`.
+   `0.0` de possession des deux cotes est donc un cas a filtrer, pas une
+   curiosite theorique.
+3. **Les deux possessions somment a exactement 100** dans 5 342 cas sur
+   5 366 ; les 24 autres sont exactement les blocs a zero ci-dessus.
+
+Et deux facons de se contredire soi-meme, rares mais reelles : `shotsOnTarget`
+est inferieur au nombre de buts du meme camp **12 fois sur 4 788**,
+`totalShots` une fois, et `totalGoals` differe du `score` publie a cote **13
+fois**. Une carte qui affiche le score ne peut donc pas poser ces nombres a
+cote sans les confronter d'abord.
+
+**Ce qu'une statistique dit du resultat.** Mesure sur 1 764 matchs termines
+sans match nul : part des matchs ou le vainqueur est devant le perdant sur
+cette statistique.
+
+| Statistique | Vainqueur devant | Egalite | Vainqueur derriere |
+| --- | --- | --- | --- |
+| Tirs cadres | **69%** | 10% | 21% |
+| Tirs | 57% | 4% | 39% |
+| Possession | 50% | 0% | 50% |
+| Corners | 45% | 9% | 46% |
+
+Les corners ne disent rien - moins bien qu'a pile ou face. La possession non
+plus, et c'est precisement ce qui la rend interessante a cote d'une autre :
+elle ne dit pas qui a gagne, elle dit comment.
+
+**Les autres sports remplissent le meme champ, avec d'autres nombres.** Ce
+n'est donc pas un champ de football, c'est un champ dont le contenu depend du
+sport - et ca, il fallait le regarder pour le savoir.
+
+| Sport | Ce qu'on trouve | Releve sur |
+| --- | --- | --- |
+| Hockey (NHL) | 6 noms : `saves`, `savePct`, `goals`, `ytdGoals`, `assists`, `points` | 332 camps |
+| Rugby (Six Nations) | **193 noms** : `cleanBreaks`, `carriesMetres`, `ballWonZoneA`... | 30 camps |
+| Rugby (Top 14, Premiership, URC, Super Rugby) | tableau **vide** | 170 camps |
+
+Le hockey melange deux totaux de **saison** (`ytdGoals` vaut 551) a quatre
+nombres du match ; le rugby ne publie quelque chose que dans une competition
+sur cinq. Ni l'un ni l'autre n'a de quoi tenir une ligne de carte, et c'est
+pour ca que `Sport.team_stats` est vide chez eux.
 
 ### Les actions : `competitions[0].details`
 
@@ -757,6 +834,9 @@ voici, avec l'endroit qui les lit - c'est aussi la liste que surveille
 | `competitors[].team.name` / `location` / `abbreviation` | `team_names` | le rapprochement de `--teams` |
 | `competitors[].team.color` / `alternateColor` | `team_colors` | la couleur du club |
 | `competitors[].team.logo` / `logos[].href` | `team_logo` | l'ecusson |
+| `competitors[].form` | `team_form` | la forme, sur les cartes d'avant match |
+| `competitors[].records[].summary` / `type` | `team_record` | le bilan de la saison |
+| `competitors[].statistics[].name` / `displayValue` | `team_stats` | possession et tirs cadres, sur la carte de fin de match |
 | `status.type.state` | `phase_of` | en cours, a venir, termine |
 | `status.type.name` | `phase_of` | mi-temps, report, abandon |
 | `status.type.shortDetail` / `detail` / `description` | `espn.parse` | la ligne d'etat |
@@ -818,6 +898,10 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
     hockey n'a pas de `rank` du tout.
 12. **Pas d'`ETag`, pas de `Last-Modified`** : les requetes conditionnelles
     sont hors de portee.
+13. **Un bloc `statistics` non vide n'est pas un bloc vrai** : 24 matchs
+    termines sur 5 366 le publient entierement a zero, et trois matchs a venir
+    aussi. Et il n'y a pas de `value` numerique la-dedans, seulement
+    `displayValue`, une chaine.
 
 ---
 
@@ -825,6 +909,29 @@ Ceux qui ont deja coute quelque chose, ou qui le couteraient.
 
 Cinq pistes que ce releve ouvre, avec leur arbitrage. Chacune dit ou elle en
 est.
+
+**Les statistiques d'equipe - fait.** Elles voyagent dans la meme reponse que
+le score, comme la forme et le bilan avant elles : rien a payer, tout a jeter
+ou a garder. La carte de fin de match en porte deux, sur une ligne - la
+possession et les tirs cadres - et c'est la seule carte du programme qui les
+montre : c'est la seule ou le match n'a plus rien de neuf a raconter.
+
+Trois arbitrages, et tous les trois sont sortis du releve ci-dessus plutot que
+du gout de quelqu'un :
+
+- **les corners ont ete ecartes sur un chiffre**, 45% : le vainqueur en a
+  moins que le perdant aussi souvent qu'il en a plus. Une ligne de carte n'a
+  pas de place pour un nombre qui ne dit rien ;
+- **les tirs cadres ont ete preferes aux tirs** (69% contre 57%) : la meme
+  question, mieux repondue, et un nombre au lieu de deux. `totalGoals`, lui,
+  repete le score deja affiche - et le contredit 13 fois sur 4 788 camps ;
+- **la possession reste alors qu'elle ne predit rien** (50%, exactement pile
+  ou face), et c'est voulu : elle ne dit pas qui a gagne, elle dit comment. A
+  cote des tirs cadres, elle explique un 2-1 gagne avec 39% de ballon.
+
+Le reste n'est que defiance ordinaire : les deux camps ou rien, jamais un bloc
+a zero, et jamais un nombre que le score, affiche juste au-dessus,
+dementirait.
 
 **Demander gzip - fait.** Huit fois moins d'octets sur le fil, pour une ligne
 dans `headers()`, une decompression dans `download()` et zero dependance
