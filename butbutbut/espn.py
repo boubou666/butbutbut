@@ -24,10 +24,13 @@ sujet de `_parse_details` :
   - le **hockey** ne publie **rien** : `details` est absent, sur un match a
     venir comme sur un match termine. On a le score, l'horloge et la periode.
 
-Chaque camp porte aussi, dans la meme reponse, sa **forme** (`form`) et son
-**bilan** (`records`). C'est ce que la carte de coup d'envoi affiche, et ca ne
-coute pas un octet de plus : les deux cles sont deja dans le tableau de bord
-qu'on telecharge a chaque tour, on les jetait. Le hockey s'en tait la aussi.
+Chaque camp porte aussi, dans la meme reponse, sa **forme** (`form`), son
+**bilan** (`records`) et les **statistiques du match** (`statistics`). C'est ce
+que les cartes de coup d'envoi et de fin de match affichent, et ca ne coute pas
+un octet de plus : les trois cles sont deja dans le tableau de bord qu'on
+telecharge a chaque tour, on les jetait. Le hockey se tait sur les deux
+premieres ; sur la troisieme il parle, mais d'autre chose - voir
+`sports.STATS_SOCCER`, qui dit quel sport publie quoi et ce qu'on en retient.
 
 Le match lui-meme porte parfois une note (`notes`), et elle vaut surtout par ce
 qu'elle n'est pas : ni le tour, ni la journee, ni rien qu'un championnat
@@ -298,7 +301,8 @@ class Match:
                  "red_cards", "shootout", "home_shootout", "away_shootout",
                  "winner", "home_logo", "away_logo", "home_color",
                  "away_color", "home_alt", "away_alt", "home_form",
-                 "away_form", "home_record", "away_record", "note")
+                 "away_form", "home_record", "away_record", "note",
+                 "home_stats", "away_stats")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
@@ -306,7 +310,8 @@ class Match:
                  shootout=(), home_shootout=0, away_shootout=0, winner="",
                  home_logo="", away_logo="", home_color="", away_color="",
                  home_alt="", away_alt="", home_form="", away_form="",
-                 home_record="", away_record="", note=""):
+                 home_record="", away_record="", note="",
+                 home_stats=None, away_stats=None):
         self.id = id
         self.league = league
         self.home = home
@@ -365,6 +370,13 @@ class Match:
         # source. Vide partout ailleurs, c'est-a-dire presque partout - voir
         # match_note().
         self.note = note
+        # Les statistiques du match lui-meme (possession, tirs cadres), vides
+        # tant que rien n'a ete joue et partout ailleurs qu'au football. Elles
+        # sont copiees plutot que rangees telles quelles : un dictionnaire par
+        # defaut est partage par tous les matchs qui n'en ont pas, et un
+        # dictionnaire partage finit toujours par etre modifie par quelqu'un.
+        self.home_stats = dict(home_stats or {})
+        self.away_stats = dict(away_stats or {})
 
     @property
     def sport(self):
@@ -736,6 +748,54 @@ def match_note(competition) -> str:
     return ""
 
 
+def _stat_value(raw):
+    """Le nombre d'une statistique, ou None. "51.5" -> 51.5, "beaucoup" -> None.
+
+    La source n'ecrit ses statistiques qu'en toutes lettres : un objet de
+    `statistics[]` porte `name`, `abbreviation` et `displayValue`, et rien
+    d'autre - pas de `value` numerique, sur les 96 588 objets releves. C'est
+    donc une chaine qu'on lit, et il faut la lire prudemment.
+
+    Le plafond n'est pas decoratif : `float()` avale "nan" et "inf" sans
+    broncher, et les deux empoisonnent ensuite tout ce qu'ils touchent - une
+    comparaison, un formatage, une carte. Un encadrement les arrete tous les
+    deux d'un coup, NaN echouant meme la comparaison basse.
+    """
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if 0.0 <= value <= 1e6 else None
+
+
+def team_stats(competitor, sport=None) -> dict:
+    """Les statistiques de match d'un camp, en nombres, ou un dictionnaire vide.
+
+    Seuls les noms que le sport declare sont retenus (`Sport.team_stats`) : le
+    football en publie neuf par camp, la carte en affiche deux, et ce qui
+    n'arrivera jamais a l'ecran n'a pas a traverser le programme. Un sport qui
+    ne declare rien - le hockey, le rugby - ne lit meme pas le champ.
+
+    Une valeur illisible fait tomber SA statistique et elle seule : l'autre
+    reste, et la carte sort. Le tri des paires, lui, se fait sur la carte, la
+    ou l'on a les deux camps sous les yeux (voir watcher._stats_parts).
+    """
+    wanted = getattr(sport or sports.DEFAULT, "team_stats", ())
+    if not wanted:
+        return {}
+    found = {}
+    for entry in competitor.get("statistics") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if name not in wanted or name in found:
+            continue
+        value = _stat_value(entry.get("displayValue"))
+        if value is not None:
+            found[name] = value
+    return found
+
+
 def team_logo(competitor) -> str:
     """URL du PNG de l'ecusson, ou une chaine vide.
 
@@ -1061,6 +1121,8 @@ def parse(payload: dict, league) -> list:
             home_record=team_record(home),
             away_record=team_record(away),
             note=match_note(competition),
+            home_stats=team_stats(home, sport),
+            away_stats=team_stats(away, sport),
             home_color=home_color,
             away_color=away_color,
             home_alt=home_alt,

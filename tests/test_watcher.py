@@ -736,6 +736,128 @@ class TestFullTimeScorers(unittest.TestCase):
         self.assertIn("Stade Rennais : A. Kalimuendo 58'", line)
 
 
+class TestFullTimeStatistics(unittest.TestCase):
+    """La ligne qui explique le score : possession et tirs cadres.
+
+    Elles voyagent dans la meme reponse que le score, comme la forme et le
+    bilan des cartes d'avant match : on les jetait.
+    """
+
+    HOME = {"possessionPct": "60.5", "shotsOnTarget": "7", "totalShots": "20",
+            "wonCorners": "7", "totalGoals": "1", "appearances": "0"}
+    AWAY = {"possessionPct": "39.5", "shotsOnTarget": "6", "totalShots": "15",
+            "wonCorners": "10", "totalGoals": "2", "appearances": "0"}
+
+    def final(self, home=(), away=(), home_score=1, away_score=2, **kwargs):
+        """Le sifflet final d'un match qu'on suivait, sans aucun buteur nomme.
+
+        Sans buteur expres : la ligne testee ici doit se voir seule, sinon un
+        changement d'ordre passerait inapercu.
+        """
+        fields = dict(home_score=home_score, away_score=away_score,
+                      home_stats=home, away_stats=away, **kwargs)
+        state = {"payload": payload(event(state="in", **fields))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = payload(event(state="post", clock="90'+4'", **fields))
+        return guard.refresh(LIGUE1)[0]
+
+    def test_both_camps_served_gives_one_line(self):
+        end = self.final(self.HOME, self.AWAY)
+        self.assertEqual(end.extra_lines(),
+                         ["Possession 60% - 40%  Tirs cadres 7 - 6"])
+
+    def test_the_numbers_are_the_highlighted_part(self):
+        # Le libelle est un reperage, les chiffres sont l'information : c'est
+        # la meme regle que le nom du buteur ailleurs.
+        end = self.final(self.HOME, self.AWAY)
+        self.assertEqual([t for t, strong in end.extra_parts()[0] if strong],
+                         ["60% - 40%", "7 - 6"])
+
+    def test_the_line_follows_the_language_of_the_card(self):
+        end = self.final(self.HOME, self.AWAY)
+        self.assertEqual(end.extra_lines(lang="de"),
+                         ["Ballbesitz 60% - 40%  Schusse aufs Tor 7 - 6"])
+
+    def test_a_rounded_possession_still_adds_up_to_a_hundred(self):
+        # "60.5" et "39.5" arrondis chacun de leur cote donneraient 61 et 40,
+        # soit 101% de ballon. Ce n'est pas le cas, et c'est verifie ici :
+        # personne ne pense a ce detail deux ans plus tard.
+        end = self.final({"possessionPct": "60.5"}, {"possessionPct": "39.5"})
+        self.assertEqual(end.extra_lines(), ["Possession 60% - 40%"])
+
+    def test_a_silent_camp_drops_the_pair(self):
+        # 60% affiche tout seul laisse deviner 40%, qui peut etre n'importe
+        # quoi : c'est la regle des deux camps ou rien.
+        end = self.final(self.HOME, {"shotsOnTarget": "6"})
+        self.assertEqual(end.extra_lines(), ["Tirs cadres 7 - 6"])
+
+    def test_a_camp_that_says_nothing_at_all_leaves_no_line(self):
+        self.assertEqual(self.final(self.HOME, {}).extra_lines(), [])
+
+    def test_an_absent_field_gives_exactly_the_card_from_before(self):
+        self.assertEqual(self.final(None, None).extra_lines(), [])
+
+    def test_an_empty_block_gives_exactly_the_card_from_before(self):
+        # La forme d'un match a venir : la cle est la, le tableau est vide.
+        self.assertEqual(self.final().extra_lines(), [])
+
+    def test_two_zeroes_are_not_a_match(self):
+        # La source publie un bloc entierement a zero sur des matchs pourtant
+        # termines : "0% - 0%" serait un mensonge la ou se taire est un
+        # silence. Meme regle que le "0-0-0" des bilans.
+        zero = {"possessionPct": "0.0", "shotsOnTarget": "0"}
+        self.assertEqual(self.final(zero, zero, home_score=0,
+                                    away_score=0).extra_lines(), [])
+
+    def test_a_zero_facing_a_number_is_kept(self):
+        # Zero tir cadre pour qui n'a pas marque, c'est une information, et
+        # meme la meilleure de la carte.
+        end = self.final({"shotsOnTarget": "9"}, {"shotsOnTarget": "0"},
+                         home_score=1, away_score=0)
+        self.assertEqual(end.extra_lines(), ["Tirs cadres 9 - 0"])
+
+    def test_a_number_the_score_would_contradict_is_dropped(self):
+        # Un but est un tir cadre par definition, et le score est ecrit juste
+        # au-dessus : "0" en face d'un "2" serait une carte qui se dement.
+        end = self.final(dict(self.HOME, shotsOnTarget="0"), self.AWAY)
+        self.assertEqual(end.extra_lines(), ["Possession 60% - 40%"])
+
+    def test_an_absurd_value_costs_its_pair_and_nothing_more(self):
+        end = self.final(dict(self.HOME, possessionPct="beaucoup"), self.AWAY)
+        self.assertEqual(end.extra_lines(), ["Tirs cadres 7 - 6"])
+
+    def test_the_statistics_come_after_the_scorers(self):
+        # "Qui a marque" est la question qu'on se pose en arrivant devant la
+        # carte ; "comment" ne vient qu'apres.
+        end = self.final(self.HOME, self.AWAY,
+                         details=(goal_detail("H1", "12'", "M. Lopez", index=1),
+                                  goal_detail("A1", "58'", "A. Kalimuendo",
+                                              index=2)))
+        self.assertEqual(end.extra_lines(), [
+            "Angers : M. Lopez 12'",
+            "Stade Rennais : A. Kalimuendo 58'",
+            "Possession 60% - 40%  Tirs cadres 7 - 6",
+        ])
+
+    def test_only_the_end_of_the_match_carries_them(self):
+        # Une carte de but a huit secondes pour annoncer un buteur, et la
+        # mi-temps raconte ce qui vient de se passer : ni l'une ni l'autre
+        # n'a de place pour un bilan.
+        state = {"payload": payload(event(state="in", home_score=0,
+                                          home_stats=self.HOME,
+                                          away_stats=self.AWAY))}
+        guard = make_watcher(state)
+        guard.prime()
+        state["payload"] = bump(state["payload"], "home")
+        for found in guard.refresh(LIGUE1):
+            self.assertEqual(found.extra_parts(), [], found.kind)
+
+    def test_the_log_line_carries_them_in_french(self):
+        line = self.final(self.HOME, self.AWAY).log_line()
+        self.assertIn("Possession 60% - 40%  Tirs cadres 7 - 6", line)
+
+
 class TestCadence(unittest.TestCase):
     def test_live_match_gets_the_fast_cadence(self):
         state = {"payload": payload(event(state="in"))}

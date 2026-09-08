@@ -225,6 +225,67 @@ def _form_lines(match, lang=None) -> list:
     return lines
 
 
+# Les statistiques de la carte de fin de match, dans l'ordre de la ligne : le
+# nom que la source leur donne, la cle du libelle, et comment le nombre
+# s'ecrit. La possession d'abord parce qu'elle dit qui avait le ballon, les
+# tirs cadres ensuite parce qu'ils disent ce qu'il en est sorti : la ligne se
+# lit comme une petite phrase, et l'ordre inverse la casserait.
+STAT_KEYS = (
+    ("possessionPct", "stat_possession", "{:.0f}%"),
+    ("shotsOnTarget", "stat_shots_on_target", "{:.0f}"),
+)
+
+# Deux espaces entre les deux statistiques, comme entre la forme et le bilan
+# des cartes d'avant match : une ligne, deux respirations, pas de ponctuation
+# a dechiffrer.
+STAT_GAP = "  "
+
+# Les statistiques qu'un score ne peut pas depasser. Un but est un tir cadre
+# par definition, et la carte affiche le score juste au-dessus : "0" en face
+# d'un "1" serait une carte qui se dement toute seule. La source le fait 12
+# fois sur 4 788 camps releves - rare, mais pas jamais, et c'est justement le
+# genre de detail que personne ne verrait passer.
+STAT_FLOORED_BY_SCORE = ("shotsOnTarget",)
+
+
+def _stats_parts(match, lang=None) -> list:
+    """La ligne de statistiques d'une fin de match, en morceaux, ou [].
+
+    Trois raisons de jeter une paire, et toutes les trois disent la meme
+    chose : un chiffre affiche d'un seul cote, ou faux, ment sur l'autre.
+
+      - un camp muet fait tomber la paire entiere. "61%" tout seul laisse
+        deviner "39%", qui peut etre n'importe quoi ;
+      - deux zeros ne sont pas un match. La source publie un bloc entierement
+        a zero sur 24 matchs termines sur 5 366 - des reports, mais aussi des
+        STATUS_FULL_TIME bien reels - et "0% - 0%" serait un mensonge la ou
+        se taire n'est qu'un silence. C'est la regle du "0-0-0" des bilans ;
+      - un nombre que le score dementirait (voir STAT_FLOORED_BY_SCORE).
+
+    Une paire qui tombe n'emporte pas l'autre : la ligne peut n'avoir qu'une
+    moitie, et une carte qui dit moins reste une carte juste. Quand il ne
+    reste rien, il n'y a pas de ligne du tout - c'est la carte d'avant, au
+    pixel pres.
+    """
+    parts = []
+    for name, key, shape in STAT_KEYS:
+        home = match.home_stats.get(name)
+        away = match.away_stats.get(name)
+        if home is None or away is None:
+            continue
+        if not home and not away:
+            continue
+        if name in STAT_FLOORED_BY_SCORE and (home < match.home_score
+                                              or away < match.away_score):
+            continue
+        if parts:
+            parts.append((STAT_GAP, False))
+        parts.append((i18n.text(key, lang=lang) + " ", False))
+        parts.append(("{} - {}".format(shape.format(home), shape.format(away)),
+                      True))
+    return [parts] if parts else []
+
+
 def _countdown(seconds: float, lang=None) -> str:
     """Le compte a rebours d'avant match, arrondi a la minute superieure."""
     minutes = int(seconds // 60) + 1
@@ -453,10 +514,12 @@ class Event:
 
         Quatre cartes en ont. La fin du match, parce que le score seul ne dit
         pas qui a marque, alors que c'est la premiere chose qu'on cherche quand
-        on n'a pas vu le match ; un camp sans but n'a pas de ligne du tout. Le
-        rattrapage de sortie de veille, une ligne par match qui a bouge. Et les
-        deux cartes d'avant le premier ballon - l'avant-match et le coup
-        d'envoi - une ligne par camp : sa forme et son bilan.
+        on n'a pas vu le match ; un camp sans but n'a pas de ligne du tout, et
+        une derniere ligne compare les deux camps quand la source publie de
+        quoi le faire. Le rattrapage de sortie de veille, une ligne par match
+        qui a bouge. Et les deux cartes d'avant le premier ballon -
+        l'avant-match et le coup d'envoi - une ligne par camp : sa forme et
+        son bilan.
 
         Ni l'une ni l'autre ne borne sa liste ici : c'est `overlay._layout` qui
         coupe, sur la hauteur (MAX_EXTRA_LINES) comme sur la largeur (des
@@ -491,6 +554,12 @@ class Event:
                        for play in match.plays_for(team_id)]
             if scorers:
                 lines.append([(team + " : ", False), (", ".join(scorers), True)])
+        # Les statistiques passent en dernier, et c'est un ordre de lecture :
+        # "qui a marque" est la question qu'on se pose en arrivant devant la
+        # carte, "comment" ne vient qu'apres. Une seule ligne pour les deux
+        # camps, la ou les buteurs en prennent une chacun : elle ne parle pas
+        # d'une equipe, elle compare.
+        lines.extend(_stats_parts(match, lang=lang))
         return lines
 
     def extra_lines(self, lang=None) -> list:

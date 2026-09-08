@@ -109,6 +109,16 @@ def _integer(value):
     return True
 
 
+def _number(value):
+    """Ce que `espn._stat_value()` saura lire : "51.5", "7", mais pas "".
+
+    Le canari lit avec les yeux du programme, jamais avec les siens : si un
+    jour la source ecrit ses statistiques autrement, c'est cette fonction-la
+    qui doit dire non, parce que c'est elle que la carte croira.
+    """
+    return espn._stat_value(value) is not None
+
+
 CHECKS = {
     "liste": lambda v: isinstance(v, list),
     "liste non vide": lambda v: isinstance(v, list) and len(v) > 0,
@@ -124,6 +134,7 @@ CHECKS = {
     "couleur hex": lambda v: crests.normalize(v) is not None,
     "url http": lambda v: (isinstance(v, str)
                            and v.lower().startswith(("http://", "https://"))),
+    "nombre": _number,
 }
 
 REQUIRED = "requis"
@@ -169,6 +180,38 @@ COMPETITION_KEYS = (
     # par lettre chez un lecteur moins prudent que le notre.
     ("notes", REQUIRED, "liste"),
 )
+
+# Les statistiques d'un camp, pour les seuls sports qui en affichent une sur
+# leur carte de fin de match. Les noms ne sont pas ecrits ici mais demandes au
+# sport (`Sport.team_stats`) : deux listes finiraient par diverger, et c'est
+# celle de sports.py que la carte croit.
+#
+# SAMPLED et non REQUIRED, parce que la source ne remplit ce bloc qu'apres le
+# coup d'envoi : sur un match a venir le tableau est VIDE - present, mais vide.
+# Un mardi de juillet, le canari dira donc "non verifie", ce qui est la verite.
+COMPETITOR_STATS_KEYS = (
+    ("statistics", SAMPLED, "liste"),
+)
+
+
+def stats_keys(sport):
+    return tuple((name, SAMPLED, "nombre") for name in sport.team_stats)
+
+
+def stats_bag(competitor) -> dict:
+    """{nom: displayValue} pour un camp, tel qu'espn.team_stats() le lit.
+
+    Aplatir le tableau avant de le confronter aux cles surveillees, c'est
+    poser la seule question qui vaille : "possessionPct est-il toujours la ?".
+    Un tableau de neuf objets tous bien formes ne repond pas a celle-la - ils
+    pourraient tous avoir ete renommes.
+    """
+    bag = {}
+    for entry in competitor.get("statistics") or []:
+        if isinstance(entry, dict) and entry.get("name") is not None:
+            bag.setdefault(entry["name"], entry.get("displayValue"))
+    return bag
+
 
 # `details` a sa table a lui, et pas par gout du rangement : au hockey la cle
 # est absente de tous les matchs, tout le temps. Declaree avec les autres, elle
@@ -451,6 +494,10 @@ def inspect_scoreboard(payload, ledger, sport=None):
     """
     sport = sport or sports.DEFAULT
     reads_details = sport.plays != sports.PLAYS_NONE
+    # Meme regle pour les statistiques : un sport qui n'en affiche aucune ne se
+    # fait pas reclamer un champ qu'il remplit avec de tout autres nombres.
+    stats_spec = stats_keys(sport)
+    reads_stats = bool(stats_spec)
     tally = {"events": 0, "usable": 0, "goals": 0, "red_cards": 0,
              "shootout": 0}
 
@@ -482,6 +529,14 @@ def inspect_scoreboard(payload, ledger, sport=None):
                 ledger.anomaly("un element de competitors n'est pas un objet")
                 continue
             ledger.check("competitor", competitor, COMPETITOR_KEYS)
+            if reads_stats:
+                ledger.check("competitor", competitor, COMPETITOR_STATS_KEYS)
+                bag = stats_bag(competitor)
+                # Le bloc est vide avant le coup d'envoi, et un tableau vide
+                # n'est pas une cle disparue : on ne juge que ce qui est
+                # rempli, sinon un mardi de juillet passerait au rouge.
+                if bag:
+                    ledger.check("competitor.statistics", bag, stats_spec)
             team = competitor.get("team")
             if isinstance(team, dict):
                 ledger.check("competitor.team", team, TEAM_KEYS)
@@ -810,6 +865,9 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
     plan = BOARD_PLAN
     if sport.plays != sports.PLAYS_NONE:
         plan += DETAILS_PLAN
+    if sport.team_stats:
+        plan += (("competitor", COMPETITOR_STATS_KEYS),
+                 ("competitor.statistics", stats_keys(sport)))
     if sport.summary_plays:
         plan += SUMMARY_PLAN
     ledger = Ledger(plan=plan + CATALOGUE_PLAN)

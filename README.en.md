@@ -388,6 +388,7 @@ say the same things, and butbutbut never pretends otherwise.
 | Event list | yes | **no** (see below) | yes, but with no flags |
 | Scorer, minute of the action | yes | yes, via the match summary | yes |
 | Assists | no | **yes** | no |
+| Statistics on the full-time card | yes | no (see below) | no |
 | Red cards (`--red-cards`) | yes | not applicable | yes |
 | Table (`--table`) | yes | yes, per conference | yes, bonus points included |
 
@@ -416,6 +417,16 @@ a goal with `scoringPlay` and a sending-off with `redCard`, rugby only gives a
 `type.id` (1 try, 2 conversion, 3 penalty goal, 4 drop goal, 6 red card). Read
 with football's reader, a rugby match would have no events at all - which is
 why it has its own.
+
+**All three publish team statistics, and not remotely the same ones.**
+Football gives nine per side, always the same, among them the possession and
+the shots on target that end up on the
+[full-time card](#the-key-moments-of-a-match). Hockey gives six, two of which
+are **season** totals mixed in with the match numbers: "551 goals" beside a
+3-2 means nothing. Rugby gives 193 in the Six Nations and **none** in the Top
+14, the Premiership, the URC or Super Rugby - a line that would only say
+something in one competition out of five would be a lottery. So both keep
+quiet, and that is a choice, not an oversight.
 
 And **whatever does not apply switches itself off**: `--red-cards` on hockey
 does not crash, it simply finds nothing to report, the source publishing no
@@ -1479,12 +1490,44 @@ FIN DU MATCH   LIGUE 1                                        90'+4'
 Angers              1 - 2              Stade Rennais
 Angers : M. Lopez 12'
 Stade Rennais : A. Kalimuendo 58', L. Blas 77'
+Possession 39% - 61%  Tirs cadres 4 - 9
 ```
 
 A side that hasn't scored gets no line, an own goal is marked `(csc)` and a
 penalty `(sp)`. The card gains one line per scoring side, but never a pixel
 more than its maximum width: a list that runs too long is cut off with an
 ellipsis rather than allowed to overflow.
+
+The last line **explains** the score instead of repeating it: `1 - 2` has
+already been said, `39% - 61%, 4 shots on target to 9` tells the match. It
+comes after the scorers because "who scored" is the question you ask on
+arriving at the card, and "how" only afterwards. It is **the only card** that
+carries it, for the same reason the form is on the kick-off card: it is the
+only one where the match has nothing new left to say. A goal card has eight
+seconds to announce a scorer, and at half-time the match is not over.
+
+Two statistics, not four, and the choice is not a matter of taste: across
+1,764 finished matches, the winner had more **shots on target** than the loser
+69% of the time, more **shots** 57%, and more **corners** 45% - that is, less
+often than a coin toss. **Possession** predicts nothing at all (50%), and that
+is exactly what keeps it: it does not say who won, it says how, and a 2-1 won
+with 39% of the ball tells you something. The survey is in
+[docs/api-espn.en.md](docs/api-espn.en.md), section 3.
+
+Like the form and the record, those numbers arrive in **the same response as
+the score**: they do not cost one extra request. And as everywhere else, we
+keep quiet rather than approximate: if only one side publishes a statistic,
+the whole pair is thrown away - `39%` on its own would let you guess `61%`,
+which could be anything. An all-zero block (the source does publish some, on
+genuinely finished matches too) is not shown either, and a shots-on-target
+count lower than the same side's goals is dropped: the card carries the score
+right above, it is not going to contradict itself. When nothing is left, the
+card is exactly the one from before.
+
+Football only: hockey and rugby fill the same field with entirely different
+numbers - goalkeeper saves and season totals for one, 193 statistics in the
+Six Nations and none at all in the Top 14 for the other. Their full-time card
+does not move by a pixel.
 
 On a cup night the same card also carries the shootout verdict - `Tirs au but
 3 - 5 : Stade de Reims` - because a `1 - 1` does not say who goes through. See

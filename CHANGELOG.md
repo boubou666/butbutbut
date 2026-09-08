@@ -171,6 +171,56 @@ soiree.log` rend donc le meme fichier qu'avant, et `| grep BUT` marche comme
 avant. La largeur, elle, suit le terminal (30 a 78 colonnes, relue a chaque
 carte) ; une sortie qui n'est pas un terminal n'a pas de largeur et prend la
 largeur maximale, ce qui rend le meme fichier d'une machine a l'autre.
+- **La carte de fin de match explique le score au lieu de s'arreter a le
+  dire.** `Possession 39% - 61%  Tirs cadres 4 - 9` sous les buteurs : `1 - 2`
+  est deja ecrit au-dessus, cette ligne raconte le match. Les chiffres sont
+  dans le tableau de bord depuis toujours (`competitors[].statistics`), dans la
+  **meme reponse que le score** - ils ne coutent pas une requete de plus, on
+  les jetait. C'est le mecanisme de la 1.12.0, sur la carte d'en face.
+- **Cette carte, et elle seule.** C'est la seule ou le match n'a plus rien de
+  neuf a raconter. Une carte de but a huit secondes pour annoncer un buteur, et
+  a la mi-temps ce qui vient de se passer est plus interessant qu'un bilan ; un
+  test le verrouille dans les deux sens. La ligne passe **apres** les buteurs :
+  "qui a marque" est la question qu'on se pose en arrivant devant la carte,
+  "comment" seulement ensuite.
+- **Deux statistiques sur les neuf publiees, et le tri s'est fait sur des
+  chiffres, pas sur du gout.** Sur 1 764 matchs termines sans match nul, le
+  vainqueur avait plus de **tirs cadres** que le perdant 69% du temps, plus de
+  **tirs** 57%, et plus de **corners** 45% - moins souvent qu'a pile ou face.
+  Les corners sont donc dehors, et les tirs cadres passent devant les tirs :
+  la meme question, mieux repondue, en un nombre au lieu de deux.
+- **La possession reste alors qu'elle ne predit rien** - 50%, exactement pile
+  ou face - et c'est le seul choix qui ne vienne pas d'un classement. Elle ne
+  dit pas qui a gagne, elle dit comment : un 2-1 gagne avec 39% de ballon
+  raconte quelque chose que le score ne raconte pas. Seule elle laisserait
+  croire a une conclusion ; a cote des tirs cadres, elle dit si la domination
+  est devenue du danger.
+- **Trois refus, tous mesures avant d'etre ecrits.** Une statistique publiee
+  d'un seul cote fait jeter la paire entiere - `39%` tout seul laisserait
+  deviner `61%`, qui peut etre n'importe quoi. Un bloc entierement a zero ne
+  s'affiche pas : la source en publie sur **24 matchs termines sur 5 366**, et
+  pas seulement des reports - de vrais `STATUS_FULL_TIME`. Et un nombre de
+  tirs cadres inferieur au nombre de buts du meme camp est jete (12 camps sur
+  4 788) : la carte porte le score juste au-dessus, elle ne va pas se dementir
+  toute seule. Quand il ne reste rien, la carte est exactement celle d'avant.
+- **Le football seulement, et ce n'est pas parce que les autres se taisent.**
+  C'est la surprise du releve : le hockey remplit le meme champ avec six
+  nombres, dont deux totaux de **saison** (`ytdGoals` vaut 551) ; le rugby en
+  publie 193 au Tournoi des Six Nations et **rien du tout** au Top 14, en
+  Premiership, en URC et en Super Rugby. Un champ present n'est pas un champ
+  lisible, et c'est `Sport.team_stats` - vide chez eux - qui autorise la
+  lecture, jamais la seule presence de la cle.
+- **La source a ete relevee avant d'ecrire une ligne de code** : 5 366 matchs
+  termines, 29 competitions, trois periodes, 96 588 objets. On y apprend que
+  `statistics` n'a **pas** de `value` numerique (trois cles seulement, dont
+  `displayValue`, une chaine), que le tableau est **vide** avant le coup
+  d'envoi et jamais absent, que les neuf noms du football sont toujours les
+  neuf memes, et que `appearances` vaut `"0"` partout, tout le temps. Le
+  tableau complet est dans `docs/api-espn.md`, section 3, et le canari
+  surveille desormais les deux noms retenus.
+- **Le plan ASCII de la carte de fin de match a bouge** : 149 px au lieu de
+  128, trois lignes sous le score au lieu de deux. Elle reste derriere
+  l'avant-match (153 px), qui garde son titre de plus haute carte du programme.
 
 ## [1.12.1] - 2026-09-08
 

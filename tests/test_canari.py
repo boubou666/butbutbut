@@ -26,6 +26,23 @@ canari = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(canari)
 
 
+# Les neuf statistiques d'un camp, telles que la source les publie : trois
+# cles par objet, pas une de plus, et des valeurs ecrites en toutes lettres.
+# Le canari n'en surveille que deux, mais il doit les trouver au milieu des
+# autres - c'est la seule facon de savoir si l'une a ete renommee.
+STATISTICS = [
+    {"name": "foulsCommitted", "displayValue": "16", "abbreviation": "FC"},
+    {"name": "wonCorners", "displayValue": "7", "abbreviation": "CW"},
+    {"name": "possessionPct", "displayValue": "60.1", "abbreviation": "PP"},
+    {"name": "totalShots", "displayValue": "20", "abbreviation": "SHOT"},
+    {"name": "shotsOnTarget", "displayValue": "7", "abbreviation": "SOG"},
+    {"name": "totalGoals", "displayValue": "1", "abbreviation": "G"},
+    {"name": "goalAssists", "displayValue": "1", "abbreviation": "A"},
+    {"name": "shotAssists", "displayValue": "14", "abbreviation": "SHAST"},
+    {"name": "appearances", "displayValue": "0", "abbreviation": "APP"},
+]
+
+
 def board(*events):
     """Une charge utile complete, telle que la source la sert vraiment.
 
@@ -40,7 +57,14 @@ def board(*events):
     for entry in raw["events"]:
         competition = entry["competitions"][0]
         entry.setdefault("date", competition["date"])
+        started = competition["status"]["type"]["state"] != "pre"
         for competitor in competition["competitors"]:
+            # Les statistiques du match, que la source ne remplit qu'une fois
+            # le ballon parti : un match a venir garde son tableau vide, et le
+            # canari dira "non verifie" plutot que "MANQUE". C'est la difference
+            # entre une cle disparue et une cle qui n'a rien a dire encore.
+            if started and not competitor.get("statistics"):
+                competitor["statistics"] = list(STATISTICS)
             team = competitor["team"]
             team.setdefault("name", team["shortDisplayName"])
             team.setdefault("location", team["displayName"])
@@ -401,6 +425,73 @@ class TestShootout(unittest.TestCase):
         code, report = canary(live=shootout_board(winner=False))
         self.assertEqual(code, 1, report)
         self.assertIn("sans drapeau winner", report)
+
+
+class TestTheStatisticsAreWatchedByName(unittest.TestCase):
+    """Renommer une statistique ne casse rien : c'est bien le probleme.
+
+    La carte de fin de match perdrait sa ligne sans qu'un seul test ne
+    bronche, puisque tous fabriquent eux-memes leur charge utile. C'est
+    exactement le genre de panne muette pour lequel le canari existe.
+    """
+
+    def renamed(self, before, after):
+        live = played()
+        for competitor in live["events"][0]["competitions"][0]["competitors"]:
+            for entry in competitor["statistics"]:
+                if entry["name"] == before:
+                    entry["name"] = after
+        return live
+
+    def test_a_renamed_statistic_is_caught(self):
+        code, report = canary(live=self.renamed("possessionPct",
+                                                "possessionPercent"))
+        self.assertEqual(code, 1, report)
+        self.assertIn("competitor.statistics.possessionPct", report)
+        # Et l'autre, qui n'a pas bouge, reste verte : le rapport nomme le
+        # degat, il ne rougit pas en bloc.
+        for line in report.splitlines():
+            if "competitor.statistics.shotsOnTarget" in line:
+                self.assertIn("ok", line)
+                break
+        else:
+            self.fail("shotsOnTarget absent du rapport")
+
+    def test_a_value_that_stops_being_a_number_is_caught(self):
+        live = played()
+        for competitor in live["events"][0]["competitions"][0]["competitors"]:
+            for entry in competitor["statistics"]:
+                if entry["name"] == "shotsOnTarget":
+                    entry["displayValue"] = "sept"
+        code, report = canary(live=live)
+        self.assertEqual(code, 1, report)
+        self.assertIn("competitor.statistics.shotsOnTarget", report)
+
+    def test_an_emptied_block_is_not_a_failure(self):
+        # Un match a venir n'a rien a dire de lui-meme : la cle est la, le
+        # tableau est vide, et ce n'est pas une disparition.
+        live = played()
+        for competitor in live["events"][0]["competitions"][0]["competitors"]:
+            competitor["statistics"] = []
+        code, report = canary(live=live)
+        self.assertEqual(code, 0, report)
+        self.assertIn("non verifie", report)
+
+    def test_a_vanished_block_is_a_failure(self):
+        live = played()
+        for competitor in live["events"][0]["competitions"][0]["competitors"]:
+            competitor.pop("statistics")
+        code, report = canary(live=live)
+        self.assertEqual(code, 1, report)
+        self.assertIn("competitor.statistics", report)
+
+    def test_hockey_is_never_asked_for_statistics(self):
+        # Le hockey en publie, mais d'un tout autre genre, et sa carte n'en
+        # affiche aucune : lui reclamer les noms du football ferait rougir le
+        # canari tous les matins pour un fait connu.
+        _, report = canary(live=hockey_board(), digest=hockey_digest(),
+                           argv=HOCKEY)
+        self.assertNotIn("statistics", report)
 
 
 class TestNothingToCheck(unittest.TestCase):

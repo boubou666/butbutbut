@@ -248,6 +248,74 @@ class TestTheMatchNote(unittest.TestCase):
                          "note_first_leg")
 
 
+class TestTeamStatistics(unittest.TestCase):
+    """Les statistiques du match : lues ici, triees sur la carte."""
+
+    FULL = {"possessionPct": "60.1", "shotsOnTarget": "7",
+            "totalShots": "20", "wonCorners": "7", "totalGoals": "1",
+            "appearances": "0", "foulsCommitted": "16"}
+
+    def parse(self, **kwargs):
+        return espn.parse(payload(event(**kwargs)), LIGUE1)[0]
+
+    def test_only_the_two_retained_names_survive(self):
+        # Le tableau de bord en publie neuf par camp ; ce qui n'ira jamais sur
+        # une carte n'a pas a traverser le programme.
+        match = self.parse(home_stats=self.FULL)
+        self.assertEqual(match.home_stats,
+                         {"possessionPct": 60.1, "shotsOnTarget": 7.0})
+
+    def test_the_two_camps_are_read_apart(self):
+        match = self.parse(home_stats={"possessionPct": "60.1"},
+                           away_stats={"possessionPct": "39.9"})
+        self.assertEqual(match.home_stats, {"possessionPct": 60.1})
+        self.assertEqual(match.away_stats, {"possessionPct": 39.9})
+
+    def test_an_absent_block_is_not_a_problem(self):
+        self.assertEqual(self.parse(home_stats=None).home_stats, {})
+
+    def test_an_empty_block_is_not_a_problem(self):
+        # C'est ce que le football publie sur un match a venir : la cle est la,
+        # le tableau est vide.
+        self.assertEqual(self.parse().home_stats, {})
+
+    def test_a_value_that_is_not_a_number_drops_its_own_statistic(self):
+        match = self.parse(home_stats={"possessionPct": "beaucoup",
+                                       "shotsOnTarget": "7"})
+        self.assertEqual(match.home_stats, {"shotsOnTarget": 7.0})
+
+    def test_the_poisons_of_float_are_refused(self):
+        # float() avale "nan" et "inf" sans broncher, et les deux contaminent
+        # ensuite chaque comparaison qu'ils touchent.
+        for value in ("nan", "inf", "-inf", "-3", "1e12", ""):
+            self.assertEqual(self.parse(
+                home_stats={"possessionPct": value}).home_stats, {}, value)
+
+    def test_an_entry_that_is_not_an_object_is_ignored(self):
+        raw = payload(event())
+        competitor = raw["events"][0]["competitions"][0]["competitors"][0]
+        competitor["statistics"] = ["possessionPct", None,
+                                    {"name": "shotsOnTarget",
+                                     "displayValue": "7"}]
+        self.assertEqual(espn.parse(raw, LIGUE1)[0].home_stats,
+                         {"shotsOnTarget": 7.0})
+
+    def test_the_first_answer_wins_over_a_second(self):
+        raw = payload(event())
+        competitor = raw["events"][0]["competitions"][0]["competitors"][0]
+        competitor["statistics"] = [{"name": "shotsOnTarget", "displayValue": "7"},
+                                    {"name": "shotsOnTarget", "displayValue": "2"}]
+        self.assertEqual(espn.parse(raw, LIGUE1)[0].home_stats,
+                         {"shotsOnTarget": 7.0})
+
+    def test_two_matches_never_share_the_same_empty_block(self):
+        # Un dictionnaire par defaut partage finit toujours par etre modifie
+        # par quelqu'un, et le match d'a cote heriterait de ses valeurs.
+        first, second = self.parse(), self.parse()
+        first.home_stats["possessionPct"] = 99.0
+        self.assertEqual(second.home_stats, {})
+
+
 class TestPlays(unittest.TestCase):
     def test_scoring_plays_are_collected_with_scorer(self):
         details = (goal_detail("H1", "35'", "C. Arcus"),

@@ -383,14 +383,18 @@ def _scenarios():
                               ("GGNGP  2G 1N 0P", True)]])),
 
         ("fin-de-match", 1.0,
-         "Le sifflet final : une ligne de buteurs par camp, sous le score.",
+         "Le sifflet final : une ligne de buteurs par camp, puis la ligne qui"
+         " explique le score - trois lignes sous le score, le maximum du"
+         " programme.",
          overlay.Card(title="FIN DU MATCH", league="LIGUE 1", minute="90'+4'",
                       home="Angers", away="Stade Rennais",
                       home_score=1, away_score=2, side=None, detail=[],
                       accent="#f2e34c", title_color=overlay.MUTED,
                       extra=[[("Angers : ", False), ("M. Lopez 12'", True)],
                              [("Stade Rennais : ", False),
-                              ("A. Kalimuendo 58', L. Blas 77'", True)]])),
+                              ("A. Kalimuendo 58', L. Blas 77'", True)],
+                             [("Possession ", False), ("39% - 61%", True),
+                              ("  Tirs cadres ", False), ("4 - 9", True)]])),
 
         ("rugby-essai", 1.0,
          "Le rugby : un essai vaut cinq points, et le detail de la carte le"

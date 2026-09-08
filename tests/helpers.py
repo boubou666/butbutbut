@@ -136,12 +136,44 @@ def _standing(form, record) -> dict:
     return extra
 
 
+# Les abreviations que la source pose a cote de chaque statistique. Elles ne
+# servent a rien ici - espn.py ne les lit pas - et c'est justement pour ca
+# qu'elles sont la : la fabrique doit ressembler a la source, sans quoi un test
+# valide un objet plus simple que celui qui arrivera vraiment.
+STAT_ABBREVIATIONS = {"possessionPct": "PP", "shotsOnTarget": "SOG",
+                      "totalShots": "SHOT", "wonCorners": "CW",
+                      "totalGoals": "G", "foulsCommitted": "FC"}
+
+
+def _statistics(bag) -> dict:
+    """Le bloc `statistics` d'un camp, dans la forme exacte de la source.
+
+    Trois etats a distinguer, et les trois existent :
+
+      - `()`, le defaut : la cle est la, avec un tableau VIDE. C'est ce que le
+        football publie sur tout match qui n'a pas commence, et sur les 418
+        matchs releves la cle n'a jamais manque - une fabrique qui l'omettrait
+        ferait passer les tests par un chemin que la source ne prend pas ;
+      - un dictionnaire {nom: valeur} : le bloc rempli. Les valeurs sont des
+        CHAINES parce que la source n'en ecrit jamais d'autres, et il n'y a pas
+        de cle `value` : elle n'existe pas non plus chez elle ;
+      - None : la cle est absente. Le football ne le fait pas, mais le
+        programme doit l'encaisser - une API non documentee ne promet rien.
+    """
+    if bag is None:
+        return {}
+    return {"statistics": [
+        {"name": name, "displayValue": str(value),
+         "abbreviation": STAT_ABBREVIATIONS.get(name, name[:4].upper())}
+        for name, value in dict(bag).items()]}
+
+
 def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
           away_score=0, state="in", detail="35'", clock="35'",
           date="2026-09-06T15:15Z", details=(), status_name="",
           home_colors=(), away_colors=(), home_logo="", away_logo="",
           home_form="", away_form="", home_record="", away_record="",
-          notes=()):
+          notes=(), home_stats=(), away_stats=()):
     return {
         "id": match_id,
         "competitions": [{
@@ -155,11 +187,13 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
                 dict({"homeAway": "home", "score": str(home_score),
                       "team": dict(team(home, *home_colors, logo=home_logo),
                                    id="H" + match_id)},
-                     **_standing(home_form, home_record)),
+                     **dict(_standing(home_form, home_record),
+                            **_statistics(home_stats))),
                 dict({"homeAway": "away", "score": str(away_score),
                       "team": dict(team(away, *away_colors, logo=away_logo),
                                    id="A" + match_id)},
-                     **_standing(away_form, away_record)),
+                     **dict(_standing(away_form, away_record),
+                            **_statistics(away_stats))),
             ],
             "status": {"displayClock": clock,
                        "type": {"state": state, "shortDetail": detail,
@@ -233,7 +267,7 @@ def hockey_event(match_id="1", home="Boston Bruins", away="Montreal Canadiens",
                  home_score=0, away_score=0, state="in",
                  detail="2nd Period - 12:07", clock="12:07", period=2,
                  date="2026-09-19T23:00Z", status_name="STATUS_IN_PROGRESS",
-                 notes=()):
+                 notes=(), stats=None):
     """Un match de hockey tel que la source le publie.
 
     Deux ecarts avec le football, et ils sont volontaires :
@@ -244,14 +278,21 @@ def hockey_event(match_id="1", home="Boston Bruins", away="Montreal Canadiens",
       - le score est un **entier**, pas une chaine, et l'equipe n'a qu'une
         seule couleur.
 
+    `stats`, en revanche, existe bel et bien au hockey - la source y publie six
+    nombres par camp, dont deux totaux de saison - et c'est pour ca que la
+    fabrique sait en poser : ce qui doit etre prouve, c'est que le programme
+    n'affiche PAS un bloc present.
+
     `period` remplace la mi-temps : 1, 2, 3, puis 4 (prolongation) et 5 (tirs
     au but).
     """
     def side(name, where, score, team_id, color):
-        return {"homeAway": where, "score": score,
-                "team": {"id": team_id, "displayName": name,
-                         "shortDisplayName": name.split()[-1],
-                         "abbreviation": name[:3].upper(), "color": color}}
+        entry = {"homeAway": where, "score": score,
+                 "team": {"id": team_id, "displayName": name,
+                          "shortDisplayName": name.split()[-1],
+                          "abbreviation": name[:3].upper(), "color": color}}
+        entry.update(_statistics(stats))
+        return entry
 
     return {
         "id": match_id,

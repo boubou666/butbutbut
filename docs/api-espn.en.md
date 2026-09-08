@@ -320,7 +320,7 @@ necessarily in that order**: the field is what counts, not the position.
 | `winner` | `false` | absent before the end |
 | `form` | `"LWDLW"` | last five matches, football only |
 | `records` | `[{"summary": "1-1-1"}]` | |
-| `statistics` | possession, shots, corners... | football only, and never before kick-off |
+| `statistics` | possession, shots, corners... | an **empty** array before kick-off; see below |
 | `team` | the object below | |
 
 The team itself:
@@ -337,6 +337,84 @@ The team itself:
 Football gives `alternateColor`, hockey does not; the colour is sometimes an
 empty string. Nothing in there is guaranteed, and `crests.py` knows how to
 fall back on the competition colour.
+
+### Team statistics: `competitors[].statistics`
+
+Surveyed over **5,366 finished matches**, 29 football competitions and three
+periods (August-September 2026, March-May 2026, October-November 2025), that
+is 10,732 sides and 96,588 objects; plus 418 upcoming matches for the `pre`
+state.
+
+An object has only **three keys** - `name`, `abbreviation`, `displayValue` -
+and **there is no numeric `value`**: what you read is always a string.
+
+```json
+{ "name": "possessionPct", "abbreviation": "PP", "displayValue": "60.1" }
+```
+
+Football publishes **nine per side**, no more and no less: across the 10,732
+sides surveyed, none had eight or ten, and none of the nine was ever missing
+from one side while the other had it.
+
+| `name` | `abbreviation` | `displayValue` | Read by butbutbut |
+| --- | --- | --- | --- |
+| `possessionPct` | `PP` | `"60.1"` - always one decimal | **yes** |
+| `shotsOnTarget` | `SOG` | `"7"` | **yes** |
+| `totalShots` | `SHOT` | `"20"` | no |
+| `wonCorners` | `CW` | `"7"` | no |
+| `foulsCommitted` | `FC` | `"16"` | no |
+| `goalAssists` | `A` | `"1"` | no |
+| `shotAssists` | `SHAST` | `"14"` | no |
+| `totalGoals` | `G` | `"1"` | no |
+| `appearances` | `APP` | `"0"` across all 10,732 sides, without exception | no |
+
+Three things this survey teaches, none of which could be guessed:
+
+1. **Before kick-off the key is there and the array is EMPTY** - never absent,
+   across the 418 upcoming matches looked at. Three of them nevertheless
+   carried a block **full of zeroes**, which is not the same thing.
+2. **An all-zero block also happens on finished matches**: 24 out of 5,366,
+   including `STATUS_POSTPONED` ones but also genuine `STATUS_FULL_TIME` ones.
+   `0.0` possession on both sides is therefore a case to filter, not a
+   theoretical curiosity.
+3. **The two possessions add up to exactly 100** in 5,342 cases out of 5,366;
+   the other 24 are precisely the zero blocks above.
+
+And two ways of contradicting oneself, rare but real: `shotsOnTarget` is lower
+than the same side's goal count **12 times out of 4,788**, `totalShots` once,
+and `totalGoals` differs from the `score` published next to it **13 times**. A
+card that shows the score cannot put those numbers beside it without checking
+them first.
+
+**What a statistic says about the result.** Measured over 1,764 finished
+matches that were not draws: share of matches where the winner is ahead of the
+loser on that statistic.
+
+| Statistic | Winner ahead | Level | Winner behind |
+| --- | --- | --- | --- |
+| Shots on target | **69%** | 10% | 21% |
+| Shots | 57% | 4% | 39% |
+| Possession | 50% | 0% | 50% |
+| Corners | 45% | 9% | 46% |
+
+Corners say nothing - worse than a coin toss. Possession says nothing either,
+and that is exactly what makes it interesting next to another one: it does not
+say who won, it says how.
+
+**The other sports fill the same field with other numbers.** So this is not a
+football field, it is a field whose content depends on the sport - and that
+had to be looked at to be known.
+
+| Sport | What you find | Surveyed over |
+| --- | --- | --- |
+| Hockey (NHL) | 6 names: `saves`, `savePct`, `goals`, `ytdGoals`, `assists`, `points` | 332 sides |
+| Rugby (Six Nations) | **193 names**: `cleanBreaks`, `carriesMetres`, `ballWonZoneA`... | 30 sides |
+| Rugby (Top 14, Premiership, URC, Super Rugby) | an **empty** array | 170 sides |
+
+Hockey mixes two **season** totals (`ytdGoals` is 551) into four match
+numbers; rugby publishes something in only one competition out of five.
+Neither has enough to hold a card line, which is why `Sport.team_stats` is
+empty for them.
 
 ### The plays: `competitions[0].details`
 
@@ -746,6 +824,9 @@ watches.
 | `competitors[].team.name` / `location` / `abbreviation` | `team_names` | matching `--teams` |
 | `competitors[].team.color` / `alternateColor` | `team_colors` | the club colour |
 | `competitors[].team.logo` / `logos[].href` | `team_logo` | the crest |
+| `competitors[].form` | `team_form` | the form, on the pre-match cards |
+| `competitors[].records[].summary` / `type` | `team_record` | the season record |
+| `competitors[].statistics[].name` / `displayValue` | `team_stats` | possession and shots on target, on the full-time card |
 | `status.type.state` | `phase_of` | live, upcoming, finished |
 | `status.type.name` | `phase_of` | half-time, postponement, abandonment |
 | `status.type.shortDetail` / `detail` / `description` | `espn.parse` | the status line |
@@ -807,6 +888,10 @@ The ones that have already cost something, or that would.
 11. **The order of `children[].standings.entries` is not the ranking**, and
     hockey has no `rank` at all.
 12. **No `ETag`, no `Last-Modified`**: conditional requests are out of reach.
+13. **A non-empty `statistics` block is not a truthful one**: 24 finished
+    matches out of 5,366 publish it entirely at zero, and so do three upcoming
+    ones. And there is no numeric `value` in there, only `displayValue`, a
+    string.
 
 ---
 
@@ -814,6 +899,29 @@ The ones that have already cost something, or that would.
 
 Five leads this survey opens, with their trade-off. Each one says where it
 stands.
+
+**Team statistics - done.** They travel in the same response as the score,
+like the form and the record before them: nothing to pay, everything to keep
+or to throw away. The full-time card carries two of them on one line -
+possession and shots on target - and it is the only card in the program that
+shows them: it is the only one where the match has nothing new left to say.
+
+Three trade-offs, and all three came out of the survey above rather than out
+of somebody's taste:
+
+- **corners were dropped on one figure**, 45%: the winner has fewer of them
+  than the loser as often as more. A card line has no room for a number that
+  says nothing;
+- **shots on target were preferred to shots** (69% against 57%): the same
+  question, better answered, and one number instead of two. `totalGoals`
+  repeats the score already displayed - and contradicts it 13 times out of
+  4,788 sides;
+- **possession stays although it predicts nothing** (50%, exactly a coin
+  toss), and that is deliberate: it does not say who won, it says how. Next to
+  shots on target, it explains a 2-1 won with 39% of the ball.
+
+The rest is ordinary distrust: both sides or nothing, never an all-zero block,
+and never a number that the score, displayed right above, would contradict.
 
 **Ask for gzip - done.** Eight times fewer bytes on the wire, for one line in
 `headers()`, a decompression in `download()` and zero dependencies (`gzip` is
