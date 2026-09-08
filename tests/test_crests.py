@@ -9,6 +9,7 @@ comme `espn.fetch` accepte un `opener`.
 import hashlib
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 
 from butbutbut import crests, overlay
@@ -300,20 +301,93 @@ class TestCache(unittest.TestCase):
         cache.join(5.0)
         self.assertEqual(cache.get(self.URL), cache.path_for(self.URL))
 
-    def test_a_url_that_failed_is_not_asked_again(self):
+    def test_a_url_the_source_condemned_is_not_asked_again(self):
+        """Un 404 est une reponse : la redemander a chaque but ne donne rien."""
         asked = []
 
-        def broken(url, _timeout):
+        def missing(url, _timeout):
             asked.append(url)
-            raise OSError("404")
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
-        cache = self.cache(fetcher=broken)
+        cache = self.cache(fetcher=missing)
         cache.get(self.URL)
         cache.join(5.0)
         for _ in range(5):
             cache.get(self.URL)
         cache.join(5.0)
         self.assertEqual(asked, [self.URL])
+
+    def test_an_answer_that_is_not_an_image_condemns_the_url_too(self):
+        asked = []
+
+        def page(url, _timeout):
+            asked.append(url)
+            return b"<html>pas une image</html>"
+
+        cache = self.cache(fetcher=page)
+        cache.get(self.URL)
+        cache.join(5.0)
+        for _ in range(3):
+            cache.get(self.URL)
+        cache.join(5.0)
+        self.assertEqual(asked, [self.URL])
+
+    def test_an_outage_at_boot_does_not_cost_the_whole_session(self):
+        """La regle qui manquait, et elle se voyait surtout sous Linux.
+
+        L'unite systemd demarre avec la session graphique, parfois avant que le
+        reseau soit leve. Les ecussons demandes a cet instant etaient rayes
+        pour toute la vie du daemon - des jours sans le moindre ecusson, alors
+        que le reseau etait revenu dix secondes plus tard. Une panne ne dit
+        rien de l'ecusson : elle se retente au but suivant.
+        """
+        calls = []
+
+        def flaky(url, _timeout):
+            calls.append(url)
+            if len(calls) == 1:
+                raise urllib.error.URLError("reseau pas encore la")
+            return png_bytes()
+
+        cache = self.cache(fetcher=flaky)
+        self.assertIsNone(cache.get(self.URL))      # le reseau n'est pas la
+        cache.join(5.0)
+        self.assertIsNone(cache.get(self.URL))      # le but suivant relance
+        cache.join(5.0)
+        self.assertEqual(cache.get(self.URL), cache.path_for(self.URL))
+
+    def test_a_server_that_stumbles_is_tried_again(self):
+        """503, 429, 408 : "reviens plus tard", pas "il n'y a rien ici"."""
+        for code in (500, 503, 429, 408):
+            asked = []
+
+            def stumbling(url, _timeout, code=code):
+                asked.append(url)
+                raise urllib.error.HTTPError(url, code, "Nope", {}, None)
+
+            cache = self.cache(fetcher=stumbling)
+            cache.get(self.URL)
+            cache.join(5.0)
+            cache.get(self.URL)
+            cache.join(5.0)
+            self.assertEqual(len(asked), 2, "code {}".format(code))
+
+    def test_a_broken_combiner_alone_does_not_condemn_the_crest(self):
+        """Le combineur est une preference : ce qu'il refuse ne prouve rien."""
+        asked = []
+
+        def uneven(url, _timeout):
+            asked.append(url)
+            if url != self.URL:
+                return b"<html>"                    # l'URL fabriquee derape
+            raise urllib.error.URLError("reseau coupe")
+
+        cache = self.cache(size=64, fetcher=uneven)
+        cache.get(self.URL)
+        cache.join(5.0)
+        cache.get(self.URL)
+        cache.join(5.0)
+        self.assertEqual(asked.count(self.URL), 2)
 
     def test_an_unwritable_directory_does_not_raise(self):
         # Un fichier la ou le cache attend un dossier : mkdir echouera.
@@ -421,7 +495,7 @@ class TestCache(unittest.TestCase):
 
         def missing(url, _timeout):
             asked.append(url)
-            raise OSError("404")
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
 
         cache = self.cache(size=64, fetcher=missing)
         self.assertIsNone(cache.get(self.URL))
@@ -431,8 +505,8 @@ class TestCache(unittest.TestCase):
         for _ in range(3):
             self.assertIsNone(cache.get(self.URL))
         cache.join(5.0)
-        # Deux URL perdues, ce n'est pas une raison pour les redemander a
-        # chaque but.
+        # ESPN a repondu, deux fois, que cet ecusson n'existe pas : ce n'est
+        # pas une raison pour le redemander a chaque but.
         self.assertEqual(len(asked), 2)
 
 
