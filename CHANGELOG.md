@@ -7,6 +7,14 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.13.1] - 2026-09-09
+
+### Corrige
+
+- **Le canari ne crie plus au loup sur la NHL.** ESPN ne publie pas
+  `competitor.team.alternateColor` pour le hockey ; cette cle est désormais
+  surveillee seulement par les sports qui la fournissent.
+
 ## [1.13.0] - 2026-09-09
 
 ### Ajoute
