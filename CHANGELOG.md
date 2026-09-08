@@ -7,6 +7,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.12.1] - 2026-09-08
+
 ### Corrige
 
 - **Une panne de reseau ne coute plus les ecussons de toute la session.** Le
@@ -1795,7 +1797,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.12.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/boubou666/butbutbut/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/boubou666/butbutbut/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/boubou666/butbutbut/compare/v1.10.2...v1.11.0
 [1.10.2]: https://github.com/boubou666/butbutbut/compare/v1.10.1...v1.10.2
