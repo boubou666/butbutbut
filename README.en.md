@@ -1004,6 +1004,107 @@ visible cards, the oldest one gives up its place. One card is the exception,
 [the pinned card](#the-pinned-card): it holds the corner permanently, the stack
 starts after it, and it does not count towards the five.
 
+### No screen: the cards written in the terminal
+
+A machine with no graphical server, an SSH session, a tmux, a container: there
+is no window to open, and until now a goal left nothing there but a line of log.
+`--no-overlay` already existed, but it **cuts** the display, it does not replace
+it.
+
+```bash
+butbutbut --terminal
+```
+
+The same card, the same elements, the same geometry - the score in the middle,
+the names on either side, the scorer underneath - but in characters:
+
+```
++----------------------------------------------------------------------------+
+| GOAL!  LIGUE 1                                                         35' |
+|                           Angers  0 - 1  Stade Rennais                     |
+| Goal by A. Kalimuendo                                                      |
++----------------------------------------------------------------------------+
+```
+
+Every card goes through it, not just the goals: kick-off, half-time, the
+restart, full-time with its list of scorers, the sending-off, the pre-match
+announcement. A red card is drawn here too rather than written: `[]` per card,
+against the figure of the team that took it.
+
+**It starts in two ways.** `--terminal` asks for it, and then no window is even
+attempted - which is what you want over SSH towards a machine that does have a
+screen, or from a tmux. Without the option, butbutbut first tries to open a
+window and **switches over on its own** the day it cannot: tkinter missing,
+`DISPLAY` empty. That fallback is not silent, it says so:
+
+```
+2026-09-08 23:37:33  aucune fenetre possible : les cartes s'ecrivent dans le terminal (sortie d'erreur), le journal garde la sortie standard
+```
+
+It is automatic because it takes nothing away from anybody: at that point the
+card was already lost, and an option you would have had to read beforehand would
+only have saved those who read it. `--no-overlay` keeps its exact meaning - no
+card, anywhere - and wins over `--terminal` when both are given.
+
+> By the way: a session with no `DISPLAY` used to **take the daemon down**
+> before this version. `tkinter` imported fine, `Tk()` raised a `TclError`
+> nothing caught, and butbutbut died at startup on the very machine where it
+> would have been useful. It now degrades, as it does everywhere else.
+
+**Sound, voice, hook and log do not move.** This mode replaces a window and
+nothing else: `--speak` speaks, `--on-goal` fires, the log file fills up
+identically, and `--no-phase-cards`, `--spoiler-free` and `--quiet-hours` apply
+exactly the same. `--quiet`, on the other hand, wins: it says "write to the log
+only", and a card is writing in the terminal.
+
+**Two outputs, the same rule as everywhere else.** The log goes to standard
+output, the card to standard error - that is the rule of [Two outputs, and only
+one carries the data](#two-outputs-and-only-one-carries-the-data), applied as
+is: the card is formatting, the log line is the data. In a terminal the two mix
+and you read everything; as soon as you redirect, each goes where it belongs.
+
+```bash
+butbutbut --terminal > evening.log    # the file only gets the log
+butbutbut --terminal | grep 'BUT'     # ... and a filter works as before
+```
+
+**The width follows the terminal**, between 30 and 78 columns, read again for
+every card - so a window resized mid-evening is followed. An output that is not
+a terminal (a file, a pipe) has no width: the card then takes the maximum width,
+which has the merit of producing the same file from one machine to the next.
+Whatever does not fit gives way, exactly as on the on-screen card - the names
+first, the list of scorers next, never the score:
+
+```
++--------------------------------------------+
+| GOAL!  BUNDESLIGA                      35' |
+| Borussia... [][]  1 - 2  []   Eintrach...  |
+| Goal by C. Arcus                           |
++--------------------------------------------+
+```
+
+**What a terminal card does not show**, and why:
+
+- **the crests**: a terminal displays no image, and an abbreviation in their
+  place would make the drawing say something the card does not;
+- **the colours**, and that is a choice, not an oversight. The whole colour
+  decision of the program rests on one certainty: the card background is the
+  blue-black of `overlay.py`, and [a club's
+  colour](#club-crests-and-colours) is only kept when it reads against it. A
+  terminal has no known background - it may be white - so the question
+  `crests.pick_accent` knows how to settle no longer has an answer, and we do
+  not bet on somebody else's theme. An unreadable club name would be worse than
+  a club name in black and white. Nothing writes an escape code, so there is
+  nothing to degrade for `NO_COLOR`, for a Windows console or for a pipe;
+- **the pinned card**: it is worth having because it *stays* on screen, and a
+  terminal only scrolls. `--pin` keeps following its match - the "pinned" line
+  of `--status` still tells the truth - but no pinned card is written.
+
+**You can look at it without waiting for a Saturday night.** `butbutbut --test
+--terminal` shows the sample card, and `--replay` replays a whole evening,
+terminal cards included: see [Recording a real match, and replaying
+it](#recording-a-real-match-and-replaying-it).
+
 ### Club crests and colours
 
 For every team, the source publishes the URL of its crest and its two colours.
@@ -1233,6 +1334,7 @@ A comma only splits in front of a new pair: a path that contains one
 ```bash
 butbutbut --no-sound          # silent
 butbutbut --no-overlay        # just the sound and the log, no card
+butbutbut --terminal          # the card written in the terminal, no window
 butbutbut --no-logos          # no crest on the cards
 butbutbut --duration 8        # keep the card for 8 s (default: the length of the sound)
 ```
@@ -1445,6 +1547,7 @@ volume = 0.55
 no_sound = non
 speak = non
 no_overlay = non
+terminal = non
 no_phase_cards = non
 catch_up = non
 quiet = non
@@ -3198,6 +3301,19 @@ It is a `tools/` script and not an option of the program, for the same reason
 as [the canary](#the-canary): those blueprints only serve the repository, and
 `butbutbut --help` has no business carrying, for life, a line that speaks only
 to the tests.
+
+**The terminal mode does not go through it.** The question came up - the
+repository already knew how to draw a card in ASCII, why do it twice? - and the
+answer is that a blueprint transcribes a geometry **in pixels**, at one
+character per eight pixels. Brought down to the size of a terminal, it makes the
+strokes run into each other: "LIGUE 1" loses its digit under the edge of the
+card, and the line of scorers walks over the score. That is normal, `blueprint`
+is built so a two-pixel shift leaps out of a diff, not to lay out text. [The
+terminal card](#no-screen-the-cards-written-in-the-terminal) therefore computes
+its geometry in characters, and what stays unique is the source: the same
+`overlay.Card`, built by the same `Card.from_event`. The guard against drift is
+that `tests/test_terminal.py` renders **the very same frozen cards** as the
+blueprints - so a shape of card added here arrives there on its own.
 
 ### Where it runs
 

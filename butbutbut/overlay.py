@@ -169,8 +169,28 @@ DEMO_BY_SPORT = {
 }
 
 
-class TkinterMissing(RuntimeError):
+class DisplayUnavailable(RuntimeError):
+    """Aucune fenetre possible ici, quelle qu'en soit la raison.
+
+    Les deux raisons ne se soignent pas pareil - il manque un paquet, ou il
+    manque un serveur graphique - mais l'appelant, lui, en fait la meme chose :
+    il ecrit ses cartes dans le terminal. D'ou ce parent commun, qui lui evite
+    d'enumerer les pannes.
+    """
+
+
+class TkinterMissing(DisplayUnavailable):
     """tkinter absent : paquet systeme a installer."""
+
+
+class NoDisplay(DisplayUnavailable):
+    """tkinter est bien la, mais il n'a aucun affichage ou s'ouvrir.
+
+    Le cas d'une session SSH, d'un tmux sans DISPLAY, d'un conteneur : l'import
+    passe, `Tk()` non. Sans cette exception, l'erreur remontait en TclError
+    brute jusqu'a main() et emportait le daemon - le seul chemin connu par
+    lequel une machine sans ecran perdait butbutbut au demarrage.
+    """
 
 
 def _crest(cache, url):
@@ -1043,12 +1063,18 @@ class Stack:
     # ------------------------------------------------------------- cycle ----
 
     def open(self) -> "Stack":
-        """Cree la racine tkinter. Leve TkinterMissing si tkinter manque."""
+        """Cree la racine tkinter. Leve DisplayUnavailable s'il n'y a pas d'ecran."""
         if self.root is not None:
             return self
         tk, tkfont = _import_tk()
         self.tk = tk
-        self.root = tk.Tk()
+        try:
+            self.root = tk.Tk()
+        except Exception as exc:
+            raise NoDisplay(
+                "aucun affichage graphique ou ouvrir une carte ({}). Sous "
+                "Linux, c'est ce que dit une session sans DISPLAY : un SSH, un "
+                "tmux, un conteneur.".format(exc)) from exc
         self.root.withdraw()
         self.fonts = _fonts(tkfont, self.scale)
         self.refresh_monitor()

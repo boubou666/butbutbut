@@ -191,6 +191,13 @@ OPTIONS = (
     Option("no_overlay", _flag,
            "Pas de carte du tout : oui pour ne garder que le son et le journal.",
            "non"),
+    Option("terminal", _flag,
+           "Ecrire les cartes dans le terminal au lieu d'ouvrir une fenetre : "
+           "pour une machine sans ecran, un SSH, un tmux, un conteneur. Sans "
+           "cette cle, butbutbut y bascule quand meme tout seul le jour ou "
+           "aucune fenetre ne peut s'ouvrir. La carte part sur la sortie "
+           "d'erreur, le journal reste sur la sortie standard.",
+           "non"),
     Option("no_phase_cards", _flag,
            "Pas de carte au coup d'envoi, a la mi-temps, a la reprise ni a la "
            "fin du match : oui pour ne voir que les buts.",

@@ -1010,6 +1010,111 @@ de cinq cartes visibles, la plus ancienne cede sa place. Une carte fait
 exception, [la carte epinglee](#la-carte-epinglee) : elle tient le coin en
 permanence, la pile commence apres elle, et elle ne compte pas dans les cinq.
 
+### Sans ecran : les cartes dans le terminal
+
+Une machine sans serveur graphique, une session SSH, un tmux, un conteneur : il
+n'y a aucune fenetre a ouvrir, et jusqu'ici un but n'y laissait qu'une ligne de
+journal. `--no-overlay` existait deja, mais il **coupe** l'affichage, il ne le
+remplace pas.
+
+```bash
+butbutbut --terminal
+```
+
+La meme carte, les memes elements, la meme geometrie - le score au centre, les
+noms de part et d'autre, le buteur en dessous - mais en caracteres :
+
+```
++----------------------------------------------------------------------------+
+| BUT !  LIGUE 1                                                         35' |
+|                           Angers  0 - 1  Stade Rennais                     |
+| But de A. Kalimuendo                                                       |
++----------------------------------------------------------------------------+
+```
+
+Toutes les cartes y passent, pas seulement les buts : le coup d'envoi, la
+mi-temps, la reprise, la fin du match avec sa liste de buteurs, l'expulsion,
+l'annonce d'avant-match. Une expulsion se dessine, ici encore, plutot que de
+s'ecrire : `[]` par carton, colle au chiffre de l'equipe qui l'a pris.
+
+**Ca se declenche de deux facons.** `--terminal` le demande, et alors aucune
+fenetre n'est meme tentee - c'est ce qu'on veut depuis un SSH vers une machine
+qui a pourtant un ecran, ou depuis un tmux. Sans l'option, butbutbut essaie
+d'abord d'ouvrir une fenetre et **bascule tout seul** dans le terminal le jour
+ou il n'y arrive pas : tkinter absent, `DISPLAY` vide. Ce repli-la n'est pas
+silencieux, il se dit :
+
+```
+2026-09-08 23:37:33  aucune fenetre possible : les cartes s'ecrivent dans le terminal (sortie d'erreur), le journal garde la sortie standard
+```
+
+Il est automatique parce qu'il ne prend rien a personne : a cet instant la carte
+etait deja perdue, et une option qu'il aurait fallu lire d'avance n'aurait sauve
+que ceux qui l'avaient lue. `--no-overlay`, lui, garde son sens exact - aucune
+carte, nulle part - et l'emporte sur `--terminal` quand les deux sont donnes.
+
+> Au passage : une session sans `DISPLAY` **emportait le daemon** avant cette
+> version. `tkinter` s'importait bien, `Tk()` levait une `TclError` que rien
+> n'attrapait, et butbutbut mourait au demarrage sur la machine meme ou il
+> aurait servi. Il degrade desormais, comme partout ailleurs.
+
+**Le son, la voix, le crochet et le journal ne bougent pas.** Ce mode remplace
+une fenetre, rien d'autre : `--speak` parle, `--on-goal` part, le fichier de
+journal se remplit a l'identique, et `--no-phase-cards`, `--spoiler-free` et
+`--quiet-hours` s'appliquent exactement pareil. `--quiet`, en revanche,
+l'emporte : il dit "n'ecrire que dans le journal", et une carte est de
+l'ecriture dans le terminal.
+
+**Deux sorties, la meme regle qu'ailleurs.** Le journal part sur la sortie
+standard, la carte sur la sortie d'erreur - c'est la regle de
+[Deux sorties, et une seule porte les donnees](#deux-sorties-et-une-seule-porte-les-donnees),
+appliquee telle quelle : la carte est de la mise en forme, la ligne de journal
+est la donnee. Dans un terminal les deux se melent et on lit tout ; des qu'on
+redirige, chacun va ou il doit.
+
+```bash
+butbutbut --terminal > soiree.log     # le fichier ne recoit que le journal
+butbutbut --terminal | grep 'BUT'     # ... et un filtre marche comme avant
+```
+
+**La largeur suit le terminal**, entre 30 et 78 colonnes, relue a chaque carte -
+une fenetre redimensionnee en cours de soiree est donc suivie. Une sortie qui
+n'est pas un terminal (un fichier, un tuyau) n'a pas de largeur : la carte prend
+alors la largeur maximale, ce qui a l'avantage de rendre le meme fichier d'une
+machine a l'autre. Ce qui ne rentre pas cede, exactement comme sur la carte de
+l'ecran - les noms d'abord, la liste des buteurs ensuite, jamais le score :
+
+```
++--------------------------------------------+
+| BUT !  BUNDESLIGA                      35' |
+| Borussia... [][]  1 - 2  []   Eintrach...  |
+| But de C. Arcus                            |
++--------------------------------------------+
+```
+
+**Ce qu'une carte de terminal ne montre pas**, et pourquoi :
+
+- **les ecussons** : un terminal n'affiche pas d'image, et un sigle a la place
+  ferait dire au dessin autre chose que ce que la carte dit ;
+- **les couleurs**, et c'est un choix, pas un oubli. Tout le choix de couleur du
+  programme repose sur une certitude : le fond de la carte est le noir bleute de
+  `overlay.py`, et [la couleur d'un club](#les-ecussons-et-les-couleurs-des-clubs)
+  n'est retenue que si elle s'y lit. Un terminal n'a pas de fond connu - il peut
+  etre blanc - donc la question que `crests.pick_accent` sait trancher n'a plus
+  de reponse, et on ne parie pas sur le theme de quelqu'un d'autre. Un nom de
+  club illisible serait pire qu'un nom de club en noir et blanc. Rien n'ecrit
+  donc de code d'echappement, et il n'y a rien a degrader pour `NO_COLOR`, pour
+  une console Windows ou pour un tuyau ;
+- **la carte epinglee** : elle vaut par le fait de *rester* a l'ecran, et un
+  terminal ne fait que derouler. `--pin` continue de suivre son match - la ligne
+  "epinglee" de `--status` dit toujours la verite - mais aucune carte epinglee ne
+  s'ecrit.
+
+**Ca se regarde sans attendre un samedi soir.** `butbutbut --test --terminal`
+montre la carte d'exemple, et `--replay` rejoue une soiree entiere, cartes de
+terminal comprises : voir [Enregistrer un match, et le
+rejouer](#enregistrer-un-match-et-le-rejouer).
+
 ### Les ecussons et les couleurs des clubs
 
 La source publie, pour chaque equipe, l'URL de son ecusson et ses deux
@@ -1238,6 +1343,7 @@ une (`om=~/sons, vol. 2/om.wav`) reste lisible tel quel.
 ```bash
 butbutbut --no-sound          # muet
 butbutbut --no-overlay        # juste le son et le journal, pas de carte
+butbutbut --terminal          # la carte ecrite dans le terminal, sans fenetre
 butbutbut --no-logos          # pas d'ecusson sur les cartes
 butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 ```
@@ -1449,6 +1555,7 @@ volume = 0.55
 no_sound = non
 speak = non
 no_overlay = non
+terminal = non
 no_phase_cards = non
 catch_up = non
 quiet = non
@@ -3214,6 +3321,20 @@ python tools/plans.py
 C'est un script de `tools/` et non une option du programme, pour la meme raison
 que [le canari](#le-canari) : ces plans ne servent qu'au depot, et
 `butbutbut --help` n'a pas a porter a vie une ligne qui ne parle qu'aux tests.
+
+**Le mode terminal ne passe pas par la.** La question s'est posee - le depot
+savait deja rendre une carte en ASCII, pourquoi deux fois ? - et la reponse est
+qu'un plan transcrit une geometrie **en pixels**, a raison d'un caractere pour
+huit pixels. Ramene a la taille d'un terminal, il fait entrer les traces les uns
+dans les autres : "LIGUE 1" perd son chiffre sous le bord de la carte, et la
+ligne des buteurs passe par-dessus le score. C'est normal, `blueprint` est fait
+pour qu'un decalage de deux pixels saute aux yeux dans un diff, pas pour mettre
+du texte en page. [La carte de terminal](#sans-ecran--les-cartes-dans-le-terminal)
+calcule donc sa geometrie en caracteres, et ce qui reste unique est la source :
+la meme `overlay.Card`, fabriquee par le meme `Card.from_event`. Le garde-fou
+contre la derive est que `tests/test_terminal.py` rend en terminal **les memes
+cartes figees** que les plans - une forme de carte ajoutee ici y arrive donc
+toute seule.
 
 ### Ou elle tourne
 

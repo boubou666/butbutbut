@@ -698,8 +698,17 @@ def do_daemon(args) -> int:
     reporter.update(guard.all_matches(),
                     pinned=follow.match if follow is not None else None)
 
-    stack = None
-    if not args.no_overlay:
+    stack, printer = None, None
+    if args.no_overlay:
+        if args.terminal:
+            # Deux options qui se contredisent : celle qui coupe l'emporte, et
+            # on le dit plutot que de laisser croire a des cartes qui ne
+            # viendront pas.
+            log("--no-overlay l'emporte sur --terminal : aucune carte",
+                quiet=args.quiet)
+    elif args.terminal:
+        printer = terminal_cards(args, "--terminal")
+    else:
         try:
             stack = overlay.Stack(
                 screen=args.screen, position=args.position, opacity=args.opacity,
@@ -709,16 +718,17 @@ def do_daemon(args) -> int:
                 args.position,
                 "l'ecran principal" if args.screen is None
                 else "l'ecran {}".format(args.screen)), quiet=args.quiet)
-        except overlay.TkinterMissing as exc:
+        except overlay.DisplayUnavailable as exc:
             log(str(exc), quiet=args.quiet)
-            log("pas de carte : on continue au son et au journal", quiet=args.quiet)
+            printer = terminal_cards(args, "aucune fenetre possible")
 
     crest = crest_cache(args, on_log=lambda message: log(message, quiet=args.quiet))
 
     try:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
-                            on_goal=on_goal, hush=hush, voice=voice)
+                            on_goal=on_goal, hush=hush, voice=voice,
+                            printer=printer)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                               crest, on_goal=on_goal, hush=hush, voice=voice)
@@ -742,13 +752,58 @@ def do_daemon(args) -> int:
     return 0
 
 
+def terminal_cards(args, why: str):
+    """Le porte-plume des cartes de terminal, ou None. `why` part au journal.
+
+    Une seule fonction pour les deux entrees du mode - l'option demandee, et le
+    repli du jour ou aucune fenetre ne s'ouvre - parce que ce qu'elles doivent
+    dire et verifier est le meme, a la raison pres.
+
+    `--quiet` gagne : il dit "n'ecrire que dans le journal", et une carte est
+    de l'ecriture dans le terminal. Le dire vaut mieux que de se taire, sinon
+    la combinaison des deux ressemble a une panne.
+    """
+    from . import terminal
+
+    if args.quiet:
+        log("{} : mais --quiet fait taire le terminal, il ne restera que le "
+            "journal".format(why), quiet=args.quiet)
+        return None
+    log("{} : les cartes s'ecrivent dans le terminal (sortie d'erreur), le "
+        "journal garde la sortie standard".format(why), quiet=args.quiet)
+    return terminal.Writer()
+
+
+def show_in_terminal(printer, args, event) -> None:
+    """Ecrit dans le terminal la carte qu'une fenetre aurait affichee.
+
+    Aucun ecusson : `Card.from_event` sait s'en passer, et un terminal n'a de
+    toute facon pas d'image a montrer. La carte epinglee, elle, n'a pas de sens
+    ici et n'y arrive jamais : elle vaut par le fait de RESTER a l'ecran, et un
+    terminal ne fait que derouler.
+    """
+    if printer is None:
+        return
+    if event.sober and event.phase and args.no_phase_cards:
+        return                  # le journal garde la trace, pas le terminal
+    try:
+        from . import overlay
+
+        printer.show(overlay.Card.from_event(event))
+    except Exception as exc:
+        log("echec de la carte de terminal : {}".format(exc), quiet=args.quiet)
+
+
 def _watch_headless(guard, args, stopping, reporter, pin,
-                    on_goal=None, hush=None, voice=None) -> None:
-    """Sans carte : un seul fil, le son et le journal.
+                    on_goal=None, hush=None, voice=None, printer=None) -> None:
+    """Sans fenetre : un seul fil, le son, le journal, et le terminal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
     c'est lui qui alimente la ligne "epinglee" de `--status`, et il n'y a
     aucune raison qu'elle mente parce qu'on a coupe les cartes.
+
+    `printer` : de quoi ecrire les cartes dans le terminal, ou None pour
+    l'ancien comportement - le son et le journal, rien de plus.
     """
     hush = hush if hush is not None else silence.Silence()
     while not stopping.is_set():
@@ -773,10 +828,14 @@ def _watch_headless(guard, args, stopping, reporter, pin,
             # haut-parleur, pas un telephone a l'autre bout de la maison.
             if on_goal is not None:
                 on_goal.fire(event)
-            if not event.goal:
-                continue            # but annule et phases de match : muets
             if hushed:
                 continue            # nuit, ou presentation : le journal a deja tout
+            # La carte avant le tri des buts : un temps fort, une expulsion ou
+            # une fin de match meritent leur carte de terminal comme elles
+            # meritent leur fenetre. Le son, lui, reste reserve aux buts.
+            show_in_terminal(printer, args, event)
+            if not event.goal:
+                continue            # but annule et phases de match : muets
             # La voix avant le son : elle part dans son propre fil et n'attend
             # personne, alors que resolve_sound() relit le dossier et peut
             # mesurer un fichier. Elle attendra la corne d'elle-meme.
@@ -1026,18 +1085,23 @@ def do_replay(args) -> int:
                                   idle_interval=args.idle_interval)
         reporter.update(guard.all_matches())
 
-        stack = None
-        if not args.no_overlay:
+        stack, printer = None, None
+        if args.no_overlay:
+            if args.terminal:
+                log("--no-overlay l'emporte sur --terminal : aucune carte",
+                    quiet=args.quiet)
+        elif args.terminal:
+            printer = terminal_cards(args, "--terminal")
+        else:
             try:
                 stack = overlay.Stack(
                     screen=args.screen, position=args.position,
                     opacity=args.opacity, scale=args.scale,
                     retry_fullscreen=args.retry_fullscreen,
                     on_log=lambda message: log(message, quiet=args.quiet)).open()
-            except overlay.TkinterMissing as exc:
+            except overlay.DisplayUnavailable as exc:
                 log(str(exc), quiet=args.quiet)
-                log("pas de carte : on rejoue au son et au journal",
-                    quiet=args.quiet)
+                printer = terminal_cards(args, "aucune fenetre possible")
 
         crest = crest_cache(args)
         # Le rejeu emprunte les memes chemins que le direct, carte epinglee
@@ -1046,7 +1110,8 @@ def do_replay(args) -> int:
                          on_log=lambda message: log(message, quiet=args.quiet))
         try:
             if stack is None:
-                _watch_headless(guard, args, pace, reporter, pin)
+                _watch_headless(guard, args, pace, reporter, pin,
+                                printer=printer)
             else:
                 _watch_with_cards(guard, args, pace, stack, reporter, pin, crest)
         except KeyboardInterrupt:
@@ -1141,6 +1206,10 @@ def do_test(args) -> int:
         voice.close(2.0)
         return 0
 
+    if args.terminal:
+        return demo_in_terminal(args, cards, anchor, path, duration, voice)
+
+    displayed = True
     try:
         overlay.show(cards, duration=duration, sound_path=path,
                      screen=args.screen, position=args.position,
@@ -1148,14 +1217,43 @@ def do_test(args) -> int:
                      retry_fullscreen=args.retry_fullscreen,
                      pinned=anchor,
                      on_log=lambda message: print(tr("butbutbut : {}", message)))
-    except overlay.TkinterMissing as exc:
-        print(str(exc), file=sys.stderr)
-        return 4
+    except overlay.DisplayUnavailable as exc:
+        displayed = False
+        print("butbutbut : " + str(exc), file=sys.stderr)
     finally:
         # On laisse finir les ecussons partis en fond : sinon la demo,
         # toujours tuee juste apres, ne les aurait jamais.
         crest.join(3.0)
-        voice.close(2.0)
+        if displayed:
+            voice.close(2.0)
+    if displayed:
+        return 0
+
+    # Pas de fenetre : plutot que de rendre un code d'erreur, --test montre ce
+    # que le daemon montrerait ici, c'est-a-dire la carte de terminal. Refuser
+    # de l'afficher ferait mentir la commande dont le seul role est d'annoncer
+    # ce qui arrivera le soir venu.
+    return demo_in_terminal(args, cards, anchor, path, duration, voice)
+
+
+def demo_in_terminal(args, cards, anchor, path, duration, voice) -> int:
+    """La demonstration de --test, ecrite dans le terminal. Meme son, memes cartes."""
+    from . import terminal
+
+    printer = terminal.Writer()
+    if anchor is not None:
+        # Dire ce qui manque plutot que de bricoler une epinglee de terminal :
+        # une carte qui vaut par le fait de RESTER n'a pas d'equivalent dans un
+        # flux qui defile, et le daemon n'en ecrit pas non plus.
+        print(tr("butbutbut : la carte epinglee ne s'ecrit pas dans le "
+                 "terminal - elle vaut par le fait de rester a l'ecran."),
+              file=sys.stderr)
+    handle = play_goal_sound(path)
+    for card in cards:
+        printer.show(card)
+    time.sleep(min(duration, 5.0))
+    sound.release(handle)
+    voice.close(2.0)
     return 0
 
 
@@ -3059,6 +3157,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--opacity", type=float, default=1.0, help=tr("opacite, 0.0 a 1.0"))
     parser.add_argument("--no-overlay", action="store_true", dest="no_overlay",
                         help=tr("pas de carte : seulement le son et le journal"))
+    parser.add_argument("--terminal", action="store_true", dest="terminal",
+                        help=tr("ecrire les cartes dans le terminal au lieu "
+                                "d'ouvrir une fenetre (SSH, tmux, machine "
+                                "sans ecran)"))
     parser.add_argument("--no-phase-cards", action="store_true",
                         dest="no_phase_cards",
                         help=tr("pas de carte au coup d'envoi, a la mi-temps, a la "
@@ -3350,9 +3452,9 @@ def main(argv=None) -> int:
     try:
         return do_daemon(args)
     except Exception as exc:
-        from .overlay import TkinterMissing
+        from .overlay import DisplayUnavailable
 
-        if isinstance(exc, TkinterMissing):
+        if isinstance(exc, DisplayUnavailable):
             print(str(exc), file=sys.stderr)
             return 4
         raise

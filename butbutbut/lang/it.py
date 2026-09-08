@@ -381,6 +381,14 @@ MESSAGES = {
         'opacita, da 0.0 a 1.0',
     'pas de carte : seulement le son et le journal':
         'niente scheda: solo il suono e il registro',
+    "ecrire les cartes dans le terminal au lieu d'ouvrir une fenetre (SSH, "
+    'tmux, machine sans ecran)':
+        'scrivere le schede nel terminale invece di aprire una finestra (SSH, '
+        'tmux, macchina senza schermo)',
+    "butbutbut : la carte epinglee ne s'ecrit pas dans le terminal - elle "
+    "vaut par le fait de rester a l'ecran.":
+        'butbutbut: la scheda fissata non si scrive nel terminale - vale '
+        'perche resta sullo schermo.',
     "pas de carte au coup d'envoi, a la mi-temps, a la reprise ni a la fin "
     'du match (les buts, si)':
         "niente scheda al fischio d'inizio, all'intervallo, alla ripresa e a "
