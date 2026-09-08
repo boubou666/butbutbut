@@ -7,6 +7,31 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **La suite de tests ne lit plus la machine de qui la lance.** Vingt-cinq
+  tests tombaient sur un poste ou butbutbut est installe et configure, et
+  nulle part ailleurs : ils traversaient `cli.main()`, qui lit le vrai fichier
+  de configuration, et `config.apply()` en verse le contenu dans les defauts
+  du parseur AVANT l'analyse de la ligne de commande. `--table` suivait donc
+  la Ligue 2 et se bornait a un club parce que le fichier le demande, la ou le
+  test n'avait demande ni l'une ni l'autre. La CI restait verte, ses machines
+  n'ayant aucun fichier - le pire des cas, un test qui ne casse que chez celui
+  qui se sert du programme.
+- **Un seul endroit detourne desormais le dossier de donnees**,
+  `helpers.isolate_data_dir()`. Le meme bloc de sept lignes etait recopie a la
+  main dans douze classes de `test_cli.py` et manquait dans cinq autres : deux
+  ecritures du meme geste finissent toujours par diverger, et c'est l'oubli
+  qui a produit le bogue. Le detournement passe par `cli.data_dir`, la seule
+  porte dont descendent la configuration, le journal, l'etat, le pid, le son
+  et les ecussons : isoler la racine les isole tous, y compris ce qui
+  s'ajoutera demain.
+- Deux tests gardent le garde-fou : l'un verifie qu'aucun chemin isole ne
+  ressemble encore a celui de la machine, l'autre qu'un fichier ecrit dans le
+  dossier detourne est bien celui que `main()` lit - sans quoi l'isolation
+  pourrait deplacer un chemin que personne ne lit pendant que celui de la
+  machine continue de parler par-dessous.
+
 ## [1.12.0] - 2026-09-08
 
 ### Ajoute

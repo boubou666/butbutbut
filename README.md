@@ -3112,7 +3112,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1463 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1465 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
@@ -3121,6 +3121,15 @@ de couleurs reelles - ce qui sort est toujours lisible, ou c'est la couleur de
 la competition. L'enregistrement, lui, est verifie par un aller-retour complet :
 un match joue en direct contre une source simulee, mis en boite, puis rejoue -
 et les deux doivent rendre exactement la meme suite d'evenements.
+
+Ni machine, non plus : un test ne lit jamais le dossier de donnees de qui le
+lance. `helpers.isolate_data_dir()` le detourne vers un temporaire, et c'est la
+configuration qui l'exige - `config.apply()` verse le fichier dans les defauts
+du parseur avant que la ligne de commande ne soit analysee, donc un
+developpeur qui suit la Ligue 2 la voyait apparaitre dans des tests qui ne
+l'avaient jamais demandee. La CI n'a jamais rien vu, ses machines n'ayant pas
+de fichier : c'est le pire des cas, un test qui ne casse que chez celui qui se
+sert du programme.
 
 Un seul programme du depot parle vraiment a ESPN, et il n'est pas dans cette
 suite : c'est [le canari](#le-canari), `python tools/canari.py`.

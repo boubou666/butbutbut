@@ -38,7 +38,7 @@ from unittest import mock
 
 from butbutbut import cli, espn, i18n, leagues, sports, watcher
 
-from helpers import FakeClock, opener_for
+from helpers import FakeClock, isolate_data_dir, opener_for
 
 COUPE = leagues.BY_SLUG["fra.coupe_de_france"]
 FA_CUP = leagues.BY_SLUG["eng.fa"]
@@ -499,6 +499,9 @@ class TestTheFullTimeCard(unittest.TestCase):
 
 class TestTheOtherReaders(unittest.TestCase):
     """Tout ce qui lit `plays` profite du tri, sans une ligne de plus."""
+
+    def setUp(self):
+        isolate_data_dir(self)
 
     def test_the_catch_up_card_does_not_replay_the_shootout(self):
         # Une machine qui dort pendant la seance : au reveil le score n'a pas
