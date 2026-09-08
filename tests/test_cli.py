@@ -2418,9 +2418,10 @@ class TestNamedSound(unittest.TestCase):
                              home_score=1, away_score=0, delta=1, play=None)
 
     def run_cli(self, argv, catalogue=(("Marseille", "OM", "MAR"),)):
-        """main() sans reseau : le catalogue d'equipes est fabrique."""
+        """main() sans reseau : catalogue et scoreboard sont fabriques."""
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(espn, "catalogue", return_value=list(catalogue)), \
+                mock.patch.object(espn, "scoreboard", return_value=[]), \
                 mock.patch.object(cli, "do_daemon", return_value=0):
             with redirect_stdout(out), redirect_stderr(err):
                 code = cli.main(argv)

@@ -245,6 +245,19 @@ TEAM_KEYS = (
     ("logo", SAMPLED, "url http"),
 )
 
+
+def team_keys(sport):
+    """Les cles d'une equipe que ce sport publie vraiment.
+
+    Le football donne une couleur secondaire ; le hockey ne pose jamais
+    `alternateColor`, alors que le reste de l'objet d'equipe garde la meme
+    forme. Une cle absente partout dans un sport ne doit pas devenir un faux
+    signal rouge simplement parce qu'elle existe dans le tableau du football.
+    """
+    if sport.code != "hockey":
+        return TEAM_KEYS
+    return tuple(key for key in TEAM_KEYS if key[0] != "alternateColor")
+
 # Sur *toutes* les actions : ce sont ces deux drapeaux qui trient les buts des
 # expulsions. Les perdre, c'est ne plus rien afficher du tout.
 DETAIL_FLAGS = (
@@ -493,6 +506,7 @@ def inspect_scoreboard(payload, ledger, sport=None):
     tous les matins pour rien.
     """
     sport = sport or sports.DEFAULT
+    team_spec = team_keys(sport)
     reads_details = sport.plays != sports.PLAYS_NONE
     # Meme regle pour les statistiques : un sport qui n'en affiche aucune ne se
     # fait pas reclamer un champ qu'il remplit avec de tout autres nombres.
@@ -539,7 +553,7 @@ def inspect_scoreboard(payload, ledger, sport=None):
                     ledger.check("competitor.statistics", bag, stats_spec)
             team = competitor.get("team")
             if isinstance(team, dict):
-                ledger.check("competitor.team", team, TEAM_KEYS)
+                ledger.check("competitor.team", team, team_spec)
             sides[competitor.get("homeAway")] = competitor
         if "home" in sides and "away" in sides:
             tally["usable"] += 1
@@ -862,7 +876,9 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
     out = out or sys.stdout
     opener = opener or http_opener
     sport, _ = split_sport(slug)
-    plan = BOARD_PLAN
+    plan = tuple(
+        (scope, team_keys(sport) if scope == "competitor.team" else spec)
+        for scope, spec in BOARD_PLAN)
     if sport.plays != sports.PLAYS_NONE:
         plan += DETAILS_PLAN
     if sport.team_stats:
