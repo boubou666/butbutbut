@@ -7,6 +7,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.13.0] - 2026-09-09
+
 ### Ajoute
 
 - **La carte d'avant-match dit desormais si l'on regarde un aller ou un
@@ -2012,7 +2014,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.12.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/boubou666/butbutbut/compare/v1.12.1...v1.13.0
 [1.12.1]: https://github.com/boubou666/butbutbut/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/boubou666/butbutbut/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/boubou666/butbutbut/compare/v1.10.2...v1.11.0
