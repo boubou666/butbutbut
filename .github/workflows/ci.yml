@@ -30,7 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: installer uv et Python ${{ matrix.python }}
+        # uv telecharge l'interpreteur au lieu de dependre de ce que le runner
+        # embarque, ce qui rend 3.8 eprouvable a nouveau : les images GitHub ne
+        # le fournissent plus.
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ matrix.python }}
 
@@ -41,33 +45,33 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk
 
       - name: compilation
-        run: python -m compileall -q butbutbut tests tools
+        run: uv run --no-project python -m compileall -q butbutbut tests tools
 
       - name: tests
         shell: bash
-        run: PYTHONPATH=".:tests" python -m unittest discover -s tests -v
+        run: PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests -v
 
       - name: la ligne de commande repond
         shell: bash
         run: |
-          python -m butbutbut --version
-          python -m butbutbut --paths
-          python -m butbutbut --screens
-          python -m butbutbut --help > /dev/null
+          uv run --no-project python -m butbutbut --version
+          uv run --no-project python -m butbutbut --paths
+          uv run --no-project python -m butbutbut --screens
+          uv run --no-project python -m butbutbut --help > /dev/null
 
   build:
     name: paquet
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: installer uv et Python 3.12
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
-      - run: python -m pip install --upgrade build
-      - run: python -m build
+      - run: uv build
       - name: le son est bien dans le paquet
         run: |
-          python -m zipfile -l dist/*.whl | grep -q 'butbutbut/assets/but.mp3'
+          uv run --no-project python -m zipfile -l dist/*.whl | grep -q 'butbutbut/assets/but.mp3'
       - uses: actions/upload-artifact@v4
         with:
           name: butbutbut-dist

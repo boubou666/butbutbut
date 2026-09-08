@@ -40,7 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: installer uv et Python 3.12
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
 
@@ -55,23 +56,21 @@ jobs:
       # mensongere : on refuse tout de suite.
       - name: le tag correspond a la version du paquet
         run: |
-          declared=$(python -c 'import butbutbut; print(butbutbut.__version__)')
+          declared=$(uv run --no-project python -c 'import butbutbut; print(butbutbut.__version__)')
           echo "tag=${{ steps.version.outputs.number }}  paquet=$declared"
           test "$declared" = "${{ steps.version.outputs.number }}"
 
       - name: tests
-        run: PYTHONPATH=".:tests" python -m unittest discover -s tests
+        run: PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 
       - name: paquet
-        run: |
-          python -m pip install --upgrade build
-          python -m build
+        run: uv build
 
       # Les notes sont la section correspondante du CHANGELOG, telle quelle.
       - name: notes de version depuis le CHANGELOG
         id: notes
         run: |
-          python - <<'PY' > release-notes.md
+          uv run --no-project python - <<'PY' > release-notes.md
           import os
           import re
 
@@ -133,16 +132,15 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY"             --pattern '*.whl' --pattern '*.tar.gz' --dir dist
           ls -l dist
 
-      - uses: actions/setup-python@v5
+      - name: installer uv et Python 3.12
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
 
       # Un dernier filet : des metadonnees illisibles par PyPI seraient
       # refusees a l'envoi, autant s'en apercevoir avant.
       - name: les metadonnees sont lisibles par PyPI
-        run: |
-          python -m pip install --upgrade twine
-          python -m twine check dist/*
+        run: uv run --no-project --with twine python -m twine check dist/*
 
       # Trusted Publishing : aucun jeton dans le depot, l'action echange le
       # jeton OIDC de ce job contre un jeton d'envoi a usage unique.

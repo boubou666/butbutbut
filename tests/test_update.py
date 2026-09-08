@@ -523,6 +523,12 @@ class InstallationSysteme(UpdateTestCase):
         with mock.patch.object(update, "__file__", chemin):
             self.assertIn("pipx", update.managed_elsewhere() or "")
 
+    def test_uv_est_reconnu(self):
+        chemin = "/home/x/.local/share/uv/tools/butbutbut/lib/python3.12/" \
+                 "site-packages/butbutbut/update.py"
+        with mock.patch.object(update, "__file__", chemin):
+            self.assertIn("uv", update.managed_elsewhere() or "")
+
     def test_pip_est_reconnu(self):
         chemin = "/home/x/.local/lib/python3.12/site-packages/butbutbut/update.py"
         with mock.patch.object(update, "__file__", chemin):

@@ -18,7 +18,8 @@ versions par defaut, des commits avec `--dev`. Annoncer une release et en
 installer une autre etait le defaut de la premiere mouture.
 
 Une installation qui ne vient pas des scripts - paquet de la distribution,
-pipx, pip - n'est pas ecrasee : `--update` renvoie vers l'outil qui la gere.
+uv, pipx ou pip - n'est pas ecrasee : `--update` renvoie vers l'outil qui la
+gere.
 """
 
 from __future__ import annotations
@@ -128,17 +129,27 @@ def git_sha(depot: Path):
 def managed_elsewhere():
     """Signale une installation qui ne nous appartient pas.
 
-    Un paquet de la distribution, un environnement pipx ou un `pip install`
-    ont chacun leur commande de mise a jour. Les ecraser avec l'installeur
-    poserait un second butbutbut a cote du premier, et c'est le PATH qui
-    trancherait lequel repond - un beau piege a diagnostiquer.
+    Un paquet de la distribution, un outil uv, un environnement pipx ou un
+    `pip install` ont chacun leur commande de mise a jour. Les ecraser avec
+    l'installeur poserait un second butbutbut a cote du premier, et c'est le
+    PATH qui trancherait lequel repond - un beau piege a diagnostiquer.
     """
     ici = str(Path(__file__).resolve())
     morceaux = Path(ici).parts
 
-    if "pipx" in morceaux:
+    morceaux_minuscules = [morceau.lower() for morceau in morceaux]
+
+    # `uv tool install` range ses environnements dans .../uv/tools/<outil>/.
+    # Le test porte sur les composants et pas sur la chaine complete pour
+    # fonctionner aussi avec les chemins Windows.
+    if any(a == "uv" and b == "tools"
+           for a, b in zip(morceaux_minuscules, morceaux_minuscules[1:])):
+        return "uv (uv tool upgrade butbutbut)"
+    # Les anciennes installations pipx doivent rester protegees : on ne les
+    # transforme pas silencieusement en installation geree par les scripts.
+    if "pipx" in morceaux_minuscules:
         return "pipx (pipx upgrade butbutbut)"
-    if "site-packages" in morceaux or "dist-packages" in morceaux:
+    if "site-packages" in morceaux_minuscules or "dist-packages" in morceaux_minuscules:
         return "pip (pip install --upgrade butbutbut)"
     for prefixe, outil in (
         ("/usr/lib", "ton gestionnaire de paquets (pacman -Syu, apt upgrade...)"),
