@@ -1568,6 +1568,25 @@ existe - et la forme des deux camps passe dessous, comme au
 programme, et la seule dont la hauteur depende de ce que la source publie : un
 match dont elle ne dit rien redonne les trois lignes d'avant.
 
+**L'aller et le retour d'une coupe se lisent dans le coin**, la ou les autres
+cartes affichent la minute de jeu :
+
+```
+LE MATCH VA COMMENCER   LIGUE DES CHAMPIONS            Match aller
+Real Madrid         0 - 0                    Benfica
+Coup d'envoi dans 5 min
+Real Madrid : GGNGG  3G 1N 0P
+Benfica : GPGGN  2G 1N 1P
+```
+
+Rien n'a commence, ce coin est donc libre : l'enjeu s'y pose sans couter une
+ligne de plus a la carte la plus haute du programme. C'est aussi tout ce que
+la source publie sur l'enjeu d'un match - **il n'y a pas de journee chez elle**,
+pas plus que de tour, et pas un seul championnat n'y dit quoi que ce soit (voir
+[docs/api-espn.md](docs/api-espn.md), section 3). Ce qu'elle ecrit d'autre est
+en anglais et le plus souvent un resultat : un libelle que le programme ne sait
+pas redire dans les cinq langues se jette, il ne s'affiche pas tel quel.
+
 Comme le carton rouge, cette carte a son propre interrupteur et ne depend pas de
 `--no-phase-cards`. Reglee plus tot qu'un quart d'heure, elle accelere aussi la
 cadence des releves pour que l'heure demandee soit tenue.
@@ -3142,11 +3161,12 @@ mord ni sur le nom ni sur le score. Chacune est juste, aucune ne dit a quoi
 ressemble la carte, et un decalage de deux pixels passait entre elles sans
 qu'un seul test bronche.
 
-Dix cartes sont donc figees en **plans ASCII** dans `tests/plans/` : la carte
-de but, la carte epinglee, l'avant-match, le coup d'envoi, la fin de match, une
-carte de rugby, une carte avec des cartons rouges des deux cotes, des noms qui
-se font tronquer, et la carte de but a deux autres `--scale`. Chaque plan porte
-un dessin et un tableau.
+Onze cartes sont donc figees en **plans ASCII** dans `tests/plans/` : la carte
+de but, la carte epinglee, l'avant-match (deux fois : avec et sans l'enjeu dans
+le coin, pour que la hauteur identique se lise en clair), le coup d'envoi, la
+fin de match, une carte de rugby, une carte avec des cartons rouges des deux
+cotes, des noms qui se font tronquer, et la carte de but a deux autres
+`--scale`. Chaque plan porte un dessin et un tableau.
 
 ```
      0         80        160       240       320       400       480

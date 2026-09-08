@@ -162,6 +162,12 @@ COMPETITION_KEYS = (
     ("status.type.state", REQUIRED, "pre/in/post"),
     ("status.type.name", REQUIRED, "texte non vide"),
     ("status.type.shortDetail", REQUIRED, "texte non vide"),
+    # REQUIRED alors que la note elle-meme est presque toujours vide : c'est le
+    # TABLEAU qui est sur chaque match (9 601 releves, pas une exception), et
+    # c'est justement ce qu'on veut voir bouger. Une note qui n'arriverait plus
+    # jamais ne casse rien ; `notes` devenue une chaine se decouperait lettre
+    # par lettre chez un lecteur moins prudent que le notre.
+    ("notes", REQUIRED, "liste"),
 )
 
 # `details` a sa table a lui, et pas par gout du rangement : au hockey la cle

@@ -1,0 +1,42 @@
+# Le meme avant-match, celui d'un match aller : l'enjeu se pose dans le coin laisse vide par la minute, et la carte ne grandit pas d'un pixel en hauteur.
+# echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
+# carte 486 x 153 px - grille 8 x 8 px par caractere
+
+     0         80        160       240       320       400       480
+  0 |+-----------------------------------------------------------+|
+  8 |##                                                          ||
+ 16 |##  LE MATCH VA COMMENCER    LIGUE DES CHAMPIO  Match alle  ||
+ 24 |##                                                          ||
+ 32 |##                                                          ||
+ 40 |##                                                          ||
+ 48 |##                                                          ||
+ 56 |##      Real Madrid       0  -    0    Benfica              ||
+ 64 |##                                                          ||
+ 72 |##                                                          ||
+ 80 |##  Coup d'envoi dans 5 min                                 ||
+ 88 |##                                                          ||
+ 96 |##                                                          ||
+104 |##  Real Madrid : GGNGG  3G 1N 0P                           ||
+112 |##                                                          ||
+120 |##                                                          ||
+128 |##  Benfica : GPGGN  2G 1N 1P                               ||
+136 |##                                                          ||
+144 |##----------------------------------------------------------+|
+
+boite              x0     y0     x1     y1  contenu
+------------------------------------------  ------------------------------
+carte               0      0    485    152
+filet               3      7     10    146
+titre              29     16    218     31  "LE MATCH VA COMMENCER"
+competition       232   17.5    365   29.5  "LIGUE DES CHAMPIONS"
+minute            387   17.5    464   29.5  "Match aller"
+equipe dom.        62   46.5    183   66.5  "Real Madrid"
+score dom.        209     43    224     70  "0"
+separateur        224     43    269     70  " - "
+score ext.        269     43    284     70  "0"
+equipe ext.       310   46.5    387   66.5  "Benfica"
+detail             29   80.5    213   94.5  "Coup d'envoi dans 5 min"
+ligne 1            29  101.5    141  115.5  "Real Madrid : "
+ligne 1           141    101    276    116  "GGNGG  3G 1N 0P"
+ligne 2            29  122.5    109  136.5  "Benfica : "
+ligne 2           109    122    244    137  "GPGGN  2G 1N 1P"

@@ -29,6 +29,10 @@ Chaque camp porte aussi, dans la meme reponse, sa **forme** (`form`) et son
 coute pas un octet de plus : les deux cles sont deja dans le tableau de bord
 qu'on telecharge a chaque tour, on les jetait. Le hockey s'en tait la aussi.
 
+Le match lui-meme porte parfois une note (`notes`), et elle vaut surtout par ce
+qu'elle n'est pas : ni le tour, ni la journee, ni rien qu'un championnat
+publie. Voir match_note() pour ce qu'on en garde, et pourquoi si peu.
+
 Le meme hote publie un second endpoint, le classement, sous une adresse qui
 n'a pas tout a fait la meme forme (voir STANDINGS_URL, plus bas). Il est lu
 avec le meme client et les memes en-tetes : c'est tout l'interet d'avoir un
@@ -68,6 +72,26 @@ FORM_LETTERS = "WDL"
 # filtre qui distingue le "1-0-2" du football du "LWWWW" que le rugby publie
 # au meme endroit (voir team_record).
 RECORD = re.compile(r"^\d+-\d+-\d+$")
+
+# Les seules notes de match qu'on sache redire dans les cinq langues, et donc
+# les seules qui aient le droit de monter sur une carte.
+#
+# Le releve (9 601 matchs, voir docs/api-espn.md section 3) a repondu deux
+# choses a la fois. `notes` n'est PAS le tour ni la journee : aucun
+# championnat n'en publie une seule, et pas un match de rugby non plus. Et ce
+# qu'elle contient est un texte libre, anglais, qui est le plus souvent un
+# RESULTAT - "2nd Leg - Real Madrid advance 3-1 on aggregate", "Leeds United
+# advance 4-2 on penalties". Une carte d'avant-match qui reprendrait ce texte
+# tel quel raconterait la fin, et le ferait en anglais sur une carte
+# espagnole.
+#
+# D'ou une table blanche et courte : ce qu'on reconnait, on le redit ; tout le
+# reste se jette. Deux entrees seulement, parce que deux seulement ont ete
+# observees - le depot ne suppose pas ce qu'il n'a pas vu.
+NOTE_KEYS = {
+    "1st leg": "note_first_leg",
+    "2nd leg": "note_second_leg",
+}
 
 USER_AGENT = "butbutbut/{} (+https://github.com/boubou666/butbutbut)".format(__version__)
 DEFAULT_TIMEOUT = 8.0
@@ -274,7 +298,7 @@ class Match:
                  "red_cards", "shootout", "home_shootout", "away_shootout",
                  "winner", "home_logo", "away_logo", "home_color",
                  "away_color", "home_alt", "away_alt", "home_form",
-                 "away_form", "home_record", "away_record")
+                 "away_form", "home_record", "away_record", "note")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
@@ -282,7 +306,7 @@ class Match:
                  shootout=(), home_shootout=0, away_shootout=0, winner="",
                  home_logo="", away_logo="", home_color="", away_color="",
                  home_alt="", away_alt="", home_form="", away_form="",
-                 home_record="", away_record=""):
+                 home_record="", away_record="", note=""):
         self.id = id
         self.league = league
         self.home = home
@@ -336,6 +360,11 @@ class Match:
         self.away_form = away_form
         self.home_record = home_record
         self.away_record = away_record
+        # L'enjeu du match, quand la source en publie un qu'on sache redire :
+        # une CLE i18n ("note_first_leg"), jamais le texte anglais de la
+        # source. Vide partout ailleurs, c'est-a-dire presque partout - voir
+        # match_note().
+        self.note = note
 
     @property
     def sport(self):
@@ -670,6 +699,43 @@ def team_record(competitor) -> str:
     return ""
 
 
+def match_note(competition) -> str:
+    """L'enjeu du match, en cle i18n ("note_first_leg"), ou une chaine vide.
+
+    La source range ca sous `competitions[0].notes`, un tableau qui est la sur
+    chaque match et vide sur 97 d'entre eux sur 100. Deux regles le lisent, et
+    chacune existe pour une raison qu'un releve a mise au jour :
+
+      - **on ne lit que la tete de la note**, jusqu'au premier " - ". Ce qui
+        suit, quand il y a une suite, est le resultat de la confrontation :
+        "2nd Leg - Arsenal advance 3-1 on aggregate". Couper la garantit qu'un
+        resultat ne peut pas atteindre une carte, meme le jour ou la source en
+        collera un sur un match a venir ;
+      - **une tete inconnue se jette entierement**. Elle est en anglais et
+        elle n'est pas traduite (l'espagnol et le portugais le sont, pas les
+        cinq langues du programme) : la laisser passer mettrait "Kraft
+        Hockeyville" en clair sur une carte allemande.
+
+    Le tableau peut porter plusieurs notes ; on retient la premiere qu'on sait
+    dire, et il n'y en a jamais eu deux.
+    """
+    notes = competition.get("notes")
+    if not isinstance(notes, list):
+        # La source la donne toujours en tableau. Si elle changeait d'avis, une
+        # chaine ne serait pas decoupee lettre par lettre pour autant.
+        return ""
+    for note in notes:
+        if not isinstance(note, dict):
+            continue
+        # `headline` et `text` portent le meme mot sur les 238 notes relevees ;
+        # cinq d'entre elles n'avaient que `headline`, aucune que `text`.
+        head = str(note.get("headline") or note.get("text") or "")
+        key = NOTE_KEYS.get(head.split(" - ", 1)[0].strip().lower())
+        if key:
+            return key
+    return ""
+
+
 def team_logo(competitor) -> str:
     """URL du PNG de l'ecusson, ou une chaine vide.
 
@@ -994,6 +1060,7 @@ def parse(payload: dict, league) -> list:
             away_form=team_form(away),
             home_record=team_record(home),
             away_record=team_record(away),
+            note=match_note(competition),
             home_color=home_color,
             away_color=away_color,
             home_alt=home_alt,

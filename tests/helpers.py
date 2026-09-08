@@ -140,12 +140,17 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
           away_score=0, state="in", detail="35'", clock="35'",
           date="2026-09-06T15:15Z", details=(), status_name="",
           home_colors=(), away_colors=(), home_logo="", away_logo="",
-          home_form="", away_form="", home_record="", away_record=""):
+          home_form="", away_form="", home_record="", away_record="",
+          notes=()):
     return {
         "id": match_id,
         "competitions": [{
             "id": match_id,
             "date": date,
+            # La source pose `notes` sur CHAQUE match, et la laisse vide sur 97
+            # d'entre eux sur 100 : le tableau vide est donc la normale ici
+            # aussi, pas une cle absente.
+            "notes": list(notes),
             "competitors": [
                 dict({"homeAway": "home", "score": str(home_score),
                       "team": dict(team(home, *home_colors, logo=home_logo),
@@ -162,6 +167,17 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
             "details": list(details),
         }],
     }
+
+
+def note(headline, text=None, kind="event"):
+    """Une note de match, dans la forme exacte de la source.
+
+    `text` repete `headline` par defaut : c'est ce que la source ecrit sur 233
+    des 238 notes relevees. Les cinq autres n'avaient que `headline`, et les
+    formes tordues se posent a la main dans les tests qui les cherchent.
+    """
+    return {"type": kind, "headline": headline,
+            "text": headline if text is None else text}
 
 
 # --- Les autres sports -------------------------------------------------------
@@ -216,7 +232,8 @@ def rugby_detail(team_id, kind="try", minute="8'", player="L. Carter", index=0):
 def hockey_event(match_id="1", home="Boston Bruins", away="Montreal Canadiens",
                  home_score=0, away_score=0, state="in",
                  detail="2nd Period - 12:07", clock="12:07", period=2,
-                 date="2026-09-19T23:00Z", status_name="STATUS_IN_PROGRESS"):
+                 date="2026-09-19T23:00Z", status_name="STATUS_IN_PROGRESS",
+                 notes=()):
     """Un match de hockey tel que la source le publie.
 
     Deux ecarts avec le football, et ils sont volontaires :
@@ -241,6 +258,10 @@ def hockey_event(match_id="1", home="Boston Bruins", away="Montreal Canadiens",
         "competitions": [{
             "id": match_id,
             "date": date,
+            # Le hockey n'a pas de `details`, mais il a bien `notes` comme tout
+            # le monde - c'est meme le seul sport ou la source en remplit une
+            # avant le match ("NHL Global Series"), sans qu'on sache la redire.
+            "notes": list(notes),
             "competitors": [
                 side(home, "home", home_score, "H" + match_id, "231f20"),
                 side(away, "away", away_score, "A" + match_id, "c41230"),

@@ -7,6 +7,72 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **La carte d'avant-match dit desormais si l'on regarde un aller ou un
+  retour.** `LE MATCH VA COMMENCER   LIGUE DES CHAMPIONS       Match aller` :
+  l'enjeu se pose dans le **coin de l'en-tete**, celui ou toutes les autres
+  cartes affichent la minute de jeu et que celle-ci laissait vide - rien n'a
+  commence, il n'y a pas de minute a montrer. La carte ne grandit donc pas
+  d'un pixel : **153 px avec la forme, comme avant** (111 px sans), et le
+  compte a rebours reste la troisieme ligne. C'etait le vrai arbitrage du
+  chantier : ajouter une ligne a la carte deja la plus haute du programme, ou
+  habiller quelque chose qui existe. Quatre avant-matchs empiles font 612
+  pixels, avec ou sans l'enjeu.
+- **On cherchait la journee, elle n'existe pas.** Un releve de **9 601
+  matchs** - 6 267 joues, 3 334 a venir, 20 competitions de football, la NHL,
+  5 de rugby - a repondu autre chose que ce qu'on attendait : `notes` n'est
+  pas le tour ni la journee. **Aucun championnat n'en publie une seule** (2
+  notes sur 4 866 matchs, et ce sont deux barrages), **pas un match de rugby
+  non plus**, et le reste de la reponse ne la porte pas davantage - `season`
+  repete le nom de la competition, `week` n'existe pas. Une piste qui se ferme
+  parce que la donnee n'est pas la, et non parce qu'on a prefere autre chose :
+  c'est ecrit dans `docs/api-espn.md`, sections 3 et 12, le depot documentant
+  ses refus.
+- **Ce que `notes` contient vraiment est le plus souvent un resultat** - `2nd
+  Leg - Real Madrid advance 3-1 on aggregate`, `Leeds United advance 4-2 on
+  penalties` : 155 des 245 notes relevees. D'ou une lecture en deux temps qui
+  est une garantie et non une commodite : **on coupe au premier " - "** avant
+  meme de regarder, ce qui interdit structurellement a un resultat d'atteindre
+  une carte d'avant-match, et **la tete doit figurer dans une table blanche**
+  de libelles qu'on sait redire. Deux entrees, `1st Leg` et `2nd Leg`, parce
+  que deux seulement ont ete observees - le depot ne suppose pas ce qu'il n'a
+  pas vu, et la table s'allongera le jour ou un releve l'exigera.
+- **Un libelle inconnu se jette, il ne s'affiche pas tel quel.** `Kraft
+  Hockeyville` ou `NHL Global Series` en clair sur une carte allemande serait
+  exactement la faute que la source apprend a ne pas commettre : elle ne
+  traduit ses notes qu'en espagnol et en portugais, et ni le francais, ni
+  l'italien, ni l'allemand n'en voient la couleur. `espn.py` rend donc une
+  **cle** i18n et jamais le texte anglais, et les cinq langues ecrivent le
+  reste - "Ida", "Andata", "Hinspiel", et l'allemand sans trema comme partout
+  ailleurs dans ce depot.
+- **Le stade est ecarte, et c'est la deuxieme moitie de la reponse.** Il est
+  pourtant la, presque toujours (6 265 matchs sur 6 267) et gratuit comme le
+  reste. Mais "Decathlon Arena - Stade Pierre-Mauroy" ne se raccourcit pas
+  sans mentir : il aurait coute une ligne pleine sur la carte la plus haute du
+  programme, pour dire ce que la carte n'est pas la pour dire. Elle dit qu'un
+  match commence dans cinq minutes.
+- **Le journal reste francais**, y compris sur ce coin-la. La minute de
+  l'en-tete devient traduisible (`Event.minute_text(lang=...)`), ce qui
+  reglait au passage un accroc discret : la carte de rattrapage y ecrivait
+  deja sa duree dans la langue des cartes, et le journal la recopiait.
+- **Un onzieme plan ASCII de reference**, `avant-match-aller.txt`, a cote de
+  `avant-match.txt` : deux fichiers pour la meme carte, et un test qui exige
+  que leurs deux hauteurs soient egales. Une reference qui ne dirait pas ca ne
+  servirait a rien ici, puisque c'est tout ce que le chantier promet.
+- **Le canari surveille `notes`** - le tableau, pas la note. Il est sur chaque
+  match des 9 601 releves, meme vide : une note qui n'arriverait plus ne casse
+  rien, `notes` devenue une chaine se lirait de travers chez un lecteur moins
+  prudent que le notre.
+- 1469 -> **1487 tests** : le libelle present, absent, vide, dans une forme que
+  la source n'a jamais eue (une chaine, un nombre, `None`), le resultat colle
+  derriere l'aller, le libelle qu'on ne sait pas traduire, les cinq langues, le
+  journal qui reste francais, et le compte a rebours toujours en troisieme
+  ligne.
+- Aucune option nouvelle, pour la raison de la 1.12.0 : `--before-kickoff`
+  existe deja, et personne n'a envie de choisir si son avant-match dit "Match
+  aller".
+
 ## [1.12.1] - 2026-09-08
 
 ### Corrige

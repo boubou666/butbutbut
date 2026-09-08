@@ -206,6 +206,27 @@ class TestPlansCoverTheCards(unittest.TestCase):
         self.assertIn("ligne 1", text)
         self.assertIn("ligne 2", text)
 
+    def test_the_stake_costs_the_prematch_card_no_height(self):
+        """Tout l'arbitrage du chantier, en un test.
+
+        L'avant-match est deja la carte la plus haute du programme : l'enjeu y
+        entre par le coin que la minute laisse vide, pas par une ligne de plus.
+        Quatre cartes empilees valent un mur de 612 pixels dans les deux cas.
+        """
+        def height(name):
+            head = blueprint.stored(name).split("\n")[2]
+            return head.split(" x ")[1].split(" px")[0]
+
+        self.assertEqual(height("avant-match-aller"), height("avant-match"))
+
+        # Et le compte a rebours reste la troisieme ligne : la carte porte son
+        # "detail" au-dessus de ses deux lignes de forme, l'enjeu au-dessus de
+        # tout, dans l'en-tete.
+        table = blueprint.stored("avant-match-aller").split("contenu\n", 1)[1]
+        rows = [line.split()[0] for line in table.strip().split("\n")]
+        self.assertLess(rows.index("minute"), rows.index("detail"))
+        self.assertLess(rows.index("detail"), rows.index("ligne"))
+
     def test_the_long_names_are_shortened(self):
         self.assertIn("...", blueprint.stored("noms-tronques"))
 
