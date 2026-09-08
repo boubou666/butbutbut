@@ -1775,7 +1775,7 @@ Premiere contribution exterieure au projet, par
   defaut, des commits avec `--dev`. La premiere mouture annoncait une release
   et installait la pointe de `main`.
 - `--update` refuse d'ecraser une installation qui ne vient pas des scripts et
-  renvoie vers l'outil qui la gere : `pipx upgrade butbutbut`,
+  renvoie vers l'outil qui la gere : `uv tool upgrade butbutbut`,
   `pip install --upgrade butbutbut`, ou le gestionnaire de paquets de la
   distribution.
 

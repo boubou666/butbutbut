@@ -34,19 +34,20 @@ la bibliotheque standard de Python, et ca tourne sur Windows, macOS et Linux.
 
 ## Installation
 
-### Avec pipx, sans cloner (tous systemes)
+### Avec uv, sans cloner (tous systemes)
 
 ```bash
-pipx install butbutbut
+uv tool install butbutbut
 butbutbut
 ```
 
-`pip install --user butbutbut` fait la meme chose. Les deux commandes
-`butbutbut` et `but` arrivent dans le PATH, et le son est embarque dans le
-paquet : zero dependance, rien d'autre a telecharger.
+`uv` isole l'application dans son propre environnement et met les commandes
+`butbutbut` et `but` dans le PATH. Le son est embarque dans le paquet : zero
+dependance, rien d'autre a telecharger. Pour une installation classique,
+`pip install --user butbutbut` reste possible.
 
-Ce que pipx ne fait pas, en revanche : le **demarrage automatique** a
-l'ouverture de session. Pour l'avoir, ce sont les scripts ci-dessous.
+Ce que `uv tool install` ne fait pas, en revanche : le **demarrage automatique**
+a l'ouverture de session. Pour l'avoir, ce sont les scripts ci-dessous.
 
 > Cette methode ne marchera qu'a partir de la premiere version envoyee sur
 > PyPI. Le depot est pret, il reste une manipulation cote pypi.org :
@@ -3258,7 +3259,7 @@ appartiennent pas :
 | Installe par | Mise a jour |
 | --- | --- |
 | `install.sh` / `install.ps1` | `butbutbut --update` |
-| `pipx install butbutbut` | `pipx upgrade butbutbut` |
+| `uv tool install butbutbut` | `uv tool upgrade butbutbut` |
 | `pip install --user butbutbut` | `pip install --upgrade butbutbut` |
 | le `PKGBUILD` d'Arch, un paquet de la distribution | `pacman -Syu`, `apt upgrade`... |
 
@@ -3279,7 +3280,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 ## Tests
 
 ```bash
-PYTHONPATH=".:tests" python -m unittest discover -s tests
+PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 ```
 
 **1465 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
