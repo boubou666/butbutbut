@@ -130,8 +130,9 @@ def hockey_board(*events):
     """Un tableau de bord de hockey : le meme, sans le moindre `details`.
 
     C'est tout le sujet du sport ici - la cle n'est pas vide, elle est absente,
-    et le canari ne doit pas la reclamer. Les competiteurs, eux, portent la
-    meme parure que partout ailleurs.
+    et le canari ne doit pas la reclamer. Les competiteurs portent la meme
+    parure que partout ailleurs, sauf `alternateColor`, que le hockey ne
+    publie pas.
     """
     raw = payload(*(events or (hockey_event(home_score=2, away_score=1,
                                             state="post", detail="Final",
@@ -144,7 +145,6 @@ def hockey_board(*events):
             team = competitor["team"]
             team.setdefault("name", team["shortDisplayName"])
             team.setdefault("location", team["displayName"])
-            team.setdefault("alternateColor", "ffffff")
             team.setdefault(
                 "logo", "https://a.espncdn.com/i/teamlogos/nhl/500/bos.png")
     return raw
@@ -295,6 +295,12 @@ class TestFootballPaysForNothingExtra(unittest.TestCase):
 
 
 class TestTheMissingDetailsOfHockey(unittest.TestCase):
+    def test_hockey_does_not_require_a_secondary_colour(self):
+        code, report = canary(live=hockey_board(), digest=hockey_digest(),
+                              argv=HOCKEY)
+        self.assertEqual(code, 0, report)
+        self.assertNotIn("competitor.team.alternateColor", report)
+
     def test_a_sport_without_actions_is_not_asked_for_any(self):
         """`details` est absent de tous les matchs de hockey : ce n'est pas une panne."""
         code, report = canary(live=hockey_board(), digest=hockey_digest(),
