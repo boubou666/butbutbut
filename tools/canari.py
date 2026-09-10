@@ -337,7 +337,7 @@ def rugby_kind(detail):
     return bool(scored), bool(red and not scored), False
 
 
-def detail_plan(sport):
+def detail_rules(sport):
     """(drapeaux exiges, cles d'une action retenue, tri) pour ce sport.
 
     Deux sources, deux grammaires. Trier autrement qu'espn.py, ce serait
@@ -583,7 +583,7 @@ def inspect_scoreboard(payload, ledger, sport=None):
     sport = sport or sports.DEFAULT
     team_spec = team_keys(sport)
     reads_details = sport.plays != sports.PLAYS_NONE
-    flags_spec, detail_spec, kind_of = detail_plan(sport)
+    flags_spec, detail_spec, kind_of = detail_rules(sport)
     # Meme regle pour les statistiques : un sport qui n'en affiche aucune ne se
     # fait pas reclamer un champ qu'il remplit avec de tout autres nombres.
     stats_spec = stats_keys(sport)
@@ -845,7 +845,7 @@ def cross_check(payload, slug, tally, ledger):
     # tableau des scores, lui, continuerait d'afficher des points : c'est par
     # lui qu'on le saurait. Un match fini sans action publiee arrive ; toute
     # une journee de matchs finis avec des points au tableau, non.
-    if league.sport.plays != sports.PLAYS_NONE:
+    if league.sport.plays == sports.PLAYS_TYPES:
         played = [match for match in matches
                   if match.state == espn.POST
                   and (match.home_score or 0) + (match.away_score or 0) > 0]
