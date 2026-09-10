@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -305,14 +306,97 @@ class TestSoundResolution(unittest.TestCase):
 
 
 class TestPidFile(unittest.TestCase):
+    """Le fichier pid, et la seule question qui compte : est-ce bien NOUS ?"""
+
+    def setUp(self):
+        self.paths = isolate_data_dir(self)
+
+    def write(self, *lines):
+        self.paths["pid"].parent.mkdir(parents=True, exist_ok=True)
+        self.paths["pid"].write_text("\n".join(lines) + "\n")
+
     def test_dead_pid_is_not_considered_running(self):
         self.assertFalse(cli._process_alive(-1))
         self.assertFalse(cli._process_alive(0))
 
     def test_our_own_pid_is_alive(self):
-        import os
-
         self.assertTrue(cli._process_alive(os.getpid()))
+
+    @unittest.skipUnless(sys.platform == "win32",
+                         "un objet processus ne survit au programme que la")
+    def test_a_process_that_died_but_whose_handle_survives_is_dead(self):
+        """Le vrai bug : un daemon tue net qui repond present pendant des heures.
+
+        Windows garde l'objet processus tant qu'un handle reste ouvert
+        quelque part - ici le notre, comme celui du lanceur d'un daemon tue par
+        une fin de session. Le numero repond alors a OpenProcess sans que rien
+        ne tourne, et butbutbut refusait de repartir sur "une instance tourne
+        deja". On garde donc le handle expres pendant qu'on tue l'enfant.
+        """
+        import ctypes
+
+        child = subprocess.Popen([sys.executable, "-c", "import time"
+                                  "; time.sleep(60)"])
+        SYNCHRONIZE = 0x00100000
+        kept = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, child.pid)
+        self.addCleanup(ctypes.windll.kernel32.CloseHandle, kept)
+        child.terminate()
+        child.wait(timeout=10)
+        self.assertFalse(cli._process_alive(child.pid))
+
+    def test_a_living_process_answers_yes(self):
+        child = subprocess.Popen([sys.executable, "-c", "import time"
+                                  "; time.sleep(60)"])
+        self.addCleanup(child.wait)
+        self.addCleanup(child.terminate)
+        self.assertTrue(cli._process_alive(child.pid))
+
+    def test_the_stamp_of_a_process_does_not_move(self):
+        """Deux lectures du meme processus donnent la meme empreinte."""
+        stamp = cli._process_stamp(os.getpid())
+        if not stamp:
+            self.skipTest("ce systeme ne publie pas la date de creation")
+        self.assertEqual(stamp, cli._process_stamp(os.getpid()))
+
+    def test_a_process_that_is_gone_has_no_stamp(self):
+        self.assertEqual(cli._process_stamp(-1), "")
+
+    def test_claiming_writes_the_pid_and_its_stamp(self):
+        self.assertTrue(cli.claim_pid_file())
+        written = self.paths["pid"].read_text().splitlines()
+        self.assertEqual(written[0], str(os.getpid()))
+        self.assertEqual(written[1], cli._process_stamp(os.getpid()))
+
+    def test_a_recycled_pid_is_not_our_daemon(self):
+        """Le cas reel : le daemon est mort, un inconnu porte son numero.
+
+        Notre propre pid, donc bien vivant, avec l'empreinte d'un autre. Sans
+        cette comparaison butbutbut refuserait de demarrer - et `--stop`
+        tuerait le processus qui a herite du numero.
+        """
+        if not cli._process_stamp(os.getpid()):
+            self.skipTest("ce systeme ne publie pas la date de creation")
+        self.write(str(os.getpid()), "une-autre-vie")
+        self.assertIsNone(cli.running_pid())
+        self.assertTrue(cli.claim_pid_file())
+
+    def test_the_same_process_is_still_recognised(self):
+        self.write(str(os.getpid()), cli._process_stamp(os.getpid()))
+        self.assertEqual(cli.running_pid(), os.getpid())
+
+    def test_a_file_without_a_stamp_keeps_the_benefit_of_the_doubt(self):
+        """Celui qu'ecrivait la 1.13 : une ligne, et un daemon peut-etre vivant."""
+        self.write(str(os.getpid()))
+        self.assertEqual(cli.running_pid(), os.getpid())
+
+    def test_a_pid_file_left_by_a_dead_daemon_stops_nothing(self):
+        self.write("999999", "peu importe")
+        self.assertIsNone(cli.running_pid())
+        self.assertTrue(cli.claim_pid_file())
+
+    def test_an_unreadable_pid_file_is_no_daemon(self):
+        self.write("ce n'est pas un nombre")
+        self.assertIsNone(cli.running_pid())
 
 
 class TestActivity(unittest.TestCase):

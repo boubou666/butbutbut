@@ -2656,6 +2656,16 @@ poll** the daemon writes a small state file next to the pid file
 in play and their scores, the day's goal counter, the competitions followed,
 the pid.
 
+The pid file itself carries two lines: the process number, and the date the
+system created it. A number alone does not say who it stands for. Systems
+recycle them, and on Windows a number can even answer long after the program
+died - the process object outlives it as long as a handle stays open
+somewhere. A daemon killed outright by a session ending was enough to block
+every later one (`une instance tourne deja`) without a single goal being
+announced, and `butbutbut --stop` could aim at a stranger. The creation date
+settles it: two processes can share a number, never the instant they were
+born.
+
 `butbutbut --status` reads it back:
 
 ```
