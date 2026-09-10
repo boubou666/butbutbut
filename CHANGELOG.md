@@ -7,6 +7,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.13.2] - 2026-09-10
+
 ### Corrige
 
 - **Sous Windows, un daemon tue net n'empeche plus le suivant de demarrer.**
