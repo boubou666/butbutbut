@@ -91,6 +91,31 @@ class TestParser(unittest.TestCase):
         self.assertTrue(args.catch_up)
 
 
+    def test_the_volume_runs_from_zero_to_a_hundred(self):
+        self.assertEqual(self.parser.parse_args([]).volume, cli.DEFAULT_VOLUME)
+        self.assertEqual(self.parser.parse_args(["--volume", "70"]).volume, 70)
+        # L'ancienne echelle, celle des fichiers deja ecrits.
+        self.assertEqual(self.parser.parse_args(["--volume", "0.55"]).volume, 55)
+
+    def test_an_impossible_volume_is_refused_with_the_scale(self):
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            with self.assertRaises(SystemExit):
+                self.parser.parse_args(["--volume", "200"])
+        self.assertIn("100", err.getvalue())
+
+    def test_a_volume_of_zero_is_the_silent_mode(self):
+        # Sans ca, butbutbut irait choisir un son, en mesurerait la duree et le
+        # tendrait a un lecteur pour qu'il ne le joue pas - et la carte
+        # attendrait a l'ecran la fin d'un silence.
+        with mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
+            cli.main(["--volume", "0", "--leagues", "l1"])
+        self.assertTrue(daemon.call_args[0][0].no_sound)
+
+    def test_a_volume_above_zero_leaves_the_sound_on(self):
+        with mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
+            cli.main(["--volume", "1%", "--leagues", "l1"])
+        self.assertFalse(daemon.call_args[0][0].no_sound)
+
     def test_a_negative_countdown_is_read_as_disabled(self):
         with mock.patch.object(cli, "do_daemon", return_value=0) as daemon:
             cli.main(["--before-kickoff", "-3", "--leagues", "l1"])

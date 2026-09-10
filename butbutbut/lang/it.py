@@ -450,8 +450,20 @@ MESSAGES = {
         'dice il gol ad alta voce, oltre al suono (o al suo posto con '
         '--no-sound). Usa la frase delle schede, nella loro lingua. '
         "'butbutbut --test --speak' la prova subito.",
-    'volume de la corne synthetisee, 0.0 a 1.0':
-        'volume della tromba sintetizzata, da 0.0 a 1.0',
+    'volume des buts, de 0 (muet) a 100 (maximum). Il vaut pour tous les sons, y compris ceux du dossier. Les anciennes valeurs de 0.0 a 1.0 restent comprises : 0.55 vaut 55.':
+        'volume dei gol, da 0 (muto) a 100 (massimo). Vale per tutti i suoni, compresi quelli della cartella. I vecchi valori da 0.0 a 1.0 restano compresi: 0.55 vale 55.',
+    'NIVEAU':
+        'LIVELLO',
+    'muet (--no-sound)':
+        'muto (--no-sound)',
+    '0, muet':
+        '0, muto',
+    '{:g} sur 100':
+        '{:g} su 100',
+    '{} - mais {} ne sait pas baisser le son, le but sortira fort':
+        '{} - ma {} non sa abbassare il volume, il gol uscira forte',
+    'aucun lecteur':
+        'nessun lettore',
     'PAIRES': 'COPPIE',
     'un son a soi pour une equipe ou une competition, sous forme de paires '
     'nom=chemin separees par des virgules. Les noms sont ceux de --teams et '

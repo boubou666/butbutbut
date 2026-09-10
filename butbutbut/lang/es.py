@@ -615,8 +615,22 @@ MESSAGES = {
         "dice el gol en voz alta, ademas del sonido (o en su lugar con "
         "--no-sound). La frase es la de las tarjetas, en su idioma. "
         "'butbutbut --test --speak' lo prueba al momento.",
-    "volume de la corne synthetisee, 0.0 a 1.0":
-        "volumen de la bocina sintetizada, 0.0 a 1.0",
+    "volume des buts, de 0 (muet) a 100 (maximum). Il vaut pour tous les sons, y compris ceux du dossier. Les anciennes valeurs de 0.0 a 1.0 restent comprises : 0.55 vaut 55.":
+        "volumen de los goles, de 0 (silencio) a 100 (maximo). Vale para todos los sonidos, incluidos los de la carpeta. Los antiguos valores de 0.0 a 1.0 se siguen entendiendo: 0.55 vale 55.",
+    "NIVEAU":
+        "NIVEL",
+    "  volume      : {}":
+        "  volumen     : {}",
+    "muet (--no-sound)":
+        "silencio (--no-sound)",
+    "0, muet":
+        "0, silencio",
+    "{:g} sur 100":
+        "{:g} sobre 100",
+    "{} - mais {} ne sait pas baisser le son, le but sortira fort":
+        "{} - pero {} no sabe bajar el sonido, el gol sonara fuerte",
+    "aucun lecteur":
+        "ningun reproductor",
     "PAIRES": "PARES",
     "un son a soi pour une equipe ou une competition, sous forme de paires "
     "nom=chemin separees par des virgules. Les noms sont ceux de --teams et "

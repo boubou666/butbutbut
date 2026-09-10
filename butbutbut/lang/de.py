@@ -431,8 +431,22 @@ MESSAGES = {
         'sagt das Tor laut an, zusammen mit dem Ton (oder an seiner Stelle '
         'mit --no-sound). Es ist der Satz der Karten, in ihrer Sprache. '
         "'butbutbut --test --speak' probiert es sofort aus.",
-    'volume de la corne synthetisee, 0.0 a 1.0':
-        'Pegel der erzeugten Fanfare, 0.0 bis 1.0',
+    'volume des buts, de 0 (muet) a 100 (maximum). Il vaut pour tous les sons, y compris ceux du dossier. Les anciennes valeurs de 0.0 a 1.0 restent comprises : 0.55 vaut 55.':
+        'Lautstaerke der Tore, von 0 (stumm) bis 100 (Maximum). Sie gilt fuer alle Klaenge, auch fuer die aus dem Ordner. Die alten Werte von 0.0 bis 1.0 werden weiter verstanden: 0.55 bedeutet 55.',
+    'NIVEAU':
+        'PEGEL',
+    '  volume      : {}':
+        '  Lautstaerke : {}',
+    'muet (--no-sound)':
+        'stumm (--no-sound)',
+    '0, muet':
+        '0, stumm',
+    '{:g} sur 100':
+        '{:g} von 100',
+    '{} - mais {} ne sait pas baisser le son, le but sortira fort':
+        '{} - aber {} kann den Ton nicht leiser stellen, das Tor kommt laut',
+    'aucun lecteur':
+        'kein Abspieler',
     'PAIRES': 'PAARE',
     'un son a soi pour une equipe ou une competition, sous forme de paires '
     'nom=chemin separees par des virgules. Les noms sont ceux de --teams et '

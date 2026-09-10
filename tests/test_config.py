@@ -79,9 +79,27 @@ class TestReading(ConfigCase):
             self.assertEqual(outcome.warnings, [])
 
     def test_a_decimal_comma_is_accepted(self):
-        outcome = self.read("[butbutbut]\nvolume = 0,8\n")
-        self.assertEqual(outcome.values["volume"], 0.8)
+        outcome = self.read("[butbutbut]\nscale = 1,5\n")
+        self.assertEqual(outcome.values["scale"], 1.5)
         self.assertEqual(outcome.warnings, [])
+
+    def test_the_volume_is_read_on_a_hundred(self):
+        outcome = self.read("[butbutbut]\nvolume = 70\n")
+        self.assertEqual(outcome.values["volume"], 70.0)
+        self.assertEqual(outcome.warnings, [])
+
+    def test_an_old_volume_keeps_its_meaning(self):
+        # Ecrit pour les fichiers deja poses sur des machines : 0.55 y voulait
+        # dire un peu plus de la moitie, et doit continuer a le vouloir.
+        outcome = self.read("[butbutbut]\nvolume = 0,55\n")
+        self.assertEqual(outcome.values["volume"], 55.0)
+        self.assertEqual(outcome.warnings, [])
+
+    def test_an_impossible_volume_is_reported_but_not_fatal(self):
+        outcome = self.read("[butbutbut]\nvolume = 200\n")
+        self.assertNotIn("volume", outcome.values)
+        self.assertEqual(len(outcome.warnings), 1)
+        self.assertIn("100", outcome.warnings[0])
 
     def test_an_unknown_key_is_reported_but_not_fatal(self):
         outcome = self.read("[butbutbut]\nchampionnat = l1\ninterval = 30\n")

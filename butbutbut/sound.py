@@ -19,6 +19,11 @@ ce soit, et surtout sans deviner : le mot est donne, pas lu dans un nom de
 fichier. Ces paires-la passent par les MEMES etages - une equipe l'emporte sur
 sa competition parce qu'elle est plus precise - et couvrent le dossier a etage
 egal, puisqu'elles ont ete ecrites noir sur blanc.
+
+Le volume (`--volume`, de 0 a 100) se regle a la **lecture**, pas a la
+fabrication : c'est la seule facon qu'il vaille aussi pour un mp3 depose dans
+le dossier, qu'on ne peut pas reecrire. Chaque lecteur a son option et sa
+propre echelle - read_volume() lit le reglage, find_player() le traduit.
 """
 
 from __future__ import annotations
@@ -49,19 +54,97 @@ AUDIO_EXTENSIONS = (".wav", ".mp3", ".ogg", ".oga", ".opus", ".flac", ".m4a", ".
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 BUNDLED_SOUND = ASSETS_DIR / "but.mp3"
 
+# --- Le volume ---------------------------------------------------------------
+
+MAX_VOLUME = 100.0          # ce que dit --volume : 0 muet, 100 a fond
+MUTE = 0.0
+
+# L'amplitude de la corne synthetisee, fixee une fois pour toutes a la
+# fabrication. Ce n'est PAS le volume : c'est le timbre du fichier, choisi pour
+# qu'il ne fasse pas sursauter. Le volume, lui, se regle a la lecture, pour que
+# le meme reglage vaille aussi pour un mp3 depose dans le dossier - qu'on ne
+# peut pas regenerer, celui-la.
+HORN_LEVEL = 0.55
+
+
+def _percent(volume) -> str:
+    """Le volume tel que l'attendent mpv et ffplay : 0 a 100."""
+    return "{:g}".format(round(volume, 2))
+
+
+def _factor(volume) -> str:
+    """Le volume en multiplicateur lineaire : 1 = tel quel. SoX, VLC, afplay."""
+    return "{:g}".format(round(volume / MAX_VOLUME, 4))
+
+
 # Lecteurs Linux/BSD, dans l'ordre de preference.
 # "any" = gere aussi les formats compresses ; sinon wav uniquement.
+# Le dernier element dit comment ce lecteur baisse le son, ou None quand il ne
+# sait pas : aplay n'a pas de reglage, et un but a plein volume vaut mieux
+# qu'un but muet parce qu'on aurait invente une option.
 LINUX_PLAYERS = (
-    ("mpv", ["mpv", "--really-quiet", "--no-video"], "any"),
-    ("ffplay", ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"], "any"),
-    ("play", ["play", "-q"], "any"),                  # SoX
-    ("cvlc", ["cvlc", "--play-and-exit", "--intf", "dummy"], "any"),
-    ("pw-play", ["pw-play"], "wav"),                  # PipeWire
-    ("paplay", ["paplay"], "wav"),                    # PulseAudio
-    ("aplay", ["aplay", "-q"], "wav"),                # ALSA
+    ("mpv", ["mpv", "--really-quiet", "--no-video"], "any",
+     lambda volume: ["--volume=" + _percent(volume)]),
+    ("ffplay", ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"], "any",
+     lambda volume: ["-volume", _percent(volume)]),
+    ("play", ["play", "-q"], "any",
+     lambda volume: ["-v", _factor(volume)]),                  # SoX
+    ("cvlc", ["cvlc", "--play-and-exit", "--intf", "dummy"], "any",
+     lambda volume: ["--gain", _factor(volume)]),
+    ("pw-play", ["pw-play"], "wav",
+     lambda volume: ["--volume=" + _factor(volume)]),          # PipeWire
+    ("paplay", ["paplay"], "wav",
+     # PulseAudio compte en unites a lui : 65536 vaut 100 %.
+     lambda volume: ["--volume=" + str(int(round(volume / MAX_VOLUME * 65536)))]),
+    ("aplay", ["aplay", "-q"], "wav", None),                   # ALSA
 )
 
 MCI_ALIAS = "butsound"
+MCI_MAX_VOLUME = 1000       # l'echelle de `setaudio ... volume to`
+
+
+class Invalid(ValueError):
+    """Une valeur qui ne veut rien dire : une paire, un volume."""
+
+
+def read_volume(value) -> float:
+    """Lit un volume et le rend sur 0 a 100. Leve Invalid.
+
+    Une seule lecture pour la ligne de commande et le fichier de
+    configuration, comme pour les sons nommes : les deux doivent se tromper
+    dans les memes termes.
+
+    L'echelle est celle qu'on lit sur n'importe quel bouton de son, 0 a 100.
+    Mais `--volume` a longtemps compte de 0.0 a 1.0, et ces valeurs-la dorment
+    dans des fichiers de configuration ecrits il y a des mois : **tout ce qui
+    ne depasse pas 1 est lu sur l'ancienne echelle**, donc `0.55` vaut 55 et
+    `1` vaut le maximum. C'est la seule regle qui ne fasse hurler personne au
+    redemarrage. Le prix a payer est qu'on ne peut pas ecrire 1 % ainsi : il
+    s'ecrit `1%`, et le pour-cent tranche partout ou le doute existe.
+    """
+    if isinstance(value, bool):         # True n'est pas un volume, meme s'il vaut 1
+        raise Invalid("attend un nombre de 0 a 100")
+    text = str(value).strip()
+    # La virgule decimale est ce qu'un clavier francais produit spontanement.
+    text = text.replace(",", ".")
+    explicit = text.endswith("%")
+    if explicit:
+        text = text[:-1].strip()
+    try:
+        number = float(text)
+    except ValueError:
+        raise Invalid("attend un nombre de 0 (muet) a 100 (maximum)")
+    if not math.isfinite(number):       # "nan" et "inf" passent float() sans broncher
+        raise Invalid("attend un nombre de 0 (muet) a 100 (maximum)")
+    if not explicit and 0 < number <= 1:
+        # L'ancienne echelle, 0.0 a 1.0. L'arrondi n'est pas cosmetique : sans
+        # lui 0.55 devient 55.00000000000001, et --status l'affiche tel quel.
+        number = round(number * MAX_VOLUME, 2)
+    if not 0 <= number <= MAX_VOLUME:
+        raise Invalid(
+            "attend un nombre de 0 (muet) a 100 (maximum), pas {:g}".format(number))
+    return number
+
 
 # --- Les etages du choix par contexte ----------------------------------------
 
@@ -85,7 +168,7 @@ VARIANT_SEPARATORS = "-_ ."
 
 # ------------------------------------------------------------- synthese ------
 
-def _render_samples(volume: float) -> list:
+def _render_samples(level: float) -> list:
     count = int(SAMPLE_RATE * TOTAL_SECONDS)
     buffer = [0.0] * count
     two_pi = math.tau
@@ -119,7 +202,7 @@ def _render_samples(volume: float) -> list:
                 buffer[index] += (value / 2.6) * envelope
 
     for i in range(count):
-        buffer[i] = math.tanh(buffer[i] * 1.6) * volume
+        buffer[i] = math.tanh(buffer[i] * 1.6) * level
 
     fade = int(0.02 * SAMPLE_RATE)  # evite le clic de fin
     for i in range(fade):
@@ -128,10 +211,14 @@ def _render_samples(volume: float) -> list:
     return buffer
 
 
-def write_wav(path: Path, volume: float = 0.55) -> Path:
-    """Ecrit la corne synthetisee en WAV PCM 16 bits mono."""
+def write_wav(path: Path, level: float = HORN_LEVEL) -> Path:
+    """Ecrit la corne synthetisee en WAV PCM 16 bits mono.
+
+    `level` est son amplitude, pas le volume d'ecoute : celui-ci se regle a la
+    lecture, ou il vaut aussi pour les fichiers qu'on ne fabrique pas.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    samples = _render_samples(volume)
+    samples = _render_samples(level)
     frames = b"".join(
         struct.pack("<h", int(max(-1.0, min(1.0, s)) * 32000)) for s in samples
     )
@@ -143,9 +230,9 @@ def write_wav(path: Path, volume: float = 0.55) -> Path:
     return path
 
 
-def ensure_wav(path: Path, volume: float = 0.55, force: bool = False) -> Path:
+def ensure_wav(path: Path, level: float = HORN_LEVEL, force: bool = False) -> Path:
     if force or not path.exists() or path.stat().st_size == 0:
-        write_wav(path, volume)
+        write_wav(path, level)
     return path
 
 
@@ -284,10 +371,6 @@ def sounds_by_tier(files, context) -> dict:
 
 
 # ------------------------------------------------------- les sons nommes ----
-
-class Invalid(ValueError):
-    """Une paire de --sound-for qui ne veut rien dire."""
-
 
 # Ce qui separe deux paires : la virgule et le point-virgule comme partout
 # ailleurs, et le retour a la ligne parce qu'une valeur du fichier de
@@ -502,7 +585,7 @@ def declared(path, clubs=()) -> tuple:
     return (TIER_GENERAL, None)
 
 
-def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55,
+def pick_sound(cache_wav: Path, custom_dir: Path, level: float = HORN_LEVEL,
                context=None, assigned=(), on_missing=None) -> Path:
     """Son a jouer : perso d'abord, puis celui fourni, puis la corne synthetisee.
 
@@ -522,7 +605,7 @@ def pick_sound(cache_wav: Path, custom_dir: Path, volume: float = 0.55,
     if default is not None and (sys.platform == "win32" or find_player(default)):
         return default
 
-    return ensure_wav(cache_wav, volume)
+    return ensure_wav(cache_wav, level)
 
 
 # --------------------------------------------------------------- lecture -----
@@ -536,31 +619,67 @@ def _mci(command: str):
     return code, buffer.value
 
 
-def find_player(path: Path | None = None):
+def find_player(path: Path | None = None, volume: float = MAX_VOLUME):
     """Commande de lecture adaptee au fichier, ou None.
 
     Windows n'en a pas besoin (winsound / MCI sont integres).
+
+    Le volume est ajoute a la commande, et **seulement s'il est demande** : a
+    fond, la commande est exactement celle d'avant. Une option de reglage est
+    un pari sur la version installee du lecteur, et un pari perdu ne rate pas
+    le volume, il rate le but - autant ne le prendre que pour quelqu'un qui a
+    reellement baisse le son. Un lecteur sans reglage (aplay) joue fort : le
+    dire vaut mieux que se taire, et --status le dit.
     """
     if sys.platform == "win32":
         return None
     if sys.platform == "darwin":
-        return ["afplay"] if shutil.which("afplay") else None
+        if not shutil.which("afplay"):
+            return None
+        # -v est un multiplicateur lineaire, 1 = tel quel.
+        return ["afplay"] + (["-v", _factor(volume)] if volume < MAX_VOLUME else [])
 
     compressed = path is not None and path.suffix.lower() != ".wav"
-    for binary, command, formats in LINUX_PLAYERS:
+    for binary, command, formats, tune in LINUX_PLAYERS:
         if compressed and formats != "any":
             continue
         if shutil.which(binary):
+            if tune is not None and volume < MAX_VOLUME:
+                return command + tune(volume)
             return command
     return None
 
 
-def play_async(path: Path):
-    """Lance le son sans bloquer. Silencieux si aucun lecteur n'est dispo."""
+def tunable(command) -> bool:
+    """Ce lecteur sait-il baisser le son ? Pour le dire dans --status."""
+    if not command:
+        return False
+    binary = command[0]
+    if binary == "afplay":
+        return True
+    for name, _command, _formats, tune in LINUX_PLAYERS:
+        if name == binary:
+            return tune is not None
+    return False
+
+
+def play_async(path: Path, volume: float = MAX_VOLUME):
+    """Lance le son sans bloquer. Silencieux si aucun lecteur n'est dispo.
+
+    `volume` va de 0 a 100 et c'est le lecteur qui l'applique, pas nous : ni
+    le mp3 fourni ni celui qu'on a depose dans le dossier ne se reecrivent, et
+    un reglage qui ne vaudrait que pour la corne synthetisee ne serait pas un
+    volume, seulement une option de plus a expliquer.
+    """
     path = Path(path)
+    if volume <= MUTE:
+        return None                      # 0, c'est muet : rien a lancer
 
     if sys.platform == "win32":
-        if path.suffix.lower() == ".wav":
+        # winsound ne sait pas baisser le son ; MCI si. Le wav passe donc par
+        # MCI des qu'on a demande autre chose que le maximum, et garde sinon
+        # le chemin le plus court.
+        if path.suffix.lower() == ".wav" and volume >= MAX_VOLUME:
             try:
                 import winsound
 
@@ -577,12 +696,18 @@ def play_async(path: Path):
             code, _ = _mci('open "{}" alias {}'.format(path, MCI_ALIAS))
             if code != 0:
                 return None
+            if volume < MAX_VOLUME:
+                # Un refus ici ne coute que le reglage : le but se joue quand
+                # meme, fort, plutot que pas du tout.
+                _mci("setaudio {} volume to {}".format(
+                    MCI_ALIAS,
+                    int(round(volume / MAX_VOLUME * MCI_MAX_VOLUME))))
             _mci("play " + MCI_ALIAS)
             return "mci"
         except Exception:
             return None
 
-    command = find_player(path)
+    command = find_player(path, volume)
     if not command:
         return None
     try:

@@ -1305,8 +1305,7 @@ leaves a line in the log:
 ```
 
 `--volume` and `--no-sound` keep their reach: silent mode also cuts the named
-sounds, and `--volume` still only tunes the synthesised horn - a file of your
-own is tuned in your own editor, just like those in the `sound` folder.
+sounds, and `--volume` applies to them like to every other.
 
 ```bash
 butbutbut --status            # what each pair arms, and what is wrong with it
@@ -1349,6 +1348,28 @@ butbutbut --terminal          # the card written in the terminal, no window
 butbutbut --no-logos          # no crest on the cards
 butbutbut --duration 8        # keep the card for 8 s (default: the length of the sound)
 ```
+
+### The volume
+
+```bash
+butbutbut --volume 40         # 0 muted, 100 loudest
+```
+
+The setting applies to **every** sound - the bundled horn, an mp3 dropped in
+the folder, a sound named by `--sound-for` - because it is applied at playback
+rather than to the file. `--volume 0` amounts to `--no-sound`, and leaves
+`--speak` talking: turning the goals down has never meant silencing the
+announcement.
+
+`butbutbut --status` shows the level in force, and warns when the installed
+player cannot follow it. Only one is in that case, `aplay`: it has no knob, and
+the goal will come out loud. Installing `mpv` or `ffmpeg` is enough to give it
+back.
+
+`--volume` long counted from 0.0 to 1.0. Those values are still understood -
+`0.55` means 55, `1` means the maximum - so a configuration file written before
+does not change meaning. Only a true 1% has to be written `1%`.
+
 
 ### The voice
 
@@ -1586,7 +1607,7 @@ idle_interval = 300
 
 # Sound and discretion (oui/non, true/false, 1/0)
 sound_for = om=~/sounds/om.wav, ucl=~/sounds/anthem.mp3
-volume = 0.55
+volume = 70
 no_sound = non
 speak = non
 no_overlay = non
