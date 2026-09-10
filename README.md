@@ -2346,6 +2346,16 @@ de chaque participant, le nom du joueur - sont surveillees pour lui seul. Un
 resume par competition et par passage : c'est 450 ko, et la question se repond
 sur un match aussi bien que sur trente.
 
+Le rugby a bien ce tableau, mais pas cette grammaire : ses actions ne portent
+aucun drapeau - la nature se lit dans `type.id`, "1" pour un essai - et ses
+equipes n'ont ni ville ni couleur secondaire. Lui reclamer `scoringPlay` ou
+`alternateColor` serait guetter des cles qu'ESPN n'a jamais publiees la, donc
+un rouge tous les matins, donc un rouge qu'on apprend a ne plus lire. En
+echange, une derive n'appartient qu'a lui : si ces numeros changeaient, pas une
+cle ne manquerait et plus une seule action ne serait reconnue. C'est le tableau
+des scores qui le dirait - une journee de matchs termines, des points affiches
+et pas une action : ligne rouge.
+
 Une cle peut aussi rester en place et **changer de forme**, ce qui ne se voit
 nulle part ailleurs. Le canari relit donc la minute des buts avec le lecteur du
 journal, celui dont sort l'histogramme de `--stats` : une horloge que plus

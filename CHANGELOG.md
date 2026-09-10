@@ -7,6 +7,20 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Le canari ne crie plus au loup sur le rugby.** ESPN publie bien un tableau
+  d'actions pour le Top 14, mais pas dans la grammaire du football : aucune
+  action ne porte de drapeau, leur nature se lit dans `type.id` ("1" = essai),
+  et les equipes n'ont ni `location` ni `alternateColor`. Le canari y
+  appliquait le programme du football et sortait quatre cles `MANQUE` sur
+  chaque journee, alors qu'`espn.parse()` lisait ces memes matchs sans broncher
+  - 560 actions. Il trie desormais les actions comme `espn.py` les trie, sport
+  par sport. Et parce qu'un tri par numero peut se tromper sans qu'une seule
+  cle ne manque, un filet nouveau le surveille : une journee de matchs
+  termines, des points au tableau et pas une action reconnue vaut une ligne
+  rouge.
+
 ## [1.13.1] - 2026-09-09
 
 ### Corrige

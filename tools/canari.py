@@ -246,17 +246,26 @@ TEAM_KEYS = (
 )
 
 
+# Ce qu'un sport ne publie pas du tout sur ses equipes. Le hockey n'a jamais de
+# couleur secondaire ; le rugby n'a ni couleur secondaire ni ville. Une cle
+# absente PARTOUT dans un sport n'est pas une cle disparue, c'est une cle qui
+# n'a jamais existe la : la reclamer allumerait le rouge tous les matins, et un
+# rouge permanent est un rouge qu'on apprend a ne plus lire.
+TEAM_KEYS_ABSENT = {
+    "hockey": ("alternateColor",),
+    "rugby": ("location", "alternateColor"),
+}
+
+
 def team_keys(sport):
     """Les cles d'une equipe que ce sport publie vraiment.
 
-    Le football donne une couleur secondaire ; le hockey ne pose jamais
-    `alternateColor`, alors que le reste de l'objet d'equipe garde la meme
-    forme. Une cle absente partout dans un sport ne doit pas devenir un faux
-    signal rouge simplement parce qu'elle existe dans le tableau du football.
+    Le football les donne toutes, les autres non, alors que le reste de l'objet
+    d'equipe garde la meme forme. Ce qu'on renonce a surveiller sur un sport,
+    espn.py le lit deja par `.get()` : son absence n'y coute rien.
     """
-    if sport.code != "hockey":
-        return TEAM_KEYS
-    return tuple(key for key in TEAM_KEYS if key[0] != "alternateColor")
+    absent = TEAM_KEYS_ABSENT.get(sport.code, ())
+    return tuple(key for key in TEAM_KEYS if key[0] not in absent)
 
 # Sur *toutes* les actions : ce sont ces deux drapeaux qui trient les buts des
 # expulsions. Les perdre, c'est ne plus rien afficher du tout.
@@ -286,6 +295,57 @@ ATHLETE_KEYS = (
     ("shortName", REQUIRED, "texte non vide"),
     ("displayName", SAMPLED, "texte non vide"),   # repli quand shortName manque
 )
+
+# Le rugby publie le meme tableau `details` que le football, mais pas un seul
+# drapeau : la nature de l'action se lit dans `type.id` ("1" = essai), et c'est
+# ainsi qu'espn.py la lit (`_rugby_details()`). Lui reclamer `scoringPlay`,
+# c'est guetter une cle qui n'a jamais existe chez lui ; et un essai n'a pas
+# plus d'`ownGoal` que de `penaltyKick`, ces deux-la sont du football.
+RUGBY_DETAIL_KEYS = (
+    ("type.id", REQUIRED, "identifiant"),
+    ("type.text", REQUIRED, "texte non vide"),
+    ("clock.displayValue", REQUIRED, "texte non vide"),
+    ("team.id", REQUIRED, "identifiant"),
+    ("athletesInvolved", SAMPLED, "liste"),
+)
+
+
+def soccer_kind(detail):
+    """(point, expulsion, tir au but) d'une action, lue par ses drapeaux."""
+    scoring = bool(detail.get("scoringPlay"))
+    red = bool(detail.get("redCard"))
+    return scoring, red and not scoring, bool(detail.get("shootout"))
+
+
+def rugby_kind(detail):
+    """La meme chose, lue par le type de l'action - comme espn.py la lit.
+
+    Les tables viennent d'espn.py et n'en sont pas recopiees : ce qui compte
+    ici est que le canari inspecte exactement les actions que le daemon
+    retient. Le jour ou ESPN renumeroterait ses types, les deux se tromperaient
+    ensemble sans qu'une seule cle ne manque - c'est justement pour cela que
+    cross_check() surveille a part une journee entiere restee sans action.
+    """
+    kind = detail.get("type") or {}
+    type_id = str(kind.get("id") or "").strip()
+    text = str(kind.get("text") or "").strip().lower()
+    scored = (espn.RUGBY_SCORES.get(type_id)
+              or espn.RUGBY_SCORES_BY_TEXT.get(text))
+    red = type_id in espn.RUGBY_RED_CARD or text == "red card"
+    # Le rugby ne se departage jamais aux tirs au but (voir sports.py) : le
+    # troisieme drapeau est faux par construction, pas par oubli.
+    return bool(scored), bool(red and not scored), False
+
+
+def detail_plan(sport):
+    """(drapeaux exiges, cles d'une action retenue, tri) pour ce sport.
+
+    Deux sources, deux grammaires. Trier autrement qu'espn.py, ce serait
+    inspecter les mauvaises actions - ou, pour le rugby, aucune.
+    """
+    if sport.plays == sports.PLAYS_TYPES:
+        return (), RUGBY_DETAIL_KEYS, rugby_kind
+    return DETAIL_FLAGS, DETAIL_KEYS, soccer_kind
 
 # L'autre endpoint : la liste des equipes, qui valide ce qu'on tape dans
 # --teams. Vide, il ferait refuser tous les noms au demarrage.
@@ -354,6 +414,21 @@ DETAILS_PLAN = (
     ("detail", DETAIL_KEYS),
     ("detail.athletesInvolved[0]", ATHLETE_KEYS),
 )
+
+# Le meme, pour un sport qui trie ses actions par type. Annoncer les drapeaux
+# du football ici ferait sortir deux cles "MANQUE" sur chaque ligne de rugby.
+RUGBY_DETAILS_PLAN = (
+    ("competition", COMPETITION_DETAILS_KEYS),
+    ("detail", RUGBY_DETAIL_KEYS),
+    ("detail.athletesInvolved[0]", ATHLETE_KEYS),
+)
+
+
+def details_plan(sport):
+    """Le programme du tableau d'actions de ce sport."""
+    if sport.plays == sports.PLAYS_TYPES:
+        return RUGBY_DETAILS_PLAN
+    return DETAILS_PLAN
 
 CATALOGUE_PLAN = (
     ("equipes", TEAMS_PAYLOAD_KEYS),
@@ -508,6 +583,7 @@ def inspect_scoreboard(payload, ledger, sport=None):
     sport = sport or sports.DEFAULT
     team_spec = team_keys(sport)
     reads_details = sport.plays != sports.PLAYS_NONE
+    flags_spec, detail_spec, kind_of = detail_plan(sport)
     # Meme regle pour les statistiques : un sport qui n'en affiche aucune ne se
     # fait pas reclamer un champ qu'il remplit avec de tout autres nombres.
     stats_spec = stats_keys(sport)
@@ -564,22 +640,22 @@ def inspect_scoreboard(payload, ledger, sport=None):
             if not isinstance(detail, dict):
                 ledger.anomaly("un element de details n'est pas un objet")
                 continue
-            ledger.check("detail", detail, DETAIL_FLAGS)
-            scoring = bool(detail.get("scoringPlay"))
-            red = bool(detail.get("redCard"))
+            if flags_spec:
+                ledger.check("detail", detail, flags_spec)
+            scoring, red, shootout = kind_of(detail)
             if not scoring and not red:
                 continue          # un carton jaune : espn.py n'en lit rien
             # Un tir au but est compte a part, comme espn.py le range a part :
             # il porte `scoringPlay` sans faire monter le score du match. Le
             # confondre avec un but ferait rougir le canari a chaque soiree de
             # coupe, pour un comportement voulu.
-            if bool(detail.get("shootout")):
+            if shootout:
                 tally["shootout"] += 1
             elif scoring:
                 tally["goals"] += 1
             else:
                 tally["red_cards"] += 1
-            ledger.check("detail", detail, DETAIL_KEYS)
+            ledger.check("detail", detail, detail_spec)
 
             athletes = detail.get("athletesInvolved") or []
             if athletes and isinstance(athletes[0], dict):
@@ -762,6 +838,23 @@ def cross_check(payload, slug, tally, ledger):
     if matches and not any(match.home and match.away for match in matches):
         problems.append("aucun match ne porte le nom de ses deux equipes")
 
+    # La derive qu'aucune cle ne trahirait : le rugby ne trie pas ses actions
+    # par drapeau mais par numero de type, et un renumerotage laisserait toutes
+    # les cles en place pour ne plus produire une seule action - le canari
+    # comme espn.py lisant la meme table, ils se tromperaient ensemble. Le
+    # tableau des scores, lui, continuerait d'afficher des points : c'est par
+    # lui qu'on le saurait. Un match fini sans action publiee arrive ; toute
+    # une journee de matchs finis avec des points au tableau, non.
+    if league.sport.plays != sports.PLAYS_NONE:
+        played = [match for match in matches
+                  if match.state == espn.POST
+                  and (match.home_score or 0) + (match.away_score or 0) > 0]
+        if played and not any(match.plays for match in played):
+            problems.append(
+                "{} match(s) termine(s) avec des points au tableau et pas une "
+                "seule action : le tri des actions ne reconnait plus rien"
+                .format(len(played)))
+
     # La minute n'est pas qu'un ornement : c'est elle qui fait l'histogramme de
     # --stats. Une cle peut rester en place et changer de FORME - c'est arrive,
     # la source ecrivait 90'+9' quand le lecteur n'acceptait que 90+3', et les
@@ -880,7 +973,7 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
         (scope, team_keys(sport) if scope == "competitor.team" else spec)
         for scope, spec in BOARD_PLAN)
     if sport.plays != sports.PLAYS_NONE:
-        plan += DETAILS_PLAN
+        plan += details_plan(sport)
     if sport.team_stats:
         plan += (("competitor", COMPETITOR_STATS_KEYS),
                  ("competitor.statistics", stats_keys(sport)))
