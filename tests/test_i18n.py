@@ -57,6 +57,7 @@ EN_FRANCAIS = {
         '  daemon      : {}',
         '  silence     : {}',
         '  sports      : {}',
+        '  volume      : {}',
         'CODE',
         'DATE',
         'MINUTES',
@@ -73,6 +74,7 @@ EN_FRANCAIS = {
     "it": frozenset({
         '  config      : {}{}',
         '  daemon      : {}',
+        '  volume      : {}',
         '  {}  {:<16} {}x{} a +{}+{}{}',
         'butbutbut : demo - [{}] {} - {}',
     }),

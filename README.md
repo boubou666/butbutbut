@@ -1315,8 +1315,7 @@ laisse une ligne au journal :
 ```
 
 `--volume` et `--no-sound` gardent leur portee : le mode muet coupe aussi les
-sons nommes, et `--volume` continue de ne regler que la corne synthetisee - un
-fichier a soi se regle dans son propre editeur, comme ceux du dossier `sound`.
+sons nommes, et `--volume` vaut pour eux comme pour les autres.
 
 ```bash
 butbutbut --status            # ce que chaque paire arme, et ce qui cloche
@@ -1359,6 +1358,28 @@ butbutbut --terminal          # la carte ecrite dans le terminal, sans fenetre
 butbutbut --no-logos          # pas d'ecusson sur les cartes
 butbutbut --duration 8        # garder la carte 8 s (defaut : la duree du son)
 ```
+
+### Le volume
+
+```bash
+butbutbut --volume 40         # 0 muet, 100 a fond
+```
+
+Le reglage vaut pour **tous** les sons - la corne fournie, un mp3 depose dans
+le dossier, un son nomme par `--sound-for` - parce qu'il est applique a la
+lecture et non au fichier. `--volume 0` revient a `--no-sound`, et laisse
+parler `--speak` : baisser le son des buts n'a jamais voulu dire faire taire
+l'annonce.
+
+`butbutbut --status` affiche le niveau retenu, et previent quand le lecteur
+installe ne sait pas le suivre. Un seul est dans ce cas, `aplay` : il n'a pas
+de reglage, et le but sortira fort. Installer `mpv` ou `ffmpeg` suffit a lui
+rendre la main.
+
+`--volume` a longtemps compte de 0.0 a 1.0. Ces valeurs-la restent comprises -
+`0.55` vaut 55, `1` vaut le maximum - donc un fichier de configuration ecrit
+avant ne change pas de sens. Seul le vrai 1 % doit s'ecrire `1%`.
+
 
 ### La voix
 
@@ -1596,7 +1617,7 @@ idle_interval = 300
 
 # Son et discretion (oui/non, true/false, 1/0)
 sound_for = om=~/sons/om.wav, ucl=~/sons/hymne.mp3
-volume = 0.55
+volume = 70
 no_sound = non
 speak = non
 no_overlay = non

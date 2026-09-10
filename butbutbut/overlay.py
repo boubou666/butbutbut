@@ -1312,7 +1312,7 @@ class Stack:
 def show(cards, duration: float = 6.0, sound_path=None, screen=None,
          position="bottom-right", opacity: float = 1.0, scale: float = 1.0,
          stagger: float = 0.9, retry_fullscreen: float = 0.0, on_log=None,
-         pinned=None) -> None:
+         pinned=None, volume: float = sound.MAX_VOLUME) -> None:
     """Affiche une ou plusieurs cartes, et rend la main quand tout est efface.
 
     Bloquant : pratique pour `--test`. Le daemon, lui, garde une Stack ouverte
@@ -1333,7 +1333,7 @@ def show(cards, duration: float = 6.0, sound_path=None, screen=None,
             stack.pin(pinned)
         for index, card in enumerate(cards):
             stack.push_later(int(index * stagger * 1000), card, duration)
-        handle = sound.play_async(sound_path) if sound_path else None
+        handle = sound.play_async(sound_path, volume) if sound_path else None
         try:
             stack.run_until_idle()
         finally:

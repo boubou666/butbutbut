@@ -29,7 +29,8 @@ DEFAULT_IDLE_INTERVAL = 300    # secondes, quand il n'y a rien a suivre
 DEFAULT_DURATION = 6.0         # duree d'affichage minimale de la carte
 PHASE_DURATION = 5.0           # coup d'envoi, mi-temps, reprise, fin : sans son
 CATCHUP_DURATION = 12.0        # le resume de sortie de veille : plusieurs lignes
-DEFAULT_VOLUME = 0.55
+DEFAULT_VOLUME = 100           # 0 muet, 100 a fond ; entier, pour que le
+                               # fichier d'exemple annonce 100 et non 100.0
 DEFAULT_POSITION = "bottom-right"
 RETRY_FULLSCREEN = 120.0       # duree d'attente par defaut de --retry-fullscreen
 # Ce qu'on accorde au fil de surveillance pour finir sa phrase quand on s'en
@@ -485,7 +486,7 @@ def resolve_sound(args, event=None):
     chosen = None
     if not args.no_sound:
         try:
-            chosen = sound.pick_sound(p["wav"], p["sound"], args.volume,
+            chosen = sound.pick_sound(p["wav"], p["sound"],
                                       context=sound_context(args, event),
                                       assigned=sound_assignments(args),
                                       on_missing=sound_gone(args))
@@ -505,8 +506,8 @@ def resolve_sound(args, event=None):
 _last_sound_at = 0.0
 
 
-def play_goal_sound(path, min_gap: float = 2.0):
-    """Joue le son, mais pas deux fois coup sur coup.
+def play_goal_sound(path, volume=DEFAULT_VOLUME, min_gap: float = 2.0):
+    """Joue le son au volume demande, mais pas deux fois coup sur coup.
 
     Deux buts remontes par le meme releve arrivent a quelques millisecondes
     d'ecart : un seul coup de corne, et deux cartes empilees a l'ecran. Sans ce
@@ -520,7 +521,7 @@ def play_goal_sound(path, min_gap: float = 2.0):
     if now - _last_sound_at < min_gap:
         return None
     _last_sound_at = now
-    return sound.play_async(path)
+    return sound.play_async(path, volume)
 
 
 def speak_goal(voice, args, event) -> None:
@@ -534,6 +535,32 @@ def speak_goal(voice, args, event) -> None:
         return
     voice.say(hook.phrase_of(event),
               after=0.0 if args.no_sound else speech.AFTER_SOUND)
+
+
+def describe_volume(args) -> str:
+    """Le volume tel que --status l'annonce, lecteur compris.
+
+    Le lecteur en fait partie parce que c'est lui qui applique le reglage :
+    quelqu'un qui n'a qu'aplay peut regler ce qu'il veut, le but sortira fort,
+    et il vaut mieux l'apprendre ici qu'a la 89e minute.
+    """
+    # Le volume d'abord : `--volume 0` pose bien args.no_sound, mais repondre
+    # "--no-sound" a quelqu'un qui a tape --volume serait lui montrer une
+    # option qu'il n'a pas ecrite.
+    if args.volume <= sound.MUTE:
+        return tr("0, muet")
+    if args.no_sound:
+        return tr("muet (--no-sound)")
+    label = tr("{:g} sur 100", args.volume)
+    if args.volume >= sound.MAX_VOLUME:
+        return label
+    if sys.platform == "win32":
+        return label                     # winsound et MCI savent tous les deux
+    player = sound.find_player()
+    if sound.tunable(player):
+        return label
+    return tr("{} - mais {} ne sait pas baisser le son, le but sortira fort",
+              label, player[0] if player else tr("aucun lecteur"))
 
 
 def crest_cache(args, on_log=None):
@@ -1017,7 +1044,7 @@ def _watch_headless(guard, args, stopping, reporter, pin,
             speak_goal(voice, args, event)
             # Un son par but, et pas un par releve : deux buts du meme tour
             # peuvent venir de deux equipes, donc de deux fichiers.
-            play_goal_sound(resolve_sound(args, event)[0])
+            play_goal_sound(resolve_sound(args, event)[0], args.volume)
 
         # plan_wait() et pas next_delay() : le watcher retient ce qu'on s'est
         # engage a attendre, et voit ainsi au tick suivant qu'on a dormi.
@@ -1143,7 +1170,7 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     chosen = media
                 stack.push(overlay.Card.from_event(event, crest), duration=chosen[1])
                 if event.goal:
-                    play_goal_sound(chosen[0])
+                    play_goal_sound(chosen[0], args.volume)
             except Exception as exc:
                 log("echec de l'affichage : {}".format(exc), quiet=args.quiet)
 
@@ -1375,7 +1402,7 @@ def do_test(args) -> int:
     voice = speak_demo(args, cards[0])
 
     if args.no_overlay:
-        handle = play_goal_sound(path)
+        handle = play_goal_sound(path, args.volume)
         time.sleep(min(duration, 5.0))
         sound.release(handle)
         voice.close(2.0)
@@ -1390,7 +1417,7 @@ def do_test(args) -> int:
                      screen=args.screen, position=args.position,
                      opacity=args.opacity, scale=args.scale,
                      retry_fullscreen=args.retry_fullscreen,
-                     pinned=anchor,
+                     pinned=anchor, volume=args.volume,
                      on_log=lambda message: print(tr("butbutbut : {}", message)))
     except overlay.DisplayUnavailable as exc:
         displayed = False
@@ -1423,7 +1450,7 @@ def demo_in_terminal(args, cards, anchor, path, duration, voice) -> int:
         print(tr("butbutbut : la carte epinglee ne s'ecrit pas dans le "
                  "terminal - elle vaut par le fait de rester a l'ecran."),
               file=sys.stderr)
-    handle = play_goal_sound(path)
+    handle = play_goal_sound(path, args.volume)
     for card in cards:
         printer.show(card)
     time.sleep(min(duration, 5.0))
@@ -3035,6 +3062,7 @@ def do_status(args) -> int:
                   else tr("corne synthetisee"))
         print(tr("  son         : {} ({})", fallback.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
+    print(tr("  volume      : {}", describe_volume(args)))
 
     named = sound_assignments(args)
     if named:
@@ -3171,6 +3199,19 @@ def do_stop(args) -> int:
 
 
 # ---------------------------------------------------------------- parse ------
+
+def read_volume(text):
+    """--volume pour argparse : la meme lecture que dans le fichier.
+
+    ArgumentTypeError plutot que ValueError, sinon argparse remplace la phrase
+    par un "invalid read_volume value" qui ne dit ni l'echelle ni la borne
+    franchie - c'est-a-dire tout ce qu'on avait a dire.
+    """
+    try:
+        return sound.read_volume(text)
+    except sound.Invalid as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -3396,8 +3437,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "sa place avec --no-sound). La phrase est celle "
                              "des cartes, dans leur langue. 'butbutbut --test "
                              "--speak' l'essaie tout de suite."))
-    parser.add_argument("--volume", type=float, default=DEFAULT_VOLUME,
-                        help=tr("volume de la corne synthetisee, 0.0 a 1.0"))
+    parser.add_argument("--volume", type=read_volume, default=DEFAULT_VOLUME,
+                        metavar=tr("NIVEAU"),
+                        help=tr("volume des buts, de 0 (muet) a 100 "
+                             "(maximum). Il vaut pour tous les sons, y compris "
+                             "ceux du dossier. Les anciennes valeurs de 0.0 a "
+                             "1.0 restent comprises : 0.55 vaut 55."))
     parser.add_argument("--sound-for", default=None, dest="sound_for",
                         metavar=tr("PAIRES"),
                         help=tr("un son a soi pour une equipe ou une "
@@ -3499,6 +3544,14 @@ def main(argv=None) -> int:
               file=sys.stderr)
         args.quiet_while_presenting = False
     args.before_kickoff = max(0, args.before_kickoff)
+    # `--volume 0`, c'est le mode muet dit autrement. Le ramener a --no-sound
+    # ici evite d'aller choisir un son, d'en mesurer la duree et de le tendre a
+    # un lecteur pour qu'il ne le joue pas : la carte reste a l'ecran le temps
+    # qu'elle dure, comme avec --no-sound, au lieu d'attendre un silence de
+    # trois secondes. La voix de --speak, elle, n'est pas concernee - baisser
+    # le son des buts n'a jamais voulu dire faire taire l'annonce.
+    if args.volume <= sound.MUTE:
+        args.no_sound = True
     if args.record and args.replay:
         print("butbutbut : --record enregistre le direct, --replay rejoue un "
               "enregistrement : les deux ensemble n'ont pas de sens.",
@@ -3563,7 +3616,7 @@ def main(argv=None) -> int:
               file=sys.stderr)
 
     if args.regen_sound:
-        sound.ensure_wav(p["wav"], args.volume, force=True)
+        sound.ensure_wav(p["wav"], force=True)
         # Meme regle que pour la confirmation des equipes plus bas : sous
         # --export, la sortie standard ne porte que des donnees. Cette ligne-la
         # n'y arriverait d'ailleurs meme pas dans l'ordre - l'export ecrit sous

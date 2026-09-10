@@ -1,5 +1,6 @@
 import sys
 import unittest
+from unittest import mock
 import wave
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -58,7 +59,7 @@ class TestSelection(unittest.TestCase):
 
     def test_fallback_is_a_playable_wav(self):
         with TemporaryDirectory() as tmp:
-            path = sound.write_wav(Path(tmp) / "horn.wav", volume=0.4)
+            path = sound.write_wav(Path(tmp) / "horn.wav", level=0.4)
             with wave.open(str(path), "rb") as handle:
                 self.assertEqual(handle.getnchannels(), 1)
                 self.assertEqual(handle.getsampwidth(), 2)
@@ -480,6 +481,102 @@ class TestNamedSoundThatVanishes(unittest.TestCase):
                                   assigned=[sound.Assignment("om", cri)])
         self.assertEqual(chosen, cri)
         self.assertEqual(self.noted, [])
+
+
+class TestReadVolume(unittest.TestCase):
+    """L'echelle est 0 a 100, et l'ancienne doit continuer a vouloir dire ca."""
+
+    def test_the_scale_runs_to_a_hundred(self):
+        self.assertEqual(sound.read_volume("0"), 0)
+        self.assertEqual(sound.read_volume("70"), 70)
+        self.assertEqual(sound.read_volume(100), 100)
+
+    def test_the_old_scale_is_still_understood(self):
+        # Des fichiers de configuration ecrits il y a des mois portent ces
+        # valeurs-la : les relire de travers ferait sursauter au premier but.
+        self.assertEqual(sound.read_volume("0.55"), 55)
+        self.assertEqual(sound.read_volume("1"), 100)
+
+    def test_a_percent_sign_settles_the_doubt(self):
+        # La seule facon d'ecrire un pour cent, puisque 1 tout court appartient
+        # a l'ancienne echelle.
+        self.assertEqual(sound.read_volume("1%"), 1)
+        self.assertEqual(sound.read_volume("50 %"), 50)
+
+    def test_a_decimal_comma_is_accepted(self):
+        self.assertEqual(sound.read_volume(",5"), 50)
+
+    def test_what_is_not_a_volume_says_so(self):
+        for wrong in ("", "fort", "-1", "101", "nan", "inf", True):
+            with self.assertRaises(sound.Invalid, msg=repr(wrong)):
+                sound.read_volume(wrong)
+
+    def test_the_complaint_names_the_scale(self):
+        with self.assertRaises(sound.Invalid) as caught:
+            sound.read_volume("200")
+        self.assertIn("100", str(caught.exception))
+        self.assertIn("200", str(caught.exception))
+
+
+class TestVolumeAtPlayback(unittest.TestCase):
+    """Le volume se regle a la lecture : c'est ce qui le fait valoir partout."""
+
+    def players(self, *available):
+        """shutil.which qui ne connait que ces binaires-la."""
+        return lambda binary: "/usr/bin/" + binary if binary in available else None
+
+    def linux(self, *available):
+        return mock.patch.multiple(
+            sound, sys=mock.Mock(platform="linux"),
+            shutil=mock.Mock(which=self.players(*available)))
+
+    def test_full_volume_leaves_the_command_untouched(self):
+        # Une option de reglage est un pari sur la version installee du
+        # lecteur. Personne ne doit le prendre pour rien.
+        with self.linux("mpv"):
+            self.assertEqual(sound.find_player(Path("but.mp3")),
+                             list(sound.LINUX_PLAYERS[0][1]))
+
+    def test_each_player_gets_its_own_dialect(self):
+        for binary, expected in (("mpv", "--volume=50"),
+                                 ("ffplay", "50"),
+                                 ("play", "0.5"),
+                                 ("cvlc", "0.5"),
+                                 ("paplay", "--volume=32768")):
+            with self.linux(binary):
+                name = "but.mp3" if binary != "paplay" else "but.wav"
+                command = sound.find_player(Path(name), 50)
+                self.assertEqual(command[0], binary)
+                self.assertIn(expected, command, binary)
+
+    def test_a_player_without_a_knob_still_plays(self):
+        # aplay n'a pas de reglage. Un but fort vaut mieux qu'un but perdu
+        # parce qu'on lui aurait invente une option.
+        with self.linux("aplay"):
+            command = sound.find_player(Path("but.wav"), 10)
+            self.assertEqual(command, list(sound.LINUX_PLAYERS[-1][1]))
+            self.assertFalse(sound.tunable(command))
+
+    def test_ffplay_gets_a_whole_number(self):
+        # ffplay -volume n'analyse qu'un entier : "50.5" lui coute le but, pas
+        # le reglage.
+        with self.linux("ffplay"):
+            command = sound.find_player(Path("but.mp3"), 50.7)
+        self.assertIn("51", command)
+        self.assertTrue(all(part.isdigit() or not part[0].isdigit()
+                            for part in command), command)
+
+    def test_status_can_tell_who_knows_how(self):
+        self.assertTrue(sound.tunable(["mpv", "--really-quiet"]))
+        self.assertTrue(sound.tunable(["afplay"]))
+        self.assertFalse(sound.tunable(["aplay", "-q"]))
+        self.assertFalse(sound.tunable(None))
+
+    def test_zero_plays_nothing_at_all(self):
+        # Le contrat de --volume 0 : pas un lecteur lance pour rien.
+        with mock.patch.object(sound, "find_player") as finder:
+            self.assertIsNone(sound.play_async(sound.BUNDLED_SOUND, 0))
+            finder.assert_not_called()
 
 
 class TestPlayers(unittest.TestCase):

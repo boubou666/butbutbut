@@ -7,6 +7,35 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **`--volume` regle enfin le volume, et il va de 0 a 100.** Il existait, mais
+  ne touchait que la corne synthetisee - celle qu'on n'entend que sur un Linux
+  sans lecteur de mp3. Autrement dit : le son que presque tout le monde entend,
+  le `but.mp3` fourni ou le fichier depose dans le dossier `sound`, sortait au
+  volume du systeme quoi qu'on demande. Il se regle desormais **a la lecture**,
+  pas a la fabrication, et c'est ce qui le fait valoir pour tous les sons d'un
+  coup : le mp3 fourni, ceux du dossier, ceux nommes par `--sound-for`. Chaque
+  lecteur a son option et sa propre echelle (`mpv --volume`, `afplay -v`,
+  `play -v`, MCI `setaudio` sous Windows) ; butbutbut traduit, et ne l'ajoute
+  que si on a demande autre chose que le maximum - une option de reglage est
+  un pari sur la version installee du lecteur, et il n'y a pas de raison de le
+  prendre pour quelqu'un qui n'a rien baisse.
+
+  `--volume 0` vaut `--no-sound`, et laisse parler `--speak` : baisser le son
+  des buts n'a jamais voulu dire faire taire l'annonce. `butbutbut --status`
+  affiche le niveau retenu, et previent quand le lecteur installe ne sait pas
+  le suivre - `aplay` est le seul dans ce cas, et le but sortira fort.
+
+  L'echelle passe de 0.0-1.0 a 0-100, celle de n'importe quel bouton de son.
+  Les anciennes valeurs restent comprises pour ne pas trahir les fichiers de
+  configuration deja ecrits : `volume = 0.55` vaut 55, `1` vaut le maximum.
+  Seul le vrai 1 % doit desormais s'ecrire `1%`.
+
+  Au passage, un reglage change s'applique tout de suite. Le volume etait
+  grave dans la corne au moment de la fabriquer, donc modifier `--volume` ne
+  changeait rien tant qu'on n'avait pas pense a `--regen-sound`.
+
 ## [1.13.2] - 2026-09-10
 
 ### Corrige

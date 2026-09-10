@@ -32,7 +32,7 @@ import configparser
 import textwrap
 from pathlib import Path
 
-from . import leagues, screens, silence
+from . import leagues, screens, silence, sound
 
 SECTION = "butbutbut"
 FILENAME = "butbutbut.conf"
@@ -85,6 +85,14 @@ def _hours(value):
     except silence.Invalid as exc:
         raise Invalid(str(exc))
     return window.describe() if window is not None else ""
+
+
+def _volume(value):
+    """Un volume de 0 a 100. La lecture est celle de --volume, mot pour mot."""
+    try:
+        return sound.read_volume(value)
+    except sound.Invalid as exc:
+        raise Invalid(str(exc))
 
 
 def _corner(value):
@@ -174,10 +182,12 @@ OPTIONS = (
            "l'equipe l'emporte sur sa competition. Le fichier doit exister au "
            "demarrage, sinon butbutbut refuse de partir.",
            "om=~/sons/om.wav, ucl=~/sons/ucl.mp3", fallback="aucun"),
-    Option("volume", _number,
-           "Volume de la corne synthetisee, de 0.0 a 1.0. Sans effet sur un "
-           "son depose dans le dossier 'sound'.",
-           "0.55"),
+    Option("volume", _volume,
+           "Volume des buts, de 0 (muet) a 100 (maximum). Vaut pour tous les "
+           "sons, y compris ceux du dossier 'sound' : c'est le lecteur du "
+           "systeme qui l'applique. Les anciennes valeurs de 0.0 a 1.0 restent "
+           "comprises (0.55 vaut 55), et '1%' dit un pour cent sans ambiguite.",
+           "70"),
     Option("no_sound", _flag,
            "Mode muet : oui pour ne plus rien entendre.",
            "non"),
