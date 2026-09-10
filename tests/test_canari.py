@@ -15,7 +15,8 @@ import os
 import unittest
 
 from helpers import (event, goal_detail, hockey_event, hockey_noise,
-                     hockey_play, hockey_summary, payload, red_card_detail)
+                     hockey_play, hockey_summary, payload, red_card_detail,
+                     rugby_detail)
 
 # Le canari vit dans tools/, hors du paquet : on le charge par son chemin,
 # depuis celui de ce fichier, pour ne dependre d'aucun repertoire courant.
@@ -150,6 +151,49 @@ def hockey_board(*events):
     return raw
 
 
+def rugby_match(match_id="1"):
+    """Un match de rugby joue : un essai transforme, une penalite, un change.
+
+    Le remplacement n'est pas du decor. Il vaut deux actions sur trois dans un
+    match, espn.py n'en lit rien, et le canari ne doit donc rien lui reclamer.
+    """
+    return event(
+        match_id=match_id, home="Toulon", away="La Rochelle",
+        home_score=7, away_score=3, state="post", detail="FT", clock="80'",
+        status_name="STATUS_FULL_TIME",
+        details=[rugby_detail("H" + match_id, "try", "8'", "L. Carter"),
+                 rugby_detail("H" + match_id, "conversion", "9'", "M. Serin",
+                              index=1),
+                 rugby_detail("A" + match_id, "penalty goal", "24'",
+                              "A. Hastoy", index=2),
+                 rugby_detail("H" + match_id, "player substituted", "55'",
+                              "T. Ollivon", index=3)])
+
+
+def rugby_board(*events):
+    """Un tableau de bord de rugby, tel que la source le sert vraiment.
+
+    Deux differences avec celui du football, et ce sont elles qu'on teste : pas
+    un seul drapeau sur les actions - la nature se lit dans `type.id` - et des
+    equipes sans ville ni couleur secondaire. Ni `location` ni
+    `alternateColor` ne sont donc reposes ici : les reclamer serait guetter des
+    cles qu'ESPN n'a jamais publiees pour ce sport.
+    """
+    raw = payload(*(events or (rugby_match(),)))
+    raw["leagues"] = [{"name": "French Top 14", "abbreviation": "TOP14"}]
+    for entry in raw["events"]:
+        competition = entry["competitions"][0]
+        entry.setdefault("date", competition["date"])
+        for competitor in competition["competitors"]:
+            team = competitor["team"]
+            team.setdefault("name", team["shortDisplayName"])
+            team.setdefault("color", "b01c2e")
+            team.setdefault(
+                "logo",
+                "https://a.espncdn.com/i/teamlogos/rugby/teams/500/1.png")
+    return raw
+
+
 def hockey_digest():
     """Le resume d'un match de hockey : deux buts pour l'un, un pour l'autre."""
     return hockey_summary(
@@ -189,6 +233,7 @@ def canary(live=None, past=None, teams=None, seen=None, digest=None,
 
 
 HOCKEY = ("--leagues", "hockey:nhl")
+RUGBY = ("--leagues", "rugby:270559")
 
 
 def without(source, *path):
@@ -313,6 +358,83 @@ class TestTheMissingDetailsOfHockey(unittest.TestCase):
         _, report = canary(live=played())
         self.assertIn("competition.details", report)
         self.assertIn("detail.athletesInvolved[0].shortName", report)
+
+
+class TestTheOtherGrammarOfRugby(unittest.TestCase):
+    """Le rugby a le meme tableau d'actions que le football, et pas sa grammaire.
+
+    Un essai ne porte pas `scoringPlay` : il porte `type.id` = "1". Le canari
+    qui reclamerait les drapeaux du football verrait quatre cles manquer sur
+    chaque journee de Top 14 - un rouge quotidien pour une source qui n'a
+    jamais rien promis de tel.
+    """
+
+    def test_a_complete_rugby_board_is_green(self):
+        code, report = canary(live=rugby_board(), argv=RUGBY)
+        self.assertEqual(code, 0, report)
+
+    def test_the_flags_of_football_are_never_asked_of_rugby(self):
+        _, report = canary(live=rugby_board(), argv=RUGBY)
+        for flag in ("detail.scoringPlay", "detail.redCard", "detail.ownGoal",
+                     "detail.penaltyKick", "detail.shootout"):
+            self.assertNotIn(flag, report)
+
+    def test_the_type_of_the_action_is_watched_instead(self):
+        _, report = canary(live=rugby_board(), argv=RUGBY)
+        self.assertIn("detail.type.id", report)
+        self.assertIn("detail.type.text", report)
+
+    def test_neither_town_nor_secondary_colour_is_asked_of_rugby(self):
+        _, report = canary(live=rugby_board(), argv=RUGBY)
+        self.assertNotIn("competitor.team.location", report)
+        self.assertNotIn("competitor.team.alternateColor", report)
+
+    def test_football_is_still_held_to_all_of_them(self):
+        _, report = canary(live=played())
+        self.assertIn("detail.scoringPlay", report)
+        self.assertIn("competitor.team.alternateColor", report)
+        self.assertIn("competitor.team.location", report)
+
+    def test_a_try_that_loses_its_clock_is_caught(self):
+        board = rugby_board()
+        board["events"][0]["competitions"][0]["details"][0].pop("clock")
+        code, report = canary(live=board, past=rugby_board(), argv=RUGBY)
+        self.assertEqual(code, 1, report)
+        self.assertIn("detail.clock.displayValue", report)
+
+    def test_an_action_that_scores_nothing_is_not_inspected(self):
+        """Le remplacement peut manquer ce qu'il veut : espn.py n'en lit rien."""
+        board = rugby_board()
+        board["events"][0]["competitions"][0]["details"][-1].pop("clock")
+        code, report = canary(live=board, argv=RUGBY)
+        self.assertEqual(code, 0, report)
+
+
+class TestASilentRenumbering(unittest.TestCase):
+    """Le piege propre au tri par type, et le seul filet qui le rattrape.
+
+    Si ESPN renumerotait ses types, pas une cle ne manquerait : le canari et
+    espn.py lisent la meme table et se tromperaient ensemble. Ce qui trahit la
+    derive est ailleurs - une journee de matchs finis, des points au tableau,
+    et pas une action reconnue.
+    """
+
+    def test_a_day_of_finished_matches_without_one_action_is_caught(self):
+        board = rugby_board()
+        for detail in board["events"][0]["competitions"][0]["details"]:
+            detail["type"] = {"id": "77", "text": "score"}
+        code, report = canary(live=board, past=board, argv=RUGBY)
+        self.assertEqual(code, 1, report)
+        self.assertIn("le tri des actions ne reconnait plus rien", report)
+
+    def test_a_match_still_to_be_played_says_nothing(self):
+        """0-0 avant le coup d'envoi : aucune action, et c'est bien normal."""
+        board = rugby_board(event(
+            home="Toulon", away="La Rochelle", state="pre",
+            detail="Sat 12 Sep at 17:00", clock="0'",
+            status_name="STATUS_SCHEDULED"))
+        code, report = canary(live=board, past=board, argv=RUGBY)
+        self.assertEqual(code, 0, report)
 
 
 class TestHealthyPayload(unittest.TestCase):
