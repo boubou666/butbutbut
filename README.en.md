@@ -2328,6 +2328,16 @@ the `plays[]` keys - the type of the play, each participant's role, the
 player's name - are watched for it alone. One summary per competition per run:
 it is 450 kB, and the question answers itself on one match as well as thirty.
 
+Rugby does have that list, but not that grammar: its plays carry no flag at
+all - what a play is reads from `type.id`, "1" for a try - and its teams have
+neither town nor secondary colour. Demanding `scoringPlay` or `alternateColor`
+there would mean watching for keys ESPN has never published for that sport: red
+every morning, hence a red you learn to stop reading. In exchange, one drift
+belongs to rugby alone: were those numbers to change, not a single key would be
+missing and not a single play would be recognised any more. The scoreboard is
+what would tell - a day of finished matches, points on the board and not one
+play: red line.
+
 A key can also stay in place and **change shape**, which shows up nowhere else.
 So the canary re-reads goal minutes with the log's own reader, the one behind
 the `--stats` histogram: a clock nobody can read any more earns a red line.
