@@ -9,6 +9,26 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ### Corrige
 
+- **Sous Windows, un daemon tue net n'empeche plus le suivant de demarrer.**
+  C'est le bug qui rend butbutbut silencieux sans rien casser : une fin de
+  session tue le daemon, et `butbutbut` refuse ensuite de repartir sur "une
+  instance tourne deja (pid 25228), sortie." alors que plus rien ne tourne -
+  aucun but annonce jusqu'a ce qu'on efface le fichier pid a la main. En
+  cause, un detail de Windows : l'objet processus survit au programme tant
+  qu'un handle reste ouvert quelque part, et `OpenProcess` repondait donc
+  present des heures apres la mort. Le test attend desormais zero seconde sur
+  ce handle : un processus termine est signale et se trahit, un processus
+  vivant fait expirer le delai.
+- **Un numero de processus recycle ne fait plus passer butbutbut pour
+  vivant.** L'autre facon de se tromper de processus, et la plus vicieuse :
+  les systemes recyclent les numeros, et l'inconnu qui herite de celui d'un
+  daemon mort repondait present lui aussi - `butbutbut --stop` serait meme
+  alle le tuer. Le fichier pid porte desormais une seconde ligne, la date de
+  creation du processus vue par le systeme : deux processus peuvent partager
+  un numero, jamais l'instant ou ils sont nes. Un fichier ecrit par une
+  version d'avant n'a pas cette ligne : il garde le benefice du doute, sauf si
+  le processus qu'il designe est ne apres lui - auquel cas ce n'est pas lui
+  qui l'a ecrit.
 - **Le canari ne crie plus au loup sur le rugby.** ESPN publie bien un tableau
   d'actions pour le Top 14, mais pas dans la grammaire du football : aucune
   action ne porte de drapeau, leur nature se lit dans `type.id` ("1" = essai),

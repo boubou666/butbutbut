@@ -10,6 +10,7 @@ import json
 import os
 import queue
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -181,15 +182,36 @@ def log(message: str, quiet: bool = False) -> None:
 # ------------------------------------------------------- instance unique -----
 
 def _process_alive(pid: int) -> bool:
+    """Ce numero designe-t-il un programme qui TOURNE encore ?
+
+    Sous Windows, la question n'est pas celle qu'on croit poser. Un objet
+    processus survit a la mort du programme tant qu'un handle reste ouvert
+    quelque part - celui du lanceur qui l'a demarre, par exemple -, et
+    OpenProcess continue de repondre pendant tout ce temps. Un daemon tue net
+    par une fin de session laissait donc son numero repondre present des heures
+    plus tard : butbutbut refusait de demarrer sur "une instance tourne deja"
+    alors que plus rien ne tournait, et plus un but n'etait annonce.
+
+    D'ou l'attente de zero seconde, qui est la vraie question : un objet
+    processus termine est **signale** et rend la main tout de suite ; un
+    processus vivant fait expirer le delai. C'est aussi pour cela que le handle
+    est demande en SYNCHRONIZE - ce droit-la ne servait a rien jusqu'ici.
+    """
     if pid <= 0:
         return False
     if sys.platform == "win32":
         SYNCHRONIZE = 0x00100000
-        handle = ctypes.windll.kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        WAIT_OBJECT_0 = 0x00000000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
         if not handle:
             return False
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return True
+        try:
+            # Mort seulement quand le systeme le dit franchement : une attente
+            # qui echoue pour une autre raison laisse le benefice du doute.
+            return kernel32.WaitForSingleObject(handle, 0) != WAIT_OBJECT_0
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -199,13 +221,165 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
-def running_pid():
-    pid_file = paths()["pid"]
-    try:
-        pid = int(pid_file.read_text().strip())
-    except Exception:
+# Un numero de processus ne dit pas QUI il designe, et les systemes les
+# recyclent - Windows en quelques heures sur une machine chargee. Un daemon tue
+# net (une extinction, un `taskkill`) laisse son fichier pid derriere lui ; le
+# numero repasse ensuite a n'importe quoi, et ce n'importe quoi repond present
+# quand on demande si le pid vit encore. Deux degats, dont le second est le
+# vrai : butbutbut refuse de demarrer en croyant qu'il tourne deja, et `--stop`
+# irait tuer un inconnu.
+#
+# D'ou une empreinte ecrite a cote du numero : la date de creation du
+# processus, telle que le systeme la donne. Deux processus peuvent partager un
+# numero, jamais l'instant ou ils sont nes.
+
+
+class _FileTime(ctypes.Structure):
+    """Le FILETIME de Windows, pour n'avoir pas a importer ctypes.wintypes."""
+
+    _fields_ = (("low", ctypes.c_uint32), ("high", ctypes.c_uint32))
+
+
+def _process_born(pid: int):
+    """L'instant de naissance du processus, en secondes epoch. None si inconnu.
+
+    Une date et pas une chaine opaque, parce qu'on en fait deux usages : la
+    comparer a celle qu'on avait ecrite, et la comparer a l'age du fichier pid
+    - voir running_pid(). None n'est pas une erreur, c'est l'aveu qu'on ne
+    peut rien affirmer ici.
+    """
+    if pid <= 0:
         return None
-    return pid if _process_alive(pid) else None
+    try:
+        if sys.platform == "win32":
+            return _windows_born(pid)
+        if sys.platform == "darwin":
+            return None       # pas de /proc, et `ps` ne donne qu'un texte
+        # Le champ 22 de /proc/<pid>/stat : le demarrage, en tops d'horloge
+        # depuis celui de la machine, que `btime` ramene a une vraie date. Le
+        # nom du programme, champ 2, est entre parentheses et peut contenir
+        # des espaces : on repart de la DERNIERE, sinon un binaire nomme
+        # "a b" decale tous les champs suivants.
+        with io.open("/proc/{}/stat".format(pid), encoding="ascii") as handle:
+            ticks = int(handle.read().rsplit(")", 1)[1].split()[19])
+        with io.open("/proc/stat", encoding="ascii") as handle:
+            for line in handle:
+                if line.startswith("btime "):
+                    return int(line.split()[1]) + ticks / os.sysconf("SC_CLK_TCK")
+        return None
+    except Exception:
+        # Rien ici ne doit tuer le daemon : au pire on ne sait pas, et on le dit.
+        return None
+
+
+def _windows_born(pid: int):
+    """La date de creation vue par le noyau, ramenee a l'epoch Unix."""
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    created, exited, kernel, user = (_FileTime() for _ in range(4))
+    try:
+        ok = kernel32.GetProcessTimes(
+            handle, ctypes.byref(created), ctypes.byref(exited),
+            ctypes.byref(kernel), ctypes.byref(user))
+    finally:
+        kernel32.CloseHandle(handle)
+    if not ok:
+        return None
+    # FILETIME : des centaines de nanosecondes depuis 1601, que ce decalage
+    # ramene a 1970.
+    return (((created.high << 32) | created.low) - 116444736000000000) / 1e7
+
+
+def _process_stamp(pid: int) -> str:
+    """L'empreinte du processus `pid`. Vide quand le systeme ne la dit pas.
+
+    Vide n'est pas une erreur - un processus d'un autre utilisateur, un Unix
+    sans /proc -, c'est seulement l'aveu qu'on ne peut rien affirmer. Le doute
+    profite alors au pid : mieux vaut refuser un second daemon a tort que
+    declarer mort celui qui tourne.
+    """
+    born = _process_born(pid)
+    if born is not None:
+        return "{:.3f}".format(born)
+    if pid > 0 and sys.platform == "darwin":
+        try:
+            # macOS n'a pas de /proc. `ps` ne donne qu'un texte, a la seconde,
+            # mais on n'en demande pas plus : il ne sert qu'a etre compare a
+            # lui-meme, et les pid y montent en file.
+            out = subprocess.check_output(
+                ["ps", "-o", "lstart=", "-p", str(pid)],
+                stderr=subprocess.DEVNULL, timeout=2)
+            return out.decode("ascii", "replace").strip()
+        except Exception:
+            return ""
+    return ""
+
+
+def _read_pid_file():
+    """(pid, empreinte) tels que le fichier les porte, ou (None, "").
+
+    Une seule ligne, c'est le fichier d'une version d'avant - ou celui d'un
+    daemon 1.13 encore en train de tourner pendant qu'on met a jour. Il n'a pas
+    d'empreinte, et il reste valable : on ne va pas declarer mort un daemon
+    vivant parce qu'il est ne avant ce commit.
+    """
+    try:
+        lines = paths()["pid"].read_text().splitlines()
+        pid = int(lines[0].strip())
+    except Exception:
+        return None, ""
+    return pid, (lines[1].strip() if len(lines) > 1 else "")
+
+
+# Deux lectures de la meme naissance peuvent differer d'un cheveu : sous Linux,
+# l'heure de demarrage de la machine est recalculee a chaque lecture et bouge
+# d'une seconde de temps en temps. Comparer au centieme ferait alors passer un
+# daemon bien vivant pour un numero recycle, et deux daemons tourneraient. Deux
+# secondes de marge : un numero ne se libere pas et ne se reprend pas dans cet
+# intervalle, la comparaison ne perd rien.
+STAMP_DRIFT = 2.0
+
+
+def _same_stamp(one: str, other: str) -> bool:
+    """Ces deux empreintes designent-elles la meme naissance ?"""
+    try:
+        return abs(float(one) - float(other)) <= STAMP_DRIFT
+    except ValueError:
+        return one == other      # macOS : une date en toutes lettres
+
+
+# Le fichier pid est ecrit dans la foulee du demarrage. Un processus ne
+# aujourd'hui ne peut donc pas avoir ecrit un fichier d'hier : cette marge
+# n'est la que pour l'horloge et pour la grossierete des dates de fichier.
+BORN_AFTER = 60.0
+
+
+def running_pid():
+    pid, stamp = _read_pid_file()
+    if pid is None or not _process_alive(pid):
+        return None
+    if stamp:
+        # Une empreinte qui ne correspond plus : le numero a ete recycle, et
+        # celui qui le porte aujourd'hui n'est pas notre daemon.
+        current = _process_stamp(pid)
+        return None if current and not _same_stamp(current, stamp) else pid
+
+    # Pas d'empreinte : le fichier vient d'une version d'avant. Reste une
+    # question a laquelle on peut repondre sans elle - ce processus est-il ne
+    # APRES l'ecriture du fichier ? Si oui, ce n'est pas lui qui l'a ecrit.
+    # C'est ce qui rattrape le fichier oublie par un daemon tue net, sans quoi
+    # la premiere mise a jour se ferait encore refuser le demarrage.
+    born = _process_born(pid)
+    if born is None:
+        return pid          # on ne sait pas : le doute profite au pid
+    try:
+        written = paths()["pid"].stat().st_mtime
+    except Exception:
+        return pid
+    return None if born > written + BORN_AFTER else pid
 
 
 def claim_pid_file() -> bool:
@@ -214,7 +388,8 @@ def claim_pid_file() -> bool:
         return False
     pid_file = paths()["pid"]
     pid_file.parent.mkdir(parents=True, exist_ok=True)
-    pid_file.write_text(str(os.getpid()))
+    pid_file.write_text("{}\n{}\n".format(os.getpid(),
+                                           _process_stamp(os.getpid())))
     return True
 
 

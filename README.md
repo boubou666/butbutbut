@@ -2684,6 +2684,16 @@ dit qu'un processus existe, jamais qu'il travaille. Le daemon ecrit donc, a
 (`butbutbut.json`, voir `butbutbut --paths`) : horodatage du releve, matchs en
 cours et leurs scores, compteur de buts du jour, competitions suivies, pid.
 
+Le fichier pid, lui, porte deux lignes : le numero du processus, et la date a
+laquelle le systeme l'a cree. Un numero seul ne dit pas qui il designe. Les
+systemes les recyclent, et sous Windows un numero peut meme repondre present
+longtemps apres la mort du programme - l'objet processus survit tant qu'un
+handle reste ouvert quelque part. Un daemon tue net par une fin de session
+suffisait alors a bloquer tous les suivants (`une instance tourne deja`) sans
+qu'un seul but ne soit annonce, et `butbutbut --stop` pouvait viser un
+inconnu. La date de creation tranche : deux processus peuvent partager un
+numero, jamais l'instant ou ils sont nes.
+
 `butbutbut --status` le relit :
 
 ```
