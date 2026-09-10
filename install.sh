@@ -138,7 +138,9 @@ head_ "Copie des fichiers"
 # `butbutbut --update`, qui rejoue ce script.
 PID_FILE="$DATA_HOME/$APP_NAME/butbutbut.pid"
 if [ -f "$PID_FILE" ]; then
-    DAEMON_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    # La premiere ligne, et elle seule : le fichier porte aussi l'empreinte du
+    # processus, et `kill -0 "12345 1788938197.844"` ne viserait personne.
+    DAEMON_PID="$(head -n 1 "$PID_FILE" 2>/dev/null || true)"
     if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
         kill "$DAEMON_PID" 2>/dev/null || true
         rm -f "$PID_FILE"

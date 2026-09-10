@@ -361,6 +361,18 @@ class TestPidFile(unittest.TestCase):
     def test_a_process_that_is_gone_has_no_stamp(self):
         self.assertEqual(cli._process_stamp(-1), "")
 
+    def test_a_hair_of_drift_is_still_the_same_process(self):
+        """Linux recalcule l'heure de demarrage a chaque lecture, a la seconde."""
+        self.assertTrue(cli._same_stamp("1788938197.844", "1788938198.200"))
+        self.assertFalse(cli._same_stamp("1788938197.844", "1788938497.844"))
+
+    def test_a_stamp_that_is_not_a_number_is_compared_as_it_is(self):
+        """macOS ne rend qu'un texte : `Tue Sep  9 09:16:37 2026`."""
+        self.assertTrue(cli._same_stamp("Tue Sep  9 09:16:37 2026",
+                                        "Tue Sep  9 09:16:37 2026"))
+        self.assertFalse(cli._same_stamp("Tue Sep  9 09:16:37 2026",
+                                         "Tue Sep  9 09:16:38 2026"))
+
     def test_claiming_writes_the_pid_and_its_stamp(self):
         self.assertTrue(cli.claim_pid_file())
         written = self.paths["pid"].read_text().splitlines()

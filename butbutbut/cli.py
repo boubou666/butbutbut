@@ -334,6 +334,23 @@ def _read_pid_file():
     return pid, (lines[1].strip() if len(lines) > 1 else "")
 
 
+# Deux lectures de la meme naissance peuvent differer d'un cheveu : sous Linux,
+# l'heure de demarrage de la machine est recalculee a chaque lecture et bouge
+# d'une seconde de temps en temps. Comparer au centieme ferait alors passer un
+# daemon bien vivant pour un numero recycle, et deux daemons tourneraient. Deux
+# secondes de marge : un numero ne se libere pas et ne se reprend pas dans cet
+# intervalle, la comparaison ne perd rien.
+STAMP_DRIFT = 2.0
+
+
+def _same_stamp(one: str, other: str) -> bool:
+    """Ces deux empreintes designent-elles la meme naissance ?"""
+    try:
+        return abs(float(one) - float(other)) <= STAMP_DRIFT
+    except ValueError:
+        return one == other      # macOS : une date en toutes lettres
+
+
 # Le fichier pid est ecrit dans la foulee du demarrage. Un processus ne
 # aujourd'hui ne peut donc pas avoir ecrit un fichier d'hier : cette marge
 # n'est la que pour l'horloge et pour la grossierete des dates de fichier.
@@ -348,7 +365,7 @@ def running_pid():
         # Une empreinte qui ne correspond plus : le numero a ete recycle, et
         # celui qui le porte aujourd'hui n'est pas notre daemon.
         current = _process_stamp(pid)
-        return None if current and current != stamp else pid
+        return None if current and not _same_stamp(current, stamp) else pid
 
     # Pas d'empreinte : le fichier vient d'une version d'avant. Reste une
     # question a laquelle on peut repondre sans elle - ce processus est-il ne
