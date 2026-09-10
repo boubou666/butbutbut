@@ -557,6 +557,15 @@ class TestVolumeAtPlayback(unittest.TestCase):
             self.assertEqual(command, list(sound.LINUX_PLAYERS[-1][1]))
             self.assertFalse(sound.tunable(command))
 
+    def test_ffplay_gets_a_whole_number(self):
+        # ffplay -volume n'analyse qu'un entier : "50.5" lui coute le but, pas
+        # le reglage.
+        with self.linux("ffplay"):
+            command = sound.find_player(Path("but.mp3"), 50.7)
+        self.assertIn("51", command)
+        self.assertTrue(all(part.isdigit() or not part[0].isdigit()
+                            for part in command), command)
+
     def test_status_can_tell_who_knows_how(self):
         self.assertTrue(sound.tunable(["mpv", "--really-quiet"]))
         self.assertTrue(sound.tunable(["afplay"]))

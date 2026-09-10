@@ -68,8 +68,13 @@ HORN_LEVEL = 0.55
 
 
 def _percent(volume) -> str:
-    """Le volume tel que l'attendent mpv et ffplay : 0 a 100."""
-    return "{:g}".format(round(volume, 2))
+    """Le volume tel que l'attendent mpv et ffplay : un entier de 0 a 100.
+
+    Entier, et pas "50.5" : `ffplay -volume` n'analyse qu'un entier, et une
+    valeur qu'il refuse ne coute pas le reglage, elle coute le but. Le demi
+    pour cent qu'on y perd ne s'entend pas.
+    """
+    return str(int(round(volume)))
 
 
 def _factor(volume) -> str:
