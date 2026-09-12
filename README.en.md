@@ -27,8 +27,10 @@ their own, with no sound: that's the third one above.
 `butbutbut --leagues nhl,top14`. Football stays the absolute default, nothing
 invites itself. See [Sports](#sports).
 
-Like [doot](https://github.com/boubou666/doot): **zero dependencies**, nothing
-but the Python standard library, and it runs on Windows, macOS and Linux.
+Like [doot](https://github.com/boubou666/doot), the application code uses
+Python's standard library. Both applications share only the
+[desktop-overlay](https://github.com/boubou666/desktop-overlay) engine on
+Windows, macOS and Linux.
 
 ---
 
@@ -80,6 +82,8 @@ folder.
 
 ### Arch Linux (native package)
 
+Install [python-desktop-overlay](https://github.com/boubou666/desktop-overlay/tree/main/packaging) first, then:
+
 ```bash
 cd packaging && makepkg -si
 systemctl --user reenable butbutbut.service
@@ -89,7 +93,7 @@ systemctl --user restart butbutbut.service
 ### Without installing anything
 
 ```bash
-python -m butbutbut --test 3
+uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --test 3
 ```
 
 ---

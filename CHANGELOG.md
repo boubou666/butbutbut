@@ -7,6 +7,21 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Modifie
+
+- L'enumeration des ecrans, leur geometrie et la preparation des fenetres
+  tkinter viennent desormais de desktop-overlay 0.2.0. ButButBut garde le choix
+  de l'ecran principal, les textes traduits et le placement des cartes dans
+  son adaptateur.
+- Les installeurs autonomes recuperent le wheel exact du moteur et verifient
+  son condensat SHA-256. La recette Arch depend du paquet partage
+  python-desktop-overlay.
+
+### Corrige
+
+- Les coordonnees tkinter negatives utilisent une geometrie signee valide pour
+  les ecrans places a gauche ou au-dessus de l'ecran principal.
+
 ## [1.15.0] - 2026-09-12
 
 ### Ajoute

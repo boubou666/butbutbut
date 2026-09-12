@@ -49,15 +49,15 @@ jobs:
 
       - name: tests
         shell: bash
-        run: PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests -v
+        run: PYTHONPATH=".:tests" uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m unittest discover -s tests -v
 
       - name: la ligne de commande repond
         shell: bash
         run: |
-          uv run --no-project python -m butbutbut --version
-          uv run --no-project python -m butbutbut --paths
-          uv run --no-project python -m butbutbut --screens
-          uv run --no-project python -m butbutbut --help > /dev/null
+          uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --version
+          uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --paths
+          uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --screens
+          uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --help > /dev/null
 
   build:
     name: paquet

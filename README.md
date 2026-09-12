@@ -27,8 +27,10 @@ Le **hockey sur glace** et le **rugby a XV** sont dans le catalogue eux aussi,
 a la demande : `butbutbut --leagues nhl,top14`. Le football reste le defaut
 absolu, rien ne s'invite. Voir [Les sports](#les-sports).
 
-Comme [doot](https://github.com/boubou666/doot) : **zero dependance**, rien que
-la bibliotheque standard de Python, et ca tourne sur Windows, macOS et Linux.
+Comme [doot](https://github.com/boubou666/doot), le code metier reste dans
+la bibliotheque standard. Les deux applications partagent seulement le moteur
+[desktop-overlay](https://github.com/boubou666/desktop-overlay), sur Windows,
+macOS et Linux.
 
 ---
 
@@ -81,6 +83,8 @@ Demarrage.
 
 ### Arch Linux (paquet natif)
 
+Installe d'abord [python-desktop-overlay](https://github.com/boubou666/desktop-overlay/tree/main/packaging), puis :
+
 ```bash
 cd packaging && makepkg -si
 systemctl --user reenable butbutbut.service
@@ -90,7 +94,7 @@ systemctl --user restart butbutbut.service
 ### Sans rien installer
 
 ```bash
-python -m butbutbut --test 3
+uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --test 3
 ```
 
 ---

@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Multimedia :: Sound/Audio",
 ]
-dependencies = []
+dependencies = ["desktop-overlay>=0.2.0,<0.3"]
 
 [project.scripts]
 butbutbut = "butbutbut.cli:main"

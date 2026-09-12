@@ -61,7 +61,7 @@ jobs:
           test "$declared" = "${{ steps.version.outputs.number }}"
 
       - name: tests
-        run: PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
+        run: PYTHONPATH=".:tests" uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m unittest discover -s tests
 
       - name: paquet
         run: uv build
