@@ -7,6 +7,35 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Le daemon ne tourne plus aveugle toute la session.** L'unite systemd
+  s'installait `WantedBy=default.target`, qui demarre avec le gestionnaire
+  utilisateur. Le `After=graphical-session.target` juste au-dessus n'y changeait
+  rien : `After=` n'ordonne que si les deux unites sont dans la meme
+  transaction, et `default.target` ne tire pas `graphical-session.target`.
+  butbutbut partait donc avant que la session ne publie `DISPLAY` et
+  `WAYLAND_DISPLAY`, et l'environnement d'un processus ne changeant plus une
+  fois qu'il tourne, il ne les voyait jamais apparaitre. Constate ici :
+  `_tkinter.TclError: no display name and no $DISPLAY environment variable` a
+  l'ouverture de session, tous les jours.
+- L'unite s'accroche desormais a la session graphique, et l'installeur choisit
+  `plasma-workspace.target` quand elle existe. Plasma publie les variables
+  d'affichage en meme temps que cette cible, sans les ordonner face a
+  `graphical-session.target` : s'accrocher a cette derniere reste une course
+  sous KDE.
+- L'installeur fait `reenable` et non `enable`. Sur une mise a jour depuis une
+  version accrochee a `default.target`, `enable` ajoutait le nouveau lien sans
+  retirer l'ancien, et l'unite continuait d'etre tiree trop tot. Sans ce point,
+  le correctif n'aurait servi a personne parmi ceux qui ont le probleme.
+- **Le daemon refuse de demarrer sans affichage** plutot que de tourner aveugle,
+  et sort en 5 pour que `Restart=on-failure` le relance avec l'environnement
+  complet. `--no-overlay` et `--terminal` en sont dispenses : ils ne dessinent
+  aucune fenetre, et les refuser priverait du son, de la voix et du journal
+  sans aucune raison. macOS et Windows dessinent sans ces variables, la
+  verification les ignore.
+- Le nombre de tests annonce par le README, qui avait pris 136 unites de retard.
+
 ## [1.14.0] - 2026-09-10
 
 ### Ajoute

@@ -228,10 +228,21 @@ if [ "$AUTOSTART" -eq 1 ]; then
     elif command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
         UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
         mkdir -p "$UNIT_DIR"
+
+        # default.target demarre avec le gestionnaire utilisateur, avant que la
+        # session ne publie DISPLAY et WAYLAND_DISPLAY : butbutbut n'avait alors
+        # aucun ecran ou dessiner. Plasma publie ces variables en meme temps que
+        # plasma-workspace.target, sans les ordonner face a
+        # graphical-session.target, d'ou l'accroche specifique quand elle existe.
+        CIBLE="graphical-session.target"
+        if systemctl --user list-unit-files plasma-workspace.target >/dev/null 2>&1; then
+            CIBLE="plasma-workspace.target"
+        fi
+
         cat > "$UNIT_DIR/butbutbut.service" <<EOF
 [Unit]
 Description=butbutbut - alerte de buts des 5 grands championnats
-After=graphical-session.target
+After=$CIBLE
 PartOf=graphical-session.target
 
 [Service]
@@ -241,11 +252,17 @@ Restart=on-failure
 RestartSec=30
 
 [Install]
-WantedBy=default.target
+WantedBy=$CIBLE
 EOF
         systemctl --user daemon-reload
-        systemctl --user enable --now butbutbut.service
-        say "systemd     : butbutbut.service active (systemctl --user status butbutbut)"
+        # reenable et pas enable : sur une mise a jour depuis une version
+        # accrochee a default.target, enable ajouterait le nouveau lien sans
+        # retirer l'ancien, et l'unite continuerait de demarrer trop tot.
+        systemctl --user reenable butbutbut.service >/dev/null 2>&1 || true
+        # restart et pas `enable --now` : sur une reinstallation l'unite peut
+        # deja tourner, et --now ne relancerait pas le code fraichement copie.
+        systemctl --user restart butbutbut.service
+        say "systemd     : butbutbut.service actif, accroche a $CIBLE"
     else
         DESKTOP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
         mkdir -p "$DESKTOP_DIR"
