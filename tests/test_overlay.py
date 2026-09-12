@@ -1044,7 +1044,7 @@ class TestACardNeverStealsTheScreen(unittest.TestCase):
         self.log = []
         self.stack = _FakeStack(self.log)
         self.card = overlay.Card.demo(LIGUE1, None)
-        patch = mock.patch.object(overlay, "_make_click_through",
+        patch = mock.patch.object(overlay.overlay_window, "make_click_through",
                                   lambda _window: self.log.append("styles"))
         patch.start()
         self.addCleanup(patch.stop)

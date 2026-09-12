@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from butbutbut import i18n, screens
 
@@ -40,6 +41,21 @@ class TestPlacement(unittest.TestCase):
         self.assertEqual(self.monitor.place(400, 120, "nulle-part", margin=24),
                          self.monitor.place(400, 120, "bottom-right", margin=24))
 
+class TestSharedBackend(unittest.TestCase):
+    def test_engine_rectangles_are_adapted(self):
+        shared = screens._geometry.Monitor(
+            -1920, 20, 1920, 1040, primary=True, name="partage"
+        )
+        with mock.patch.object(
+                screens, "enumerate_monitors", return_value=[shared]) as detect:
+            found = screens.monitors(1280, 720)
+
+        detect.assert_called_once_with(1280, 720)
+        self.assertIsInstance(found[0], screens.Monitor)
+        self.assertEqual(
+            (found[0].x, found[0].y, found[0].name),
+            (-1920, 20, "partage"),
+        )
 
 class TestSelection(unittest.TestCase):
     def setUp(self):

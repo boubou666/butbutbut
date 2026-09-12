@@ -11,7 +11,7 @@
 # Celles qu'on ne passe pas ne sont pas posees non plus dans le service de
 # demarrage : le fichier de configuration reste alors maitre de ces reglages.
 #
-# Aucun droit root, aucune dependance Python : tout est dans la stdlib.
+# Aucun droit root. Le moteur commun est un wheel public, verifie par SHA-256.
 set -euo pipefail
 
 APP_NAME="butbutbut"
@@ -154,6 +154,31 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR" "$BIN_DIR"
 cp -R "$SRC_DIR/butbutbut" "$APP_DIR/butbutbut"
 say "code        : $APP_DIR/butbutbut"
+
+ENGINE_VERSION="0.2.0"
+ENGINE_URL="https://github.com/boubou666/desktop-overlay/releases/download/v${ENGINE_VERSION}/desktop_overlay-${ENGINE_VERSION}-py3-none-any.whl"
+ENGINE_SHA256="9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34"
+"$PYTHON" - "$ENGINE_URL" "$ENGINE_SHA256" "$APP_DIR" <<'PY'
+import hashlib
+import io
+import sys
+import urllib.request
+import zipfile
+
+url, expected, target = sys.argv[1:]
+with urllib.request.urlopen(url, timeout=30) as response:
+    wheel = response.read()
+actual = hashlib.sha256(wheel).hexdigest()
+if actual != expected:
+    raise SystemExit(
+        "desktop-overlay: SHA-256 inattendu ({} au lieu de {})".format(
+            actual, expected
+        )
+    )
+with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
+    archive.extractall(target)
+PY
+say "moteur      : desktop-overlay $ENGINE_VERSION"
 
 cat > "$BIN_DIR/butbutbut" <<EOF
 #!/usr/bin/env bash

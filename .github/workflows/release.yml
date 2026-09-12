@@ -1,0 +1,81 @@
+name: release GitHub
+
+# Un tag de version teste et construit le paquet, puis cree la release GitHub.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"   # v1.2.3-rc1, v1.2.3-beta...
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: installer uv et Python 3.12
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+
+      - name: version du tag
+        id: version
+        run: |
+          tag="${{ github.ref_name }}"
+          echo "tag=$tag"            >> "$GITHUB_OUTPUT"
+          echo "number=${tag#v}"     >> "$GITHUB_OUTPUT"
+
+      # Un tag qui ne correspond pas a __version__ produirait une release
+      # mensongere : on refuse tout de suite.
+      - name: le tag correspond a la version du paquet
+        run: |
+          declared=$(uv run --no-project python -c 'import butbutbut; print(butbutbut.__version__)')
+          echo "tag=${{ steps.version.outputs.number }}  paquet=$declared"
+          test "$declared" = "${{ steps.version.outputs.number }}"
+
+      - name: tests
+        run: PYTHONPATH=".:tests" uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34" python -m unittest discover -s tests
+
+      - name: paquet
+        run: uv build
+
+      # Les notes sont la section correspondante du CHANGELOG, telle quelle.
+      - name: notes de version depuis le CHANGELOG
+        id: notes
+        run: |
+          uv run --no-project python - <<'PY' > release-notes.md
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+
+          # De "## [1.0.1]" jusqu'au prochain "## [" (ou la fin du fichier).
+          pattern = re.compile(
+              r"^## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=^## \[|\Z)",
+              re.MULTILINE | re.DOTALL)
+          found = pattern.search(text)
+          body = found.group(1).strip() if found else ""
+
+          if not body:
+              body = ("Cette version n'a pas de section dans le CHANGELOG. "
+                      "Voir l'historique des commits.")
+          print(body)
+          PY
+          echo "--- notes generees ---"
+          cat release-notes.md
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+
+      - name: la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: butbutbut ${{ steps.version.outputs.number }}
+          body_path: release-notes.md
+          files: dist/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}

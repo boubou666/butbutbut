@@ -53,13 +53,15 @@ passe devant. `fullscreen` sait le dire sous Windows ; la pile le note alors
 dans le journal, et peut reproposer la carte plus tard (voir `push`). Passer
 devant est une chose, sortir l'autre de son plein ecran en est une autre : une
 carte n'active jamais rien et n'a pas de bouton dans la barre des taches, sous
-peine de la faire remonter par-dessus le jeu (voir `_make_click_through`).
+peine de la faire remonter par-dessus le jeu (voir `desktop_overlay.window.prepare_window`).
 """
 
 from __future__ import annotations
 
 import sys
 import time
+
+from desktop_overlay import window as overlay_window
 
 from . import crests, fullscreen, i18n, screens, sound
 
@@ -209,9 +211,8 @@ def _crest(cache, url):
 
 def _import_tk():
     try:
-        import tkinter as tk
-        import tkinter.font as tkfont
-    except Exception as exc:  # pragma: no cover - depend de l'install systeme
+        return overlay_window.import_tk()
+    except overlay_window.TkinterMissing as exc:
         raise TkinterMissing(
             "tkinter est introuvable. Installe-le :\n"
             "  Arch/Manjaro   : sudo pacman -S tk\n"
@@ -220,7 +221,6 @@ def _import_tk():
             "  macOS (brew)   : brew install python-tk\n"
             "  Windows        : reinstalle Python en cochant 'tcl/tk'"
         ) from exc
-    return tk, tkfont
 
 
 # ----------------------------------------------------------------- carte -----
@@ -504,74 +504,6 @@ def _red_size(fonts) -> tuple:
 def _red_span(width: int, count: int) -> int:
     """La place que prennent `count` cartons cote a cote. Zero pour aucun."""
     return count * (width + RED_GAP) - RED_GAP if count else 0
-
-
-def _make_click_through(window) -> None:
-    """Windows : la fenetre ignore la souris et ne prend jamais le focus.
-
-    A poser AVANT le premier `deiconify`, et c'est tout l'interet de la
-    fonction. Windows decide de l'activation d'une fenetre au moment ou elle
-    apparait : une fenetre `overrideredirect` encore ordinaire a cet instant
-    reclame le premier plan et recoit un bouton dans la barre des taches. Le
-    bureau refuse souvent le vol - le focus reste au jeu - mais il repond alors
-    en faisant clignoter ce bouton, et un bouton qui clignote fait remonter la
-    barre des taches par-dessus une application en plein ecran. Le but arrive,
-    le plein ecran s'en va : mesure faite sur Windows 10, une carte poussee
-    devant un jeu sans bordure a suffi a lui prendre le premier plan.
-
-    WS_EX_NOACTIVATE ecarte la fenetre de l'activation, WS_EX_TOOLWINDOW du
-    bouton, donc du clignotement. Poses ensuite, les deux styles arrivent trop
-    tard : le mal est fait a l'affichage. Une fois poses, ils tiennent - ni le
-    fondu ni les deplacements ne les effacent (verifie sous Tk 8.6), un seul
-    appel par carte suffit donc.
-    """
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-
-        GWL_EXSTYLE = -20
-        WS_EX_LAYERED = 0x00080000
-        WS_EX_TRANSPARENT = 0x00000020
-        WS_EX_NOACTIVATE = 0x08000000
-        WS_EX_TOOLWINDOW = 0x00000080
-
-        window.update_idletasks()
-        hwnd = ctypes.windll.user32.GetParent(window.winfo_id()) or window.winfo_id()
-        user32 = ctypes.windll.user32
-        style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        user32.SetWindowLongW(
-            hwnd,
-            GWL_EXSTYLE,
-            style | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
-        )
-    except Exception:
-        pass
-
-
-def _setup_transparency(window) -> str:
-    """Rend les coins arrondis possibles ; renvoie la couleur de fond a utiliser."""
-    if sys.platform == "win32":
-        try:
-            window.wm_attributes("-transparentcolor", TRANSPARENT_KEY)
-            return TRANSPARENT_KEY
-        except Exception:
-            return CARD_BG
-
-    if sys.platform == "darwin":
-        try:
-            window.wm_attributes("-transparent", True)
-            window.config(bg="systemTransparent")
-            return "systemTransparent"
-        except Exception:
-            return CARD_BG
-
-    # X11 / Wayland : pas d'alpha par pixel garanti, on reste sur un fond plein.
-    try:
-        window.wm_attributes("-type", "splash")
-    except Exception:
-        pass
-    return CARD_BG
 
 
 def stack_positions(monitor, sizes, position="bottom-right", gap=STACK_GAP):
@@ -889,23 +821,15 @@ class _Panel:
         self.images = {}
 
         self.window = tk.Toplevel(stack.root)
-        self.window.withdraw()
-        self.window.overrideredirect(True)
-        for attribute, value in (("-topmost", True), ("-alpha", 0.0)):
-            try:
-                self.window.wm_attributes(attribute, value)
-            except Exception:
-                pass
-
-        self.background = _setup_transparency(self.window)
+        self.background = overlay_window.prepare_window(
+            self.window,
+            transparent_key=TRANSPARENT_KEY,
+            fallback_background=CARD_BG,
+        )
         self.canvas = tk.Canvas(self.window, bg=self.background,
                                 highlightthickness=0, bd=0)
         self.canvas.pack(fill="both", expand=True)
 
-        # Tant que la fenetre est retiree, elle n'a encore rien pris a
-        # personne : c'est le seul moment ou ces styles la protegent de
-        # l'affichage a venir. Voir _make_click_through.
-        _make_click_through(self.window)
 
         self._render(card)
 
@@ -928,14 +852,14 @@ class _Panel:
 
     def move(self, x: int, y: int) -> None:
         try:
-            self.window.geometry("{}x{}+{}+{}".format(self.width, self.height, x, y))
+            overlay_window.move_window(self.window, self.width, self.height, x, y)
         except Exception:
             pass
 
     def reveal(self) -> None:
         """Fait apparaitre la fenetre, en fondu, et la laisse la."""
         try:
-            self.window.deiconify()
+            overlay_window.show_window(self.window)
         except Exception:
             return
         self._fade(self.stack.opacity, FADE_STEPS,
@@ -981,7 +905,7 @@ class _Toast(_Panel):
 
     def start(self) -> None:
         try:
-            self.window.deiconify()
+            overlay_window.show_window(self.window)
         except Exception:
             return
 

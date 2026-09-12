@@ -7,7 +7,6 @@
 [![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/boubou666/butbutbut)](https://github.com/boubou666/butbutbut/releases)
 [![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![pypi](https://img.shields.io/pypi/v/butbutbut)](https://pypi.org/project/butbutbut/)
 [![licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/boubou666/butbutbut/blob/main/LICENSE)
 
 A goal in **Ligue 1**, the **Premier League**, **LaLiga**, **Serie A** or the
@@ -27,30 +26,20 @@ their own, with no sound: that's the third one above.
 `butbutbut --leagues nhl,top14`. Football stays the absolute default, nothing
 invites itself. See [Sports](#sports).
 
-Like [doot](https://github.com/boubou666/doot): **zero dependencies**, nothing
-but the Python standard library, and it runs on Windows, macOS and Linux.
+Like [doot](https://github.com/boubou666/doot), the application code uses
+Python's standard library. Both applications share only the
+[desktop-overlay](https://github.com/boubou666/desktop-overlay) engine on
+Windows, macOS and Linux.
 
 ---
 
 ## Installation
 
-### With pipx, without cloning (every system)
+### From GitHub, on every system
 
-```bash
-pipx install butbutbut
-butbutbut
-```
-
-`pip install --user butbutbut` does the same thing. Both commands, `butbutbut`
-and `but`, land in your PATH, and the sound ships inside the package: zero
-dependencies, nothing else to download.
-
-What pipx does not do, on the other hand: **start automatically** when you log
-in. For that, use the scripts below.
-
-> This method will only work from the first version pushed to PyPI onwards.
-> The repository is ready; one step remains on the pypi.org side:
-> [Publishing to PyPI](#publishing-to-pypi).
+GitHub Releases are the distribution channel. The scripts below install the
+application and the verified engine wheel, then configure automatic startup.
+Each release also attaches the application's wheel and source archive.
 
 ### Linux (Arch, Debian/Ubuntu, Fedora, openSUSE...) and macOS
 
@@ -80,6 +69,8 @@ folder.
 
 ### Arch Linux (native package)
 
+Install [python-desktop-overlay](https://github.com/boubou666/desktop-overlay/tree/main/packaging) first, then:
+
 ```bash
 cd packaging && makepkg -si
 systemctl --user reenable butbutbut.service
@@ -89,7 +80,7 @@ systemctl --user restart butbutbut.service
 ### Without installing anything
 
 ```bash
-python -m butbutbut --test 3
+uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34" python -m butbutbut --test 3
 ```
 
 ---
@@ -3461,76 +3452,11 @@ version carries a `vX.Y.Z` tag and an automatically built
 [release](https://github.com/boubou666/butbutbut/releases), with the package
 attached.
 
-### Publishing to PyPI
+### Distribution
 
-Publishing is the second job in
-[`pypi.yml`](https://github.com/boubou666/butbutbut/blob/main/.github/workflows/pypi.yml):
-it sets off with the tag, right after the release, and sends to PyPI
-**exactly** the wheel and the sdist attached to it. Through **Trusted
-Publishing**: PyPI trusts the workflow itself via an OIDC token, so there is
-**no API token to store** in the repository.
-
-The workflow is **inert by default**. As long as the steps below have not been
-carried out, the job is skipped: pushing a tag goes on producing the GitHub
-release as before, with no red failure. Only the repository owner can carry
-out these steps, and only once:
-
-1. **Have an account on [pypi.org](https://pypi.org/)**, with two-factor
-   authentication enabled (it is mandatory in order to publish).
-
-2. **Declare the trusted publisher.** The `butbutbut` project does not exist
-   on PyPI yet, so you have to go through a *pending publisher*. In the
-   account menu, `Publishing`, then `Add a new pending publisher`, `GitHub`
-   tab. Fill in exactly:
-
-   | Field | Value |
-   | --- | --- |
-   | PyPI Project Name | `butbutbut` |
-   | Owner | `boubou666` |
-   | Repository name | `butbutbut` |
-   | Workflow name | `pypi.yml` |
-   | Environment name | `pypi` |
-
-   Careful: a *pending publisher* does not reserve the name, it only
-   authorises the workflow to create it. Best not to let too much time drag on
-   between this step and the first publication.
-
-3. **Create the GitHub environment.** Repository, `Settings`, `Environments`,
-   `New environment`, named **`pypi`** - the same word as in step 2. That is
-   also the place to add, if you want one, a manual approval before every push
-   to PyPI.
-
-4. **Arm the publication.** Repository, `Settings`, `Secrets and variables`,
-   `Actions`, `Variables` tab, `New repository variable`: name
-   **`PYPI_PUBLISH`**, value **`true`**. That is the switch; without it the
-   job stays skipped.
-
-5. **Push a tag**, as usual:
-
-   ```bash
-   git tag -a v1.2.1 -m "1.2.1" && git push --tags
-   ```
-
-   `pypi.yml` checks the tag, builds the package, creates the release, then
-   its second job sends that same package to PyPI. The *pending publisher*
-   then becomes an ordinary publisher, and the project exists.
-
-To catch up on a push without creating a new tag: `Actions` tab, workflow
-**release et publication**, `Run workflow`, giving the tag you want. That is
-the way out when publishing has been skipped - the variable not yet armed at
-tag time, a PyPI outage, a rejected token. Same file, therefore same
-publisher: nothing more to declare at PyPI.
-
-> **Why a single workflow, and why that name.** Publishing first lived in a
-> separate file listening on `release: published`. That could never work:
-> Actions refuses to let an event produced by the `GITHUB_TOKEN` trigger
-> another workflow, so as to avoid loops - a release created by
-> `github-actions[bot]` wakes nobody. Observed while pushing `v1.3.0`, where
-> that trigger did not produce a single run. The tag push, on the other hand,
-> comes from a human. Hence one file with two jobs. And it is called
-> `pypi.yml` because a trusted publisher authorises **one** file name: the one
-> declared in step 2, and the job that exchanges the OIDC token has to live in
-> it.
+New versions remain on GitHub Releases. The application wheel references the
+desktop-overlay 0.2.0 wheel with its SHA-256, so pip and uv install the exact
+validated engine without using PyPI.
 
 ## License
 

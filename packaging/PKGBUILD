@@ -16,7 +16,7 @@ pkgdesc="Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : le s
 arch=('any')
 url="https://github.com/boubou666/butbutbut"
 license=('MIT')
-depends=('python' 'tk')
+depends=('python' 'tk' 'python-desktop-overlay>=0.2.0')
 optdepends=('mpv: lecture du mp3 fourni'
             'ffmpeg: lecture du mp3 fourni (ffplay)'
             'alsa-utils: lecture du repli wav'
