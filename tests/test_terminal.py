@@ -375,12 +375,22 @@ class TestHowTheModeStarts(unittest.TestCase):
                               terminal.Writer)
 
     def daemon_up_to_the_loop(self, extra, stopping, loop):
-        """Lance do_daemon jusqu'a la boucle, qui est doublee. Rend les args."""
+        """Lance do_daemon jusqu'a la boucle, qui est doublee. Rend les args.
+
+        L'affichage est declare joignable : ces tests portent sur une fenetre
+        qui echoue malgre une session prete, cas permanent que le repli en
+        terminal rattrape. Une session qui n'a pas encore publie DISPLAY est
+        l'autre cas, transitoire celui-la : le daemon en sort en 5 pour etre
+        relance, et n'atteint donc pas la boucle. Sans cette declaration le
+        test dependrait de l'ecran de la machine qui le lance, et tombait sur
+        la CI.
+        """
         args = self.args("--leagues", "l1", *extra)
         empty = mock.Mock(**{"tick.return_value": [], "all_matches.return_value": [],
                              "plan_wait.return_value": 0.0,
                              "prime.return_value": None})
-        with mock.patch.object(cli.watcher, "Watcher", return_value=empty):
+        with mock.patch.object(cli, "sans_affichage", return_value=False), \
+                mock.patch.object(cli.watcher, "Watcher", return_value=empty):
             with mock.patch.object(cli, "check_teams", return_value=0):
                 with mock.patch.object(cli, "claim_pid_file", return_value=True):
                     cli.do_daemon(args)
