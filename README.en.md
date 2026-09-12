@@ -82,7 +82,8 @@ folder.
 
 ```bash
 cd packaging && makepkg -si
-systemctl --user enable --now butbutbut.service
+systemctl --user reenable butbutbut.service
+systemctl --user restart butbutbut.service
 ```
 
 ### Without installing anything
@@ -1057,8 +1058,25 @@ card was already lost, and an option you would have had to read beforehand would
 only have saved those who read it. `--no-overlay` keeps its exact meaning - no
 card, anywhere - and wins over `--terminal` when both are given.
 
+**One exception, when nobody is reading.** The argument above assumes a human
+in front of the terminal. Started by the autostart, butbutbut has none: the
+cards would go to the system log for the whole session, while the screen would
+only stay empty until the session publishes `DISPLAY`. In that precise case -
+no screen, and standard error is not a terminal - the daemon exits with 5
+instead of falling back, and the supervisor restarts it thirty seconds later
+with the complete environment:
+
+```
+2026-09-12 17:10:31  aucun affichage joignable : ni DISPLAY ni WAYLAND_DISPLAY. Sortie en 5, pour etre relance quand la session les aura publies.
+```
+
+The arbiter is standard error rather than standard output, because that is
+where those cards are written: `butbutbut --terminal > evening.log` therefore
+keeps its fallback. `--terminal` and `--no-overlay` are never concerned, they
+ask for no screen at all.
+
 > By the way: a session with no `DISPLAY` used to **take the daemon down**
-> before this version. `tkinter` imported fine, `Tk()` raised a `TclError`
+> before the version that introduced this fallback. `tkinter` imported fine, `Tk()` raised a `TclError`
 > nothing caught, and butbutbut died at startup on the very machine where it
 > would have been useful. It now degrades, as it does everywhere else.
 
@@ -3302,7 +3320,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1465 tests**, with no network and no screen: the source is simulated by an
+**1616 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

@@ -7,6 +7,50 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- **Le daemon ne tourne plus aveugle toute la session.** L'unite systemd
+  s'installait `WantedBy=default.target`, qui demarre avec le gestionnaire
+  utilisateur. Le `After=graphical-session.target` juste au-dessus n'y changeait
+  rien : `After=` n'ordonne que si les deux unites sont dans la meme
+  transaction, et `default.target` ne tire pas `graphical-session.target`.
+  butbutbut partait donc avant que la session ne publie `DISPLAY` et
+  `WAYLAND_DISPLAY`, et l'environnement d'un processus ne changeant plus une
+  fois qu'il tourne, il ne les voyait jamais apparaitre. Constate ici :
+  `_tkinter.TclError: no display name and no $DISPLAY environment variable` a
+  l'ouverture de session, tous les jours.
+- L'unite s'accroche desormais a la session graphique, et l'installeur choisit
+  `plasma-workspace.target` quand elle existe. Plasma publie les variables
+  d'affichage en meme temps que cette cible, sans les ordonner face a
+  `graphical-session.target` : s'accrocher a cette derniere reste une course
+  sous KDE.
+- L'installeur fait `reenable` et non `enable`. Sur une mise a jour depuis une
+  version accrochee a `default.target`, `enable` ajoutait le nouveau lien sans
+  retirer l'ancien, et l'unite continuait d'etre tiree trop tot. Sans ce point,
+  le correctif n'aurait servi a personne parmi ceux qui ont le probleme.
+- **Le daemon refuse de demarrer sans affichage quand personne ne lit**, et
+  sort en 5 pour que `Restart=on-failure` le relance avec l'environnement
+  complet. Le repli en terminal reste automatique tant que la sortie d'erreur
+  est un terminal, parce que l'argument du README tient alors toujours : il ne
+  prend rien a personne. Sous un superviseur au contraire les cartes partiraient
+  dans le journal pour toute la session, la ou l'ecran n'est vide que le temps
+  que la session publie `DISPLAY`. L'arbitre est la sortie d'erreur et non la
+  sortie standard, parce que c'est la que ces cartes s'ecrivent, et que
+  `butbutbut --terminal > soiree.log` doit continuer de marcher. Une sortie
+  d'erreur absente - `pythonw.exe`, celui du raccourci Windows, la met a `None`
+  - compte pour personne qui lit, donc pour le cas supervise. `--no-overlay` et
+  `--terminal` ne sont jamais concernes, macOS et Windows non plus.
+- L'installeur demande a `systemctl --user is-active` si la session est bien
+  tiree par `plasma-workspace.target`, plutot que de chercher le fichier sur le
+  disque. Un Plasma installe a cote d'un GNOME, ou dont le demarrage systemd est
+  desactive, pose cette cible sans qu'elle soit jamais atteinte : l'unite
+  accrochee dessus ne partirait pas. Le code retour de `is-active` est par
+  ailleurs stable sur toute la plage supportee, la ou `list-unit-files` ne
+  distingue l'unite absente que depuis systemd 246 - en 245, celui d'Ubuntu
+  20.04 qui livre le Python 3.8 annonce en plancher, il sort en 0 quoi qu'il
+  arrive.
+- Les deux README annoncaient 1465 tests, avec 136 unites de retard.
+
 ## [1.14.0] - 2026-09-10
 
 ### Ajoute

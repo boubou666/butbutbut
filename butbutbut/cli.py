@@ -784,8 +784,54 @@ def do_list_teams(args) -> int:
 
 # --------------------------------------------------------------- actions -----
 
+def no_display() -> bool:
+    """Aucun serveur graphique joignable : ni X11, ni Wayland.
+
+    macOS et Windows dessinent sans passer par ces variables, la question ne
+    s'y pose pas.
+    """
+    if sys.platform in ("win32", "darwin"):
+        return False
+    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def needs_display(args) -> bool:
+    """Faut-il refuser de demarrer quand aucun ecran ne repond ?
+
+    --no-overlay ne dessine rien et --terminal ecrit dans le terminal : ni
+    l'un ni l'autre ne demande de serveur graphique, et les refuser priverait
+    du son, de la voix et du journal sans aucune raison.
+
+    Restent les lancements ordinaires. La, le repli en terminal reste le bon
+    geste tant que quelqu'un le lit : il ne prend rien a personne, la carte
+    etait deja perdue. Sous un superviseur en revanche personne ne lit, les
+    cartes partent dans le journal pour toute la session, et sortir en erreur
+    pour etre relance vaut mieux. La sortie d'erreur sert d'arbitre parce que
+    c'est la que ces cartes s'ecrivent : `butbutbut --terminal > soiree.log`
+    redirige la sortie standard et doit continuer de marcher.
+    """
+    if args.no_overlay or args.terminal:
+        return False
+    # sys.stderr vaut None sous pythonw.exe, celui que l'installeur Windows
+    # pose dans le raccourci de demarrage pour ne pas ouvrir de console. Une
+    # sortie d'erreur absente, c'est personne qui lit : le cas supervise.
+    stream = sys.stderr
+    return stream is None or not stream.isatty()
+
+
 def do_daemon(args) -> int:
     from . import overlay
+
+    # L'environnement d'un processus ne change plus une fois qu'il tourne :
+    # demarre avant que la session ne publie DISPLAY, le daemon ne le verrait
+    # jamais apparaitre et echouerait sur chaque but jusqu'a la deconnexion.
+    # Sortir en erreur laisse le superviseur relancer plus tard, avec
+    # l'environnement complet.
+    if needs_display(args) and no_display():
+        log("aucun affichage joignable : ni DISPLAY ni WAYLAND_DISPLAY. "
+            "Sortie en 5, pour etre relance quand la session les aura publies.",
+            quiet=args.quiet)
+        return 5
 
     selection = leagues.resolve(args.leagues, args.exclude)
 
