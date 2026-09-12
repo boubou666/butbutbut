@@ -7,17 +7,19 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.16.0] - 2026-09-12
+
 ### Modifie
 
 - L'enumeration des ecrans, leur geometrie et la preparation des fenetres
-  tkinter viennent desormais de desktop-overlay 0.2.0. ButButBut garde le choix
+  tkinter viennent desormais de desktop-overlay 0.2.1. ButButBut garde le choix
   de l'ecran principal, les textes traduits et le placement des cartes dans
   son adaptateur.
 - Les installeurs autonomes recuperent le wheel exact du moteur et verifient
   son condensat SHA-256. La recette Arch depend du paquet partage
   python-desktop-overlay.
 - Les nouvelles versions sont distribuees par GitHub Releases. Le paquet
-  reference le wheel 0.2.0 du moteur et son SHA-256, sans publication PyPI.
+  reference le wheel 0.2.1 du moteur et son SHA-256, sans publication PyPI.
 
 ### Corrige
 
@@ -2180,7 +2182,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.15.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/boubou666/butbutbut/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/butbutbut/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/boubou666/butbutbut/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/boubou666/butbutbut/compare/v1.13.2...v1.14.0
