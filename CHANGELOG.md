@@ -28,13 +28,23 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   version accrochee a `default.target`, `enable` ajoutait le nouveau lien sans
   retirer l'ancien, et l'unite continuait d'etre tiree trop tot. Sans ce point,
   le correctif n'aurait servi a personne parmi ceux qui ont le probleme.
-- **Le daemon refuse de demarrer sans affichage** plutot que de tourner aveugle,
-  et sort en 5 pour que `Restart=on-failure` le relance avec l'environnement
-  complet. `--no-overlay` et `--terminal` en sont dispenses : ils ne dessinent
-  aucune fenetre, et les refuser priverait du son, de la voix et du journal
-  sans aucune raison. macOS et Windows dessinent sans ces variables, la
-  verification les ignore.
-- Le nombre de tests annonce par le README, qui avait pris 136 unites de retard.
+- **Le daemon refuse de demarrer sans affichage quand personne ne lit**, et
+  sort en 5 pour que `Restart=on-failure` le relance avec l'environnement
+  complet. Le repli en terminal reste automatique tant que la sortie d'erreur
+  est un terminal, parce que l'argument du README tient alors toujours : il ne
+  prend rien a personne. Sous un superviseur au contraire les cartes partiraient
+  dans le journal pour toute la session, la ou l'ecran n'est vide que le temps
+  que la session publie `DISPLAY`. L'arbitre est la sortie d'erreur et non la
+  sortie standard, parce que c'est la que ces cartes s'ecrivent, et que
+  `butbutbut --terminal > soiree.log` doit continuer de marcher. `--no-overlay`
+  et `--terminal` ne sont jamais concernes, macOS et Windows non plus.
+- L'installeur teste la presence de `plasma-workspace.target` avec
+  `systemctl --user cat` et non `list-unit-files` : ce dernier ne sort en 1 sur
+  une unite absente que depuis systemd 246, la ou Ubuntu 20.04 - celui qui
+  livre le Python 3.8 annonce en plancher - est en 245 et sort en 0. L'unite se
+  serait accrochee a une cible inexistante, et le daemon n'aurait plus jamais
+  demarre la ou il fonctionnait.
+- Les deux README annoncaient 1465 tests, avec 136 unites de retard.
 
 ## [1.14.0] - 2026-09-10
 

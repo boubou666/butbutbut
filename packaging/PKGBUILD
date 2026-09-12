@@ -6,7 +6,8 @@
 # Le paquet installe le module et la commande ; le demarrage automatique reste
 # a la main de l'utilisateur :
 #
-#   systemctl --user enable --now butbutbut.service
+#   systemctl --user reenable butbutbut.service
+#   systemctl --user restart butbutbut.service
 
 pkgname=butbutbut
 pkgver=1.14.0

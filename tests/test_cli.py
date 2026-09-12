@@ -3044,11 +3044,7 @@ class TestScopeChecking(unittest.TestCase):
         self.assertEqual(groupes[1], ("'ligue2:om'", "Ligue 2"))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-class TestAucunAffichage(unittest.TestCase):
+class TestNoDisplay(unittest.TestCase):
     """Le daemon sort au lieu de tourner aveugle jusqu'a la deconnexion.
 
     L'environnement d'un processus ne change plus une fois qu'il tourne :
@@ -3060,17 +3056,21 @@ class TestAucunAffichage(unittest.TestCase):
     def setUp(self):
         self.paths = isolate_data_dir(self)
 
-    def sans(self, *noms):
-        propre = {k: v for k, v in os.environ.items() if k not in noms}
-        return mock.patch.dict(os.environ, propre, clear=True)
+    def without(self, *names):
+        kept = {k: v for k, v in os.environ.items() if k not in names}
+        return mock.patch.dict(os.environ, kept, clear=True)
 
-    def avec(self, **variables):
+    def with_env(self, **variables):
         return mock.patch.dict(os.environ, variables, clear=False)
+
+    def watched(self, yes):
+        """Un humain devant un terminal, ou un service supervise."""
+        return mock.patch.object(cli.sys, "stderr", mock.Mock(isatty=lambda: yes))
 
     def args(self, *argv):
         return cli.build_parser().parse_args(list(argv))
 
-    def boucle_interdite(self):
+    def no_loop_allowed(self):
         """Fait echouer le test si le daemon depasse le garde.
 
         Sans ce garde-fou, un correctif retire laisserait le test partir dans
@@ -3078,77 +3078,107 @@ class TestAucunAffichage(unittest.TestCase):
         dormirait, donc se bloquerait au lieu d'echouer, ce qui ne previendrait
         personne.
         """
-        def refus():
+        def refuse():
             raise AssertionError("le daemon est alle au-dela du garde")
 
-        return mock.patch.object(cli, "claim_pid_file", refus)
+        return mock.patch.object(cli, "claim_pid_file", refuse)
 
-    def test_ni_x11_ni_wayland(self):
+    def test_neither_x11_nor_wayland(self):
         with mock.patch.object(cli.sys, "platform", "linux"), \
-                self.sans("DISPLAY", "WAYLAND_DISPLAY"):
-            self.assertTrue(cli.sans_affichage())
+                self.without("DISPLAY", "WAYLAND_DISPLAY"):
+            self.assertTrue(cli.no_display())
 
-    def test_x11_suffit(self):
+    def test_x11_is_enough(self):
         with mock.patch.object(cli.sys, "platform", "linux"), \
-                self.sans("WAYLAND_DISPLAY"), self.avec(DISPLAY=":0"):
-            self.assertFalse(cli.sans_affichage())
+                self.without("WAYLAND_DISPLAY"), self.with_env(DISPLAY=":0"):
+            self.assertFalse(cli.no_display())
 
-    def test_wayland_suffit(self):
+    def test_wayland_is_enough(self):
         with mock.patch.object(cli.sys, "platform", "linux"), \
-                self.sans("DISPLAY"), self.avec(WAYLAND_DISPLAY="wayland-0"):
-            self.assertFalse(cli.sans_affichage())
+                self.without("DISPLAY"), self.with_env(WAYLAND_DISPLAY="wayland-0"):
+            self.assertFalse(cli.no_display())
 
-    def test_windows_et_macos_dessinent_sans_ces_variables(self):
-        for plateforme in ("win32", "darwin"):
-            with self.subTest(plateforme=plateforme):
-                with mock.patch.object(cli.sys, "platform", plateforme), \
-                        self.sans("DISPLAY", "WAYLAND_DISPLAY"):
-                    self.assertFalse(cli.sans_affichage())
+    def test_windows_and_macos_draw_without_these_variables(self):
+        for platform in ("win32", "darwin"):
+            with self.subTest(platform=platform):
+                with mock.patch.object(cli.sys, "platform", platform), \
+                        self.without("DISPLAY", "WAYLAND_DISPLAY"):
+                    self.assertFalse(cli.no_display())
 
-    def test_le_daemon_sort_en_5(self):
-        with mock.patch.object(cli, "sans_affichage", lambda: True), \
-                self.boucle_interdite():
+    def test_the_daemon_exits_with_5(self):
+        with mock.patch.object(cli, "no_display", lambda: True), \
+                self.watched(False), self.no_loop_allowed():
             code = cli.do_daemon(self.args("--quiet"))
         self.assertEqual(code, 5)
 
-    def test_le_daemon_ne_laisse_pas_de_fichier_pid(self):
+    def test_the_daemon_leaves_no_pid_file(self):
         """Sortir avant de reclamer le pid : sinon la relance se croirait en
         double et sortirait en 1, cette fois pour de bon."""
-        with mock.patch.object(cli, "sans_affichage", lambda: True), \
-                self.boucle_interdite():
+        with mock.patch.object(cli, "no_display", lambda: True), \
+                self.watched(False), self.no_loop_allowed():
             cli.do_daemon(self.args("--quiet"))
         self.assertFalse(self.paths["pid"].exists())
 
-    def test_le_journal_dit_pourquoi_meme_en_quiet(self):
+    def test_the_log_says_why_even_in_quiet(self):
         """L'unite tourne avec --quiet : sans le journal, le refus serait muet."""
-        with mock.patch.object(cli, "sans_affichage", lambda: True), \
-                self.boucle_interdite():
+        with mock.patch.object(cli, "no_display", lambda: True), \
+                self.watched(False), self.no_loop_allowed():
             cli.do_daemon(self.args("--quiet"))
-        journal = self.paths["log"].read_text(encoding="utf-8")
-        self.assertIn("aucun affichage joignable", journal)
+        log = self.paths["log"].read_text(encoding="utf-8")
+        self.assertIn("aucun affichage joignable", log)
 
-    def test_no_overlay_n_a_pas_besoin_d_ecran(self):
+    def test_no_overlay_needs_no_screen(self):
         """Sans carte, il reste le son, la voix et le journal : refuser de
         demarrer priverait de tout ca pour une fenetre qu'on ne veut pas."""
-        self.assertFalse(cli.besoin_d_affichage(self.args("--no-overlay")))
+        args = self.args("--no-overlay")
+        with self.watched(False):
+            self.assertFalse(cli.needs_display(args))
 
-    def test_terminal_n_a_pas_besoin_d_ecran(self):
-        self.assertFalse(cli.besoin_d_affichage(self.args("--terminal")))
+    def test_terminal_needs_no_screen(self):
+        args = self.args("--terminal")
+        with self.watched(False):
+            self.assertFalse(cli.needs_display(args))
 
-    def test_le_mode_normal_en_a_besoin(self):
-        self.assertTrue(cli.besoin_d_affichage(self.args()))
+    def test_a_watching_human_keeps_the_fallback(self):
+        """Le README promet le repli automatique, et l'argument tient toujours
+        quand quelqu'un le lit : la carte etait deja perdue."""
+        args = self.args()
+        with self.watched(True):
+            self.assertFalse(cli.needs_display(args))
 
-    def test_no_overlay_demarre_sans_affichage(self):
+    def test_a_supervised_service_does_not(self):
+        """Personne ne lit : les cartes partiraient dans le journal pour toute
+        la session, la ou sortir en 5 rend l'ecran trente secondes plus tard."""
+        args = self.args()
+        with self.watched(False):
+            self.assertTrue(cli.needs_display(args))
+
+    def test_the_arbiter_is_stderr_not_stdout(self):
+        """Les cartes de terminal s'ecrivent sur la sortie d'erreur, et
+        `butbutbut --terminal > soiree.log` doit continuer de marcher."""
+        # Les args sont construits avant le patch : argparse consulte
+        # sys.stdout a la construction du parseur.
+        args = self.args()
+        with mock.patch.object(cli.sys, "stdout", mock.Mock(isatty=lambda: False)), \
+                self.watched(True):
+            self.assertFalse(cli.needs_display(args))
+
+    def test_no_overlay_starts_without_a_display(self):
         """La regression que le garde pourrait introduire : un daemon muet et
         aveugle par choix ne doit pas etre refuse."""
-        atteint = []
+        reached = []
 
-        def marqueur():
-            atteint.append(True)
+        def marker():
+            reached.append(True)
             return False        # coupe court, le garde a bien laisse passer
 
-        with mock.patch.object(cli, "sans_affichage", lambda: True), \
-                mock.patch.object(cli, "claim_pid_file", marqueur):
+        with mock.patch.object(cli, "no_display", lambda: True), \
+                self.watched(False), \
+                mock.patch.object(cli, "claim_pid_file", marker):
             code = cli.do_daemon(self.args("--no-overlay", "--quiet"))
-        self.assertEqual(atteint, [True], "le garde a refuse a tort")
+        self.assertEqual(reached, [True], "le garde a refuse a tort")
         self.assertEqual(code, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

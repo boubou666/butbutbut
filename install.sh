@@ -234,8 +234,14 @@ if [ "$AUTOSTART" -eq 1 ]; then
         # aucun ecran ou dessiner. Plasma publie ces variables en meme temps que
         # plasma-workspace.target, sans les ordonner face a
         # graphical-session.target, d'ou l'accroche specifique quand elle existe.
+        # `cat` et pas `list-unit-files` : ce dernier ne sort en 1 sur une
+        # unite absente que depuis systemd 246. En 245, celui d'Ubuntu 20.04
+        # qui livre le Python 3.8 annonce en plancher, il affiche "0 unit files
+        # listed." et sort en 0 - on aurait alors accroche l'unite a une cible
+        # inexistante, et le daemon n'aurait plus jamais demarre la ou il
+        # fonctionnait.
         CIBLE="graphical-session.target"
-        if systemctl --user list-unit-files plasma-workspace.target >/dev/null 2>&1; then
+        if systemctl --user cat plasma-workspace.target >/dev/null 2>&1; then
             CIBLE="plasma-workspace.target"
         fi
 

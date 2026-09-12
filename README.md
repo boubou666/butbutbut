@@ -83,7 +83,8 @@ Demarrage.
 
 ```bash
 cd packaging && makepkg -si
-systemctl --user enable --now butbutbut.service
+systemctl --user reenable butbutbut.service
+systemctl --user restart butbutbut.service
 ```
 
 ### Sans rien installer
@@ -1065,8 +1066,25 @@ etait deja perdue, et une option qu'il aurait fallu lire d'avance n'aurait sauve
 que ceux qui l'avaient lue. `--no-overlay`, lui, garde son sens exact - aucune
 carte, nulle part - et l'emporte sur `--terminal` quand les deux sont donnes.
 
-> Au passage : une session sans `DISPLAY` **emportait le daemon** avant cette
-> version. `tkinter` s'importait bien, `Tk()` levait une `TclError` que rien
+**Une exception, quand personne ne lit.** L'argument ci-dessus suppose un
+humain devant le terminal. Lance par le demarrage automatique, butbutbut n'en a
+pas : les cartes partiraient dans le journal systeme pour toute la session,
+alors que l'ecran, lui, ne serait vide que le temps que la session publie
+`DISPLAY`. Dans ce cas precis - aucun ecran, et la sortie d'erreur n'est pas un
+terminal - le daemon sort en 5 au lieu de se replier, et le superviseur le
+relance trente secondes plus tard avec l'environnement complet :
+
+```
+2026-09-12 17:10:31  aucun affichage joignable : ni DISPLAY ni WAYLAND_DISPLAY. Sortie en 5, pour etre relance quand la session les aura publies.
+```
+
+L'arbitre est la sortie d'erreur et non la sortie standard, parce que c'est la
+que ces cartes s'ecrivent : `butbutbut --terminal > soiree.log` garde donc son
+repli. `--terminal` et `--no-overlay` ne sont jamais concernes, ils ne
+demandent aucun ecran.
+
+> Au passage : une session sans `DISPLAY` **emportait le daemon** avant la
+> version qui a introduit ce repli. `tkinter` s'importait bien, `Tk()` levait une `TclError` que rien
 > n'attrapait, et butbutbut mourait au demarrage sur la machine meme ou il
 > aurait servi. Il degrade desormais, comme partout ailleurs.
 
@@ -3324,7 +3342,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 ```
 
-**1612 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1614 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

@@ -389,7 +389,7 @@ class TestHowTheModeStarts(unittest.TestCase):
         empty = mock.Mock(**{"tick.return_value": [], "all_matches.return_value": [],
                              "plan_wait.return_value": 0.0,
                              "prime.return_value": None})
-        with mock.patch.object(cli, "sans_affichage", return_value=False), \
+        with mock.patch.object(cli, "no_display", return_value=False), \
                 mock.patch.object(cli.watcher, "Watcher", return_value=empty):
             with mock.patch.object(cli, "check_teams", return_value=0):
                 with mock.patch.object(cli, "claim_pid_file", return_value=True):
