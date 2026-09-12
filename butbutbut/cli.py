@@ -537,7 +537,7 @@ def speak_goal(voice, args, event) -> None:
               after=0.0 if args.no_sound else speech.AFTER_SOUND)
 
 
-def describe_volume(args) -> str:
+def describe_volume(args, played=None) -> str:
     """Le volume tel que --status l'annonce, lecteur compris.
 
     Le lecteur en fait partie parce que c'est lui qui applique le reglage :
@@ -556,6 +556,9 @@ def describe_volume(args) -> str:
         return label
     if sys.platform == "win32":
         return label                     # winsound et MCI savent tous les deux
+    if played is not None and sound.plays_natively(played):
+        # Le gain est applique sur les echantillons : aucun lecteur a convaincre.
+        return label
     player = sound.find_player()
     if sound.tunable(player):
         return label
@@ -3108,7 +3111,9 @@ def do_status(args) -> int:
                   else tr("corne synthetisee"))
         print(tr("  son         : {} ({})", fallback.name, origin))
     print(tr("  sons perso  : {}  ({} fichier(s))", p["sound"], len(sounds)))
-    print(tr("  volume      : {}", describe_volume(args)))
+    # Le son retenu decide de la sortie, donc de qui applique le volume.
+    played = sounds[0] if sounds else fallback
+    print(tr("  volume      : {}", describe_volume(args, played)))
 
     named = sound_assignments(args)
     if named:
@@ -3139,8 +3144,11 @@ def do_status(args) -> int:
 
     if sys.platform == "win32":
         print(tr("  lecteur     : winsound + MCI (integres)"))
+    elif sound.plays_natively(played):
+        print(tr("  lecteur     : {}",
+                 tr("sortie native ({})", sound.native_backend())))
     else:
-        player = sound.find_player()
+        player = sound.find_player(played)
         print(tr("  lecteur     : {}", 
             player[0] if player
             else tr("AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)")))

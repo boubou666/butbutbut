@@ -231,6 +231,7 @@ MESSAGES = {
         '  suono       : {} ({})',
     '  lecteur     : winsound + MCI (integres)':
         '  lettore     : winsound + MCI (integrati)',
+    'sortie native ({})': 'uscita nativa ({})',
     '  lecteur     : {}':
         '  lettore     : {}',
     '  affichage   : tkinter OK':

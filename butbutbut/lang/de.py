@@ -206,6 +206,7 @@ MESSAGES = {
     '  son         : {} ({})': '  Ton         : {} ({})',
     '  lecteur     : winsound + MCI (integres)':
         '  Player      : winsound + MCI (eingebaut)',
+    'sortie native ({})': 'native Ausgabe ({})',
     '  lecteur     : {}': '  Player      : {}',
     '  affichage   : tkinter OK': '  Anzeige     : tkinter OK',
     'OK ({} : {} match(s))': 'OK ({} : {} Spiel(e))',

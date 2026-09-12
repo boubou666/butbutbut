@@ -7,6 +7,32 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Ajoute
+
+- **Sortie audio native, sans lecteur externe**, portee depuis
+  [doot](https://github.com/boubou666/doot). butbutbut parle a
+  `libpulse-simple` en ctypes, avec `libasound` en second recours. PipeWire n'a
+  pas de chemin a lui : il sert l'interface PulseAudio, et son greffon ALSA sert
+  la seconde. Consequence directe : **une machine sans aucun binaire audio a
+  desormais du son**, la ou `find_player` rendait `None` et le but passait en
+  silence.
+- Le volume est applique sur les echantillons plutot que confie au lecteur. Ce
+  que `find_player` se reprochait a lui-meme - « une option de reglage est un
+  pari sur la version installee du lecteur » - ne vaut plus pour le wav, et
+  `aplay`, qui n'a pas de reglage, n'oblige plus a jouer fort.
+- Ne couvre que le wav : la bibliotheque standard n'a aucun decodeur audio, donc
+  le mp3 fourni et les sons deposes dans le dossier gardent le lecteur externe.
+  `--status` annonce la sortie reellement retenue, qui depend donc du son en
+  place.
+- L'attente de fin de programme copie la liste des lectures sous le verrou.
+  `verse` retire la sienne depuis son fil : parcourir l'ensemble pendant ce
+  retrait leve un `RuntimeError`, rare mais possible, et juste au moment ou le
+  programme s'arrete.
+- La reprise ALSA est bornee a huit essais. Un underrun perpetuel, ou un zero
+  rendu en boucle, ferait tourner le fil de lecture a vide indefiniment : mieux
+  vaut un son coupe. Ce chemin n'est eprouve nulle part en vrai, le greffon ALSA
+  de PipeWire repondant a la place d'un ALSA nu.
+
 ## [1.14.1] - 2026-09-12
 
 ### Corrige

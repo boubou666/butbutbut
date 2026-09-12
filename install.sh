@@ -115,9 +115,11 @@ else
                 say "   par la corne synthetisee. Installe mpv ou ffmpeg pour le mp3.)" ;;
         esac
     else
-        say "audio       : aucun lecteur trouve (butbutbut restera muet)"
+        say "audio       : aucun lecteur externe (le wav sort nativement)"
+        say "  (la corne synthetisee joue sans binaire ; installe mpv ou ffmpeg"
+        say "   pour entendre le mp3 fourni.)"
         if command -v pacman >/dev/null 2>&1; then
-            say "  -> sudo pacman -S mpv    (ou ffmpeg / alsa-utils)"
+            say "  -> sudo pacman -S mpv    (ou ffmpeg)"
         fi
     fi
 fi
