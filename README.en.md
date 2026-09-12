@@ -80,7 +80,7 @@ systemctl --user restart butbutbut.service
 ### Without installing anything
 
 ```bash
-uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34" python -m butbutbut --test 3
+uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.1/desktop_overlay-0.2.1-py3-none-any.whl#sha256=c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972" python -m butbutbut --test 3
 ```
 
 ---
@@ -3455,7 +3455,7 @@ attached.
 ### Distribution
 
 New versions remain on GitHub Releases. The application wheel references the
-desktop-overlay 0.2.0 wheel with its SHA-256, so pip and uv install the exact
+desktop-overlay 0.2.1 wheel with its SHA-256, so pip and uv install the exact
 validated engine without using PyPI.
 
 ## License

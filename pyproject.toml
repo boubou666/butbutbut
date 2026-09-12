@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "butbutbut"
-version = "1.15.0"
+version = "1.16.0"
 description = "Un but en Ligue 1, Premier League, LaLiga, Serie A ou Bundesliga : le son part et le score s'affiche sur ton ecran."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -36,7 +36,7 @@ classifiers = [
     "Topic :: Games/Entertainment",
     "Topic :: Multimedia :: Sound/Audio",
 ]
-dependencies = ["desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34"]
+dependencies = ["desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.1/desktop_overlay-0.2.1-py3-none-any.whl#sha256=c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972"]
 
 [project.scripts]
 butbutbut = "butbutbut.cli:main"
