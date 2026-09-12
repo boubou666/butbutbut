@@ -812,7 +812,11 @@ def needs_display(args) -> bool:
     """
     if args.no_overlay or args.terminal:
         return False
-    return not sys.stderr.isatty()
+    # sys.stderr vaut None sous pythonw.exe, celui que l'installeur Windows
+    # pose dans le raccourci de demarrage pour ne pas ouvrir de console. Une
+    # sortie d'erreur absente, c'est personne qui lit : le cas supervise.
+    stream = sys.stderr
+    return stream is None or not stream.isatty()
 
 
 def do_daemon(args) -> int:

@@ -3153,6 +3153,36 @@ class TestNoDisplay(unittest.TestCase):
         with self.watched(False):
             self.assertTrue(cli.needs_display(args))
 
+    def test_a_missing_stderr_counts_as_supervised(self):
+        """pythonw.exe, celui du raccourci Windows, met sys.stderr a None.
+
+        L'arbitre levait alors une AttributeError, et comme il s'evalue avant
+        no_display(), le retour anticipe de Windows n'etait jamais atteint : le
+        daemon mourait a chaque ouverture de session, sans rien au journal
+        puisque rien n'y avait encore ete ecrit. La CI ne le verra jamais, elle
+        tourne sous python.exe.
+        """
+        args = self.args()
+        with mock.patch.object(cli.sys, "stderr", None):
+            self.assertTrue(cli.needs_display(args))
+
+    def test_windows_survives_a_missing_stderr(self):
+        """Le bout a bout du meme trou : sous pythonw, do_daemon doit passer
+        le garde au lieu de lever."""
+        reached = []
+
+        def marker():
+            reached.append(True)
+            return False
+
+        args = self.args("--quiet")
+        with mock.patch.object(cli.sys, "platform", "win32"), \
+                mock.patch.object(cli.sys, "stderr", None), \
+                mock.patch.object(cli, "claim_pid_file", marker):
+            code = cli.do_daemon(args)
+        self.assertEqual(reached, [True], "le garde a leve au lieu de passer")
+        self.assertEqual(code, 1)
+
     def test_the_arbiter_is_stderr_not_stdout(self):
         """Les cartes de terminal s'ecrivent sur la sortie d'erreur, et
         `butbutbut --terminal > soiree.log` doit continuer de marcher."""

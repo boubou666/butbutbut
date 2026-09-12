@@ -36,8 +36,10 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   dans le journal pour toute la session, la ou l'ecran n'est vide que le temps
   que la session publie `DISPLAY`. L'arbitre est la sortie d'erreur et non la
   sortie standard, parce que c'est la que ces cartes s'ecrivent, et que
-  `butbutbut --terminal > soiree.log` doit continuer de marcher. `--no-overlay`
-  et `--terminal` ne sont jamais concernes, macOS et Windows non plus.
+  `butbutbut --terminal > soiree.log` doit continuer de marcher. Une sortie
+  d'erreur absente - `pythonw.exe`, celui du raccourci Windows, la met a `None`
+  - compte pour personne qui lit, donc pour le cas supervise. `--no-overlay` et
+  `--terminal` ne sont jamais concernes, macOS et Windows non plus.
 - L'installeur demande a `systemctl --user is-active` si la session est bien
   tiree par `plasma-workspace.target`, plutot que de chercher le fichier sur le
   disque. Un Plasma installe a cote d'un GNOME, ou dont le demarrage systemd est
