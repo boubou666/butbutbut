@@ -655,6 +655,23 @@ def find_player(path: Path | None = None, volume: float = MAX_VOLUME):
     return None
 
 
+def native_backend():
+    """Le nom de la sortie native si elle repond ici, sinon None."""
+    from . import audio
+
+    return audio.backend()
+
+
+def plays_natively(path) -> bool:
+    """Ce fichier passera-t-il par la sortie native ?
+
+    Elle ne fait que le WAV : l'annoncer a qui a depose un mp3 dans son dossier
+    serait faux, et c'est justement le cas le plus courant.
+    """
+    return (Path(path).suffix.lower() == ".wav"
+            and native_backend() is not None)
+
+
 def tunable(command) -> bool:
     """Ce lecteur sait-il baisser le son ? Pour le dire dans --status."""
     if not command:
@@ -712,6 +729,17 @@ def play_async(path: Path, volume: float = MAX_VOLUME):
         except Exception:
             return None
 
+    # Le WAV passe par la sortie native quand elle repond : pas de
+    # sous-processus, et le volume applique sur les echantillons plutot que
+    # confie au lecteur. Les formats compresses gardent le lecteur externe,
+    # faute de decodeur dans la bibliotheque standard.
+    if path.suffix.lower() == ".wav":
+        from . import audio
+
+        lecture = audio.play(path, volume)
+        if lecture is not None:
+            return lecture
+
     command = find_player(path, volume)
     if not command:
         return None
@@ -730,7 +758,8 @@ def release(handle) -> None:
     """Libere les ressources SANS couper le son en cours.
 
     La carte peut disparaitre avant la fin du jingle : on le laisse aller au
-    bout plutot que de le tronquer.
+    bout plutot que de le tronquer. Une lecture native n'a rien a liberer, son
+    fil se termine tout seul et `audio._laisse_finir` l'attend a la sortie.
     """
     if handle == "mci":
         # MCI garde le fichier ouvert : on ne ferme qu'a la lecture suivante.
@@ -740,6 +769,9 @@ def release(handle) -> None:
 
 def stop_all() -> None:
     """Coupe net tout son en cours (arret du programme)."""
+    from . import audio
+
+    audio.stop_all()
     if sys.platform == "win32":
         try:
             import winsound

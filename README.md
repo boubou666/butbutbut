@@ -1392,7 +1392,8 @@ l'annonce.
 `butbutbut --status` affiche le niveau retenu, et previent quand le lecteur
 installe ne sait pas le suivre. Un seul est dans ce cas, `aplay` : il n'a pas
 de reglage, et le but sortira fort. Installer `mpv` ou `ffmpeg` suffit a lui
-rendre la main.
+rendre la main - et le wav, lui, n'a plus ce probleme du tout, puisqu'il passe
+par la sortie native, qui applique le gain sur les echantillons.
 
 `--volume` a longtemps compte de 0.0 a 1.0. Ces valeurs-la restent comprises -
 `0.55` vaut 55, `1` vaut le maximum - donc un fichier de configuration ecrit
@@ -1582,10 +1583,15 @@ Un soir de coupe, cette meme carte porte en plus le verdict de la seance de
 tirs au but - `Tirs au but 3 - 5 : Stade de Reims` - parce qu'un `1 - 1` ne dit
 pas qui se qualifie. Voir [Les tirs au but](#les-tirs-au-but).
 
-Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux il faut
-un lecteur : `mpv` ou `ffmpeg` pour le mp3 ; avec seulement `aplay`/`paplay`,
-butbutbut retombe sur une **corne de stade synthetisee** en wav, generee par le
-programme lui-meme.
+Sur Windows et macOS la lecture est integree (MCI, `afplay`). Sous Linux, le
+**wav sort nativement** : butbutbut parle a `libpulse-simple` en ctypes, avec
+`libasound` en second recours, et n'a donc besoin d'aucun binaire pour jouer la
+**corne de stade synthetisee** qu'il genere lui-meme. PipeWire n'a pas de chemin
+a lui, il sert l'interface PulseAudio.
+
+Le mp3, lui, garde un lecteur externe (`mpv`, `ffmpeg`, `sox`, `vlc`) : la
+bibliotheque standard de Python n'a aucun decodeur audio. Sans l'un d'eux,
+butbutbut retombe sur la corne synthetisee plutot que sur le silence.
 
 ### Le fichier de configuration
 
@@ -3249,8 +3255,8 @@ meme celles dont la carte est passee inapercue a l'ecran. C'est cette trace que
 - **Python 3.8+**
 - **tkinter** (paquet systeme sous Linux : `tk`, `python3-tk`,
   `python3-tkinter` selon la distribution ; `brew install python-tk` sous macOS)
-- **un lecteur audio** sous Linux uniquement (`mpv`, `ffmpeg`, `sox`, `vlc`,
-  ou pipewire/pulse/alsa pour le repli wav)
+- **un lecteur audio** sous Linux, pour le mp3 seulement (`mpv`, `ffmpeg`,
+  `sox`, `vlc`) : le wav sort nativement, sans aucun binaire
 - une connexion internet
 
 `butbutbut --status` verifie tout ca d'un coup, connexion a la source comprise.
@@ -3342,7 +3348,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 ```
 
-**1616 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1645 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

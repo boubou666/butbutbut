@@ -110,6 +110,7 @@ MESSAGES = {
     "  journal     : {}": "  log         : {}",
     "  lecteur     : winsound + MCI (integres)":
         "  player      : winsound + MCI (built in)",
+    "sortie native ({})": "native output ({})",
     "  lecteur     : {}": "  player      : {}",
     "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)":
         "NONE (install mpv/ffmpeg/pipewire/alsa-utils)",

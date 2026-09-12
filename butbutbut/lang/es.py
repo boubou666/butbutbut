@@ -128,6 +128,7 @@ MESSAGES = {
     "  journal     : {}": "  registro    : {}",
     "  lecteur     : winsound + MCI (integres)":
         "  reproductor : winsound + MCI (integrados)",
+    "sortie native ({})": "salida nativa ({})",
     "  lecteur     : {}": "  reproductor : {}",
     "AUCUN (installe mpv/ffmpeg/pipewire/alsa-utils)":
         "NINGUNO (instala mpv/ffmpeg/pipewire/alsa-utils)",
