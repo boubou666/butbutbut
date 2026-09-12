@@ -157,7 +157,7 @@ class TestAlsaRecovery(AudioTestCase):
         self.assertEqual(out.lib.prepares, 0)
 
     def test_a_perpetual_underrun_is_bounded(self):
-        """Mieux vaut un son coupe qu'un cœur brule en silence."""
+        """Mieux vaut un son coupe qu'un coeur brule en silence."""
         out = self.sortie([-audio.EPIPE] * 500)
         self.assertFalse(out.write(self.bloc(64)))
         self.assertLessEqual(out.lib.prepares, audio.REPRISES_MAX + 1)
@@ -247,6 +247,45 @@ class TestBackendChoice(AudioTestCase):
         with mock.patch.object(audio, "_SORTIES", (absente, presente)):
             self.assertIs(audio._ouvre(44100, 1), ouvert)
         absente.assert_not_called()
+
+
+class _WatchedSet(set):
+    """Un ensemble qui refuse d'etre parcouru sans le verrou.
+
+    Une course ne se reproduit pas a la demande : plutot que de la provoquer,
+    on rend deterministe la faute qui la permet.
+    """
+
+    def __iter__(self):
+        if not audio._verrou.locked():
+            raise AssertionError("_en_cours parcouru sans tenir _verrou")
+        return super().__iter__()
+
+
+class TestConcurrentAccess(AudioTestCase):
+    """`verse` retire du set depuis son fil pendant qu'on le parcourt."""
+
+    def test_the_exit_wait_takes_the_lock_before_copying(self):
+        lecture = mock.Mock()
+        with mock.patch.object(audio, "_en_cours", _WatchedSet({lecture})):
+            audio._laisse_finir(0.01)
+        lecture.join.assert_called_once_with(0.01)
+
+    def test_stop_all_takes_it_too(self):
+        lecture = mock.Mock()
+        with mock.patch.object(audio, "_en_cours", _WatchedSet({lecture})):
+            audio.stop_all()
+        lecture.stop.assert_called_once()
+
+    def test_the_joins_happen_outside_the_lock(self):
+        """Tenu pendant les join, le verrou bloquerait la lecture qui se
+        termine sur son propre discard."""
+        vu = []
+        lecture = mock.Mock()
+        lecture.join.side_effect = lambda _d: vu.append(audio._verrou.locked())
+        with mock.patch.object(audio, "_en_cours", _WatchedSet({lecture})):
+            audio._laisse_finir(0.01)
+        self.assertEqual(vu, [False], "le verrou est encore tenu pendant le join")
 
 
 class TestSoundPrefersTheNativeOutput(AudioTestCase):

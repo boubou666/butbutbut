@@ -1574,8 +1574,8 @@ On a cup night the same card also carries the shootout verdict - `Tirs au but
 3 - 5 : Stade de Reims` - because a `1 - 1` does not say who goes through. See
 [Penalty shootouts](#penalty-shootouts).
 
-On Windows and macOS playback is built in (MCI, `afplay`). On Linux you need a
-the **wav goes out natively**: butbutbut talks to `libpulse-simple` through
+On Windows and macOS playback is built in (MCI, `afplay`). On Linux, the
+**wav goes out natively**: butbutbut talks to `libpulse-simple` through
 ctypes, with `libasound` as a second resort, and therefore needs no binary at
 all to play the **synthesised stadium horn** it generates itself. PipeWire has
 no path of its own, it serves the PulseAudio interface.
@@ -3327,7 +3327,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1646 tests**, with no network and no screen: the source is simulated by an
+**1649 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

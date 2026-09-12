@@ -24,6 +24,10 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   le mp3 fourni et les sons deposes dans le dossier gardent le lecteur externe.
   `--status` annonce la sortie reellement retenue, qui depend donc du son en
   place.
+- L'attente de fin de programme copie la liste des lectures sous le verrou.
+  `verse` retire la sienne depuis son fil : parcourir l'ensemble pendant ce
+  retrait leve un `RuntimeError`, rare mais possible, et juste au moment ou le
+  programme s'arrete.
 - La reprise ALSA est bornee a huit essais. Un underrun perpetuel, ou un zero
   rendu en boucle, ferait tourner le fil de lecture a vide indefiniment : mieux
   vaut un son coupe. Ce chemin n'est eprouve nulle part en vrai, le greffon ALSA

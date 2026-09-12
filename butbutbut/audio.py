@@ -9,7 +9,7 @@ volume a chacun, avec une syntaxe differente a chaque fois.
 
 On appelle donc libpulse-simple en ctypes, avec libasound en second recours.
 PipeWire n'a pas besoin d'un chemin a lui : il sert l'API PulseAudio (`pactl
-info` repond « PulseAudio (on PipeWire) ») et son greffon ALSA sert la seconde.
+info` repond "PulseAudio (on PipeWire)") et son greffon ALSA sert la seconde.
 La seconde ne sert donc que sur un ALSA nu.
 
 Ne couvre que le WAV : aucun decodeur audio n'existe dans la stdlib, donc le
@@ -172,7 +172,7 @@ class _SortieAlsa:
             if rendu == -EPIPE:
                 self.lib.snd_pcm_prepare(self.pcm)
             # Un underrun perpetuel, ou un zero rendu en boucle, ferait tourner
-            # ce fil a vide indefiniment. Mieux vaut un son coupe qu'un cœur
+            # ce fil a vide indefiniment. Mieux vaut un son coupe qu'un coeur
             # brule en silence, d'autant que ce chemin n'a pas ete eprouve.
             reprises += 1
             if reprises > REPRISES_MAX:
@@ -324,8 +324,15 @@ def _laisse_finir(delai: float = 5.0) -> None:
     parvenait en survivant a butbutbut. Le fil reste daemon pour qu'un serveur
     audio bloque ne retienne jamais le programme, et cette attente bornee tient
     la promesse dans tous les cas ordinaires.
+
+    La copie est prise sous le verrou : `verse` fait `discard` depuis son fil,
+    et parcourir l'ensemble pendant ce retrait leve un RuntimeError. Les `join`
+    ont lieu hors du verrou, sans quoi une lecture qui se termine resterait
+    bloquee sur son propre `discard`.
     """
-    for lecture in list(_en_cours):
+    with _verrou:
+        lectures = list(_en_cours)
+    for lecture in lectures:
         lecture.join(delai)
 
 
