@@ -1,42 +1,18 @@
-name: release et publication
+name: release GitHub
 
-# Se declenche sur un tag de version : `git tag -a v1.2.3 && git push --tags`.
-# Deux jobs : creer la release GitHub, puis envoyer le meme paquet sur PyPI.
-#
-# POURQUOI CE FICHIER S'APPELLE pypi.yml alors qu'il fait aussi la release :
-# un publisher de confiance PyPI autorise UN nom de fichier de workflow, et
-# c'est `pypi.yml` qui est declare cote pypi.org. Le job qui echange le jeton
-# OIDC doit donc vivre ici. Renommer le fichier reviendrait a devoir retoucher
-# la declaration chez PyPI.
-#
-# POURQUOI LES DEUX JOBS SONT DANS LE MEME FICHIER : Actions refuse qu'un
-# evenement produit par le GITHUB_TOKEN declenche un autre workflow, pour
-# eviter les boucles. Une release creee par github-actions[bot] ne reveille donc
-# aucun workflow ecoutant `release: published` - constate en poussant v1.3.0,
-# ou ce declencheur-la n'a pas produit un seul run. Le push du tag, lui, vient
-# d'un humain : il declenche bien.
-#
-# Le job PyPI reste inerte tant que le proprietaire du depot n'a pas arme la
-# publication (README, section "Publication sur PyPI").
+# Un tag de version teste et construit le paquet, puis cree la release GitHub.
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"   # v1.2.3-rc1, v1.2.3-beta...
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Tag a (re)publier (ex. v1.3.0)"
-        required: true
 
 permissions:
-  contents: write        # necessaire pour creer la release
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +24,7 @@ jobs:
       - name: version du tag
         id: version
         run: |
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          tag="${{ github.ref_name }}"
           echo "tag=$tag"            >> "$GITHUB_OUTPUT"
           echo "number=${tag#v}"     >> "$GITHUB_OUTPUT"
 
@@ -61,7 +37,7 @@ jobs:
           test "$declared" = "${{ steps.version.outputs.number }}"
 
       - name: tests
-        run: PYTHONPATH=".:tests" uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m unittest discover -s tests
+        run: PYTHONPATH=".:tests" uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34" python -m unittest discover -s tests
 
       - name: paquet
         run: uv build
@@ -103,46 +79,3 @@ jobs:
           files: dist/*
           draft: false
           prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
-
-  pypi:
-    name: publication sur PyPI
-    needs: release
-    # L'interrupteur. Tant que le proprietaire du depot n'a pas declare le
-    # publisher de confiance sur pypi.org puis cree cette variable, le job est
-    # saute - il n'echoue pas, et la release GitHub reste verte.
-    if: vars.PYPI_PUBLISH == 'true'
-    runs-on: ubuntu-latest
-
-    environment:
-      name: pypi
-      url: https://pypi.org/p/butbutbut
-
-    permissions:
-      contents: read     # lire les pieces jointes de la release
-      id-token: write    # obligatoire : c'est le jeton OIDC que PyPI verifie
-
-    steps:
-      # Rien n'est reconstruit : ce qui part sur PyPI est exactement le wheel
-      # et le sdist qu'on peut telecharger depuis la release.
-      - name: les paquets de la release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release.outputs.tag }}
-        run: |
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY"             --pattern '*.whl' --pattern '*.tar.gz' --dir dist
-          ls -l dist
-
-      - name: installer uv et Python 3.12
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          python-version: "3.12"
-
-      # Un dernier filet : des metadonnees illisibles par PyPI seraient
-      # refusees a l'envoi, autant s'en apercevoir avant.
-      - name: les metadonnees sont lisibles par PyPI
-        run: uv run --no-project --with twine python -m twine check dist/*
-
-      # Trusted Publishing : aucun jeton dans le depot, l'action echange le
-      # jeton OIDC de ce job contre un jeton d'envoi a usage unique.
-      - name: PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1

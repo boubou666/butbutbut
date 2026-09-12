@@ -7,7 +7,6 @@
 [![ci](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml/badge.svg)](https://github.com/boubou666/butbutbut/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/boubou666/butbutbut)](https://github.com/boubou666/butbutbut/releases)
 [![python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![pypi](https://img.shields.io/pypi/v/butbutbut)](https://pypi.org/project/butbutbut/)
 [![licence](https://img.shields.io/badge/licence-MIT-green)](https://github.com/boubou666/butbutbut/blob/main/LICENSE)
 
 Un but tombe en **Ligue 1**, **Premier League**, **LaLiga**, **Serie A** ou
@@ -36,24 +35,12 @@ macOS et Linux.
 
 ## Installation
 
-### Avec uv, sans cloner (tous systemes)
+### Depuis GitHub, sur tous les systemes
 
-```bash
-uv tool install butbutbut
-butbutbut
-```
-
-`uv` isole l'application dans son propre environnement et met les commandes
-`butbutbut` et `but` dans le PATH. Le son est embarque dans le paquet : zero
-dependance, rien d'autre a telecharger. Pour une installation classique,
-`pip install --user butbutbut` reste possible.
-
-Ce que `uv tool install` ne fait pas, en revanche : le **demarrage automatique**
-a l'ouverture de session. Pour l'avoir, ce sont les scripts ci-dessous.
-
-> Cette methode ne marchera qu'a partir de la premiere version envoyee sur
-> PyPI. Le depot est pret, il reste une manipulation cote pypi.org :
-> [Publication sur PyPI](#publication-sur-pypi).
+Les releases GitHub sont le canal de distribution. Les scripts ci-dessous
+installent l'application et le wheel verifie du moteur, puis configurent le
+demarrage automatique. Chaque release joint aussi le wheel et l'archive source
+de l'application.
 
 ### Linux (Arch, Debian/Ubuntu, Fedora, openSUSE...) et macOS
 
@@ -94,7 +81,7 @@ systemctl --user restart butbutbut.service
 ### Sans rien installer
 
 ```bash
-uv run --no-project --with "desktop-overlay @ git+https://github.com/boubou666/desktop-overlay.git@v0.2.0" python -m butbutbut --test 3
+uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/desktop-overlay/releases/download/v0.2.0/desktop_overlay-0.2.0-py3-none-any.whl#sha256=9ac3676603f73f30bf2d756040cdc35faed9fd5977a6ebf53b5eafd0a5db4f34" python -m butbutbut --test 3
 ```
 
 ---
@@ -3487,75 +3474,11 @@ version porte un tag `vX.Y.Z` et une
 [release](https://github.com/boubou666/butbutbut/releases) construite
 automatiquement, avec le paquet en piece jointe.
 
-### Publication sur PyPI
+### Distribution
 
-La publication est le second job de
-[`pypi.yml`](https://github.com/boubou666/butbutbut/blob/main/.github/workflows/pypi.yml) :
-il part avec le tag, juste apres la release, et envoie sur PyPI **exactement**
-le wheel et le sdist attaches a celle-ci. En **Trusted Publishing** : PyPI fait
-confiance au workflow lui-meme via un jeton OIDC, il n'y a donc **aucun jeton
-d'API a stocker** dans le depot.
-
-Le workflow est **inerte par defaut**. Tant que les etapes ci-dessous ne sont
-pas faites, le job est saute : pousser un tag continue de produire la release
-GitHub comme avant, sans echec rouge. Seul le proprietaire du depot peut faire
-ces etapes, et une seule fois :
-
-1. **Avoir un compte sur [pypi.org](https://pypi.org/)**, avec la double
-   authentification activee (elle est obligatoire pour publier).
-
-2. **Declarer le publisher de confiance.** Le projet `butbutbut` n'existe pas
-   encore sur PyPI : il faut donc passer par un *pending publisher*. Dans le
-   menu du compte, `Publishing`, puis `Add a new pending publisher`, onglet
-   `GitHub`. Remplir exactement :
-
-   | Champ | Valeur |
-   | --- | --- |
-   | PyPI Project Name | `butbutbut` |
-   | Owner | `boubou666` |
-   | Repository name | `butbutbut` |
-   | Workflow name | `pypi.yml` |
-   | Environment name | `pypi` |
-
-   Attention : un *pending publisher* ne reserve pas le nom, il ne fait
-   qu'autoriser le workflow a le creer. Mieux vaut ne pas trop laisser trainer
-   entre cette etape et la premiere publication.
-
-3. **Creer l'environnement GitHub.** Depot, `Settings`, `Environments`,
-   `New environment`, nomme **`pypi`** - le meme mot qu'a l'etape 2. C'est
-   aussi l'endroit ou ajouter, si on veut, une approbation manuelle avant
-   chaque envoi sur PyPI.
-
-4. **Armer la publication.** Depot, `Settings`, `Secrets and variables`,
-   `Actions`, onglet `Variables`, `New repository variable` : nom
-   **`PYPI_PUBLISH`**, valeur **`true`**. C'est l'interrupteur ; sans lui le
-   job reste saute.
-
-5. **Pousser un tag**, comme d'habitude :
-
-   ```bash
-   git tag -a v1.2.1 -m "1.2.1" && git push --tags
-   ```
-
-   `pypi.yml` verifie le tag, construit le paquet, cree la release, puis son
-   second job envoie ce meme paquet sur PyPI. Le *pending publisher* devient
-   alors un publisher normal, et le projet existe.
-
-Pour rattraper un envoi sans creer de nouveau tag : onglet `Actions`, workflow
-**release et publication**, `Run workflow`, en donnant le tag voulu. C'est la
-porte de sortie quand la publication a ete sautee - variable pas encore armee
-au moment du tag, panne de PyPI, jeton refuse. Meme fichier, donc meme
-publisher : rien de plus a declarer chez PyPI.
-
-> **Pourquoi un seul workflow, et pourquoi ce nom.** La publication a d'abord
-> vecu dans un fichier separe ecoutant `release: published`. Ca ne pouvait pas
-> marcher : Actions refuse qu'un evenement produit par le `GITHUB_TOKEN`
-> declenche un autre workflow, pour eviter les boucles - une release creee par
-> `github-actions[bot]` ne reveille personne. Constate en poussant `v1.3.0`, ou
-> ce declencheur n'a pas produit un seul run. Le push du tag, lui, vient d'un
-> humain. D'ou un seul fichier a deux jobs. Et il s'appelle `pypi.yml` parce
-> qu'un publisher de confiance autorise **un** nom de fichier : c'est celui qui
-> est declare a l'etape 2, et le job qui echange le jeton OIDC doit y vivre.
+Les nouvelles versions restent sur GitHub Releases. Le wheel de l'application
+reference le wheel 0.2.0 de desktop-overlay avec son SHA-256, de sorte que pip
+et uv installent exactement le moteur valide sans passer par PyPI.
 
 ## Licence
 

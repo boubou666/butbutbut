@@ -16,6 +16,8 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 - Les installeurs autonomes recuperent le wheel exact du moteur et verifient
   son condensat SHA-256. La recette Arch depend du paquet partage
   python-desktop-overlay.
+- Les nouvelles versions sont distribuees par GitHub Releases. Le paquet
+  reference le wheel 0.2.0 du moteur et son SHA-256, sans publication PyPI.
 
 ### Corrige
 
