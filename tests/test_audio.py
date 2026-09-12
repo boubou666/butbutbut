@@ -250,22 +250,41 @@ class TestBackendChoice(AudioTestCase):
 
 
 class TestSoundPrefersTheNativeOutput(AudioTestCase):
-    """Le cablage dans sound.play_async."""
+    """Le cablage dans sound.play_async.
+
+    La sortie native ne sert que la ou la stdlib ne joue rien. Windows garde
+    winsound et MCI, qui sont integres, et sa branche rend avant d'arriver ici :
+    ces tests declarent donc la plateforme dont ils parlent, au lieu de la
+    supposer. Sans ca ils passaient sur Linux et tombaient sur la CI Windows.
+    """
+
+    def linux(self):
+        return mock.patch.object(sound.sys, "platform", "linux")
 
     def test_a_wav_goes_native_when_it_answers(self):
         path = _write(self.root / "m.wav", 1, [1000] * 8)
         lecture = object()
-        with mock.patch.object(audio, "play", return_value=lecture) as native, \
+        with self.linux(), \
+                mock.patch.object(audio, "play", return_value=lecture) as native, \
                 mock.patch.object(sound, "find_player") as externe:
             self.assertIs(sound.play_async(path, 60.0), lecture)
         native.assert_called_once()
         externe.assert_not_called()
 
+    def test_windows_keeps_its_builtin_playback(self):
+        """winsound et MCI sont dans la stdlib : rien a charger en ctypes."""
+        path = _write(self.root / "m.wav", 1, [1000] * 8)
+        with mock.patch.object(sound.sys, "platform", "win32"), \
+                mock.patch.object(audio, "play") as native, \
+                mock.patch.dict("sys.modules", {"winsound": mock.Mock()}):
+            sound.play_async(path, sound.MAX_VOLUME)
+        native.assert_not_called()
+
     def test_a_compressed_file_keeps_the_external_player(self):
         """Aucun decodeur mp3 dans la bibliotheque standard."""
         path = self.root / "but.mp3"
         path.write_bytes(b"\x00")
-        with mock.patch.object(audio, "play") as native, \
+        with self.linux(), mock.patch.object(audio, "play") as native, \
                 mock.patch.object(sound, "find_player", return_value=None):
             sound.play_async(path, 60.0)
         native.assert_not_called()
@@ -273,14 +292,14 @@ class TestSoundPrefersTheNativeOutput(AudioTestCase):
     def test_a_refused_wav_falls_back_to_the_player(self):
         """Rendre None n'est pas une erreur : c'est le repli attendu."""
         path = _write(self.root / "m.wav", 1, [1000] * 8)
-        with mock.patch.object(audio, "play", return_value=None), \
+        with self.linux(), mock.patch.object(audio, "play", return_value=None), \
                 mock.patch.object(sound, "find_player", return_value=None) as externe:
             self.assertIsNone(sound.play_async(path, 60.0))
         externe.assert_called_once()
 
     def test_a_muted_volume_launches_nothing_at_all(self):
         path = _write(self.root / "m.wav", 1, [1000] * 8)
-        with mock.patch.object(audio, "play") as native:
+        with self.linux(), mock.patch.object(audio, "play") as native:
             self.assertIsNone(sound.play_async(path, sound.MUTE))
         native.assert_not_called()
 
