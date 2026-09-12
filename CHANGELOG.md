@@ -38,12 +38,15 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
   sortie standard, parce que c'est la que ces cartes s'ecrivent, et que
   `butbutbut --terminal > soiree.log` doit continuer de marcher. `--no-overlay`
   et `--terminal` ne sont jamais concernes, macOS et Windows non plus.
-- L'installeur teste la presence de `plasma-workspace.target` avec
-  `systemctl --user cat` et non `list-unit-files` : ce dernier ne sort en 1 sur
-  une unite absente que depuis systemd 246, la ou Ubuntu 20.04 - celui qui
-  livre le Python 3.8 annonce en plancher - est en 245 et sort en 0. L'unite se
-  serait accrochee a une cible inexistante, et le daemon n'aurait plus jamais
-  demarre la ou il fonctionnait.
+- L'installeur demande a `systemctl --user is-active` si la session est bien
+  tiree par `plasma-workspace.target`, plutot que de chercher le fichier sur le
+  disque. Un Plasma installe a cote d'un GNOME, ou dont le demarrage systemd est
+  desactive, pose cette cible sans qu'elle soit jamais atteinte : l'unite
+  accrochee dessus ne partirait pas. Le code retour de `is-active` est par
+  ailleurs stable sur toute la plage supportee, la ou `list-unit-files` ne
+  distingue l'unite absente que depuis systemd 246 - en 245, celui d'Ubuntu
+  20.04 qui livre le Python 3.8 annonce en plancher, il sort en 0 quoi qu'il
+  arrive.
 - Les deux README annoncaient 1465 tests, avec 136 unites de retard.
 
 ## [1.14.0] - 2026-09-10

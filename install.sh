@@ -234,14 +234,17 @@ if [ "$AUTOSTART" -eq 1 ]; then
         # aucun ecran ou dessiner. Plasma publie ces variables en meme temps que
         # plasma-workspace.target, sans les ordonner face a
         # graphical-session.target, d'ou l'accroche specifique quand elle existe.
-        # `cat` et pas `list-unit-files` : ce dernier ne sort en 1 sur une
-        # unite absente que depuis systemd 246. En 245, celui d'Ubuntu 20.04
-        # qui livre le Python 3.8 annonce en plancher, il affiche "0 unit files
-        # listed." et sort en 0 - on aurait alors accroche l'unite a une cible
-        # inexistante, et le daemon n'aurait plus jamais demarre la ou il
-        # fonctionnait.
+        # La question n'est pas "le fichier est-il sur le disque" mais "la
+        # session dans laquelle on installe est-elle tiree par cette cible".
+        # Plasma installe a cote d'un GNOME, ou avec son demarrage systemd
+        # desactive, pose bien plasma-workspace.target sur le disque sans
+        # qu'elle soit jamais atteinte : une unite accrochee dessus ne partirait
+        # pas. D'ou is-active, dont le code retour est stable sur toute la plage
+        # supportee - 0 si et seulement si la cible est active, 4 qu'elle soit
+        # absente ou simplement inactive. `list-unit-files` ne distingue l'unite
+        # absente que depuis systemd 246, et `cat` ne lit que le disque.
         CIBLE="graphical-session.target"
-        if systemctl --user cat plasma-workspace.target >/dev/null 2>&1; then
+        if systemctl --user is-active --quiet plasma-workspace.target; then
             CIBLE="plasma-workspace.target"
         fi
 
