@@ -7,6 +7,28 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.17.0] - 2026-09-17
+
+### Ajoute
+
+- Une interface graphique native, accessible avec `butbutbut --gui` ou le
+  lanceur `butbutbut-gui`, rassemble les commandes de direct, scores,
+  classements, journal, statistiques, replays et maintenance. Elle construit
+  les memes arguments que la CLI, execute chaque action dans un processus
+  isole et rend sa sortie dans une console integree.
+- Les trente reglages du fichier de configuration disposent de controles
+  guides. La GUI peut les appliquer a une session sans toucher au fichier, ou
+  les enregistrer explicitement en gardant une copie `.bak`.
+- Deux illustrations embarquees habillent le tableau de bord et l'etat vide
+  de la console, sans ressource reseau ni nouvelle dependance d'execution.
+
+### Corrige
+
+- La molette et le pave tactile font defiler la zone sous le pointeur meme
+  lorsque celui-ci se trouve au-dessus d'un champ, d'un bouton ou d'une liste
+  deroulante. Le routage couvre la navigation, les formulaires et la console,
+  sur Windows, macOS et X11.
+
 ## [1.16.0] - 2026-09-12
 
 ### Modifie
@@ -2182,7 +2204,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.16.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/boubou666/butbutbut/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/butbutbut/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/butbutbut/compare/v1.14.1...v1.15.0
 [1.14.1]: https://github.com/boubou666/butbutbut/compare/v1.14.0...v1.14.1

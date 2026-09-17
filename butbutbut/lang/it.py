@@ -725,6 +725,8 @@ MESSAGES = {
         'imminente',
     'dans {} min':
         'tra {} min',
+    'ouvre le centre de controle graphique':
+        'apre il centro di controllo grafico',
     'francais': 'francese',
     'anglais': 'inglese',
     'espagnol': 'spagnolo',

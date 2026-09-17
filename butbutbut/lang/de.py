@@ -656,6 +656,8 @@ MESSAGES = {
     'CHOIX': 'AUSWAHL',
     'SECONDES': 'SEKUNDEN',
     'MINUTES': 'MINUTEN',
+    'ouvre le centre de controle graphique':
+        'oeffnet die grafische Steuerzentrale',
     'francais': 'Franzoesisch',
     'anglais': 'Englisch',
     'espagnol': 'Spanisch',
