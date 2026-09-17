@@ -21,6 +21,34 @@ from butbutbut import cli, update
 RACINE = Path(__file__).resolve().parent.parent
 
 
+class InstallateurWindows(unittest.TestCase):
+    """Protege le passage du chargeur Python a PowerShell 5.1."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.script = (RACINE / "install.ps1").read_text(encoding="utf-8")
+
+    def test_le_chargeur_python_passe_par_un_fichier_temporaire(self):
+        self.assertNotIn("& $python -c $EngineInstaller", self.script)
+        self.assertIn(
+            "& $python $EngineInstallerPath $EngineUrl $EngineSha256 $AppDir",
+            self.script,
+        )
+        self.assertIn(
+            "Remove-Item -LiteralPath $EngineInstallerPath -Force",
+            self.script,
+        )
+
+    def test_le_chargeur_python_embarque_est_valide(self):
+        trouve = re.search(
+            r"\$EngineInstaller = @'\r?\n(.*?)\r?\n'@",
+            self.script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(trouve)
+        compile(trouve.group(1), "<install.ps1:EngineInstaller>", "exec")
+
+
 class UpdateTestCase(unittest.TestCase):
     """Isole le dossier de donnees, donc la fiche."""
 
