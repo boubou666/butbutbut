@@ -90,6 +90,7 @@ uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/deskt
 ```bash
 butbutbut                     # watch in the background (the default)
 butbutbut --speak             # ... and say the goal out loud, on top of the sound
+butbutbut --gui               # open the graphical control centre
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal

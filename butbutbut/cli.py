@@ -3277,6 +3277,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version",
                         version="butbutbut {}".format(__version__))
+    parser.add_argument("--gui", action="store_true",
+                        help=tr("ouvre le centre de controle graphique"))
 
     parser.add_argument("--test", nargs="?", type=int, const=1, default=0,
                         metavar=tr("N"),
@@ -3565,6 +3567,12 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     args.config = chosen        # le chemin retenu, pour --status et --write-config
+
+    if args.gui:
+        # Importe tkinter uniquement sur demande : un serveur sans ecran garde
+        # un demarrage aussi leger et aussi robuste qu'avant.
+        from . import gui
+        return gui.main(config_path=chosen)
 
     if args.write_config:
         # Un parseur neuf : le fichier d'exemple annonce les vrais defauts du

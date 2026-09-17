@@ -621,6 +621,8 @@ MESSAGES = {
         "refused at start-up. E.g. --sound-for om=~/sounds/om.wav",
     "regenere la corne synthetisee": "regenerate the synthesised horn",
     "n'ecrit que dans le journal": "write to the log only",
+    "ouvre le centre de controle graphique":
+        "open the graphical control centre",
     "butbutbut : --pin ne prend qu'une equipe ({!r} en annonce plusieurs) : "
     "il n'y a jamais qu'une carte epinglee.":
         "butbutbut : --pin takes only one team ({!r} names several): there is "

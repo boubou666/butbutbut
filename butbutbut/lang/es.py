@@ -643,6 +643,8 @@ MESSAGES = {
         "se rechaza al arrancar. Ej: --sound-for om=~/sonidos/om.wav",
     "regenere la corne synthetisee": "regenera la bocina sintetizada",
     "n'ecrit que dans le journal": "solo escribe en el registro",
+    "ouvre le centre de controle graphique":
+        "abre el centro de control grafico",
     "butbutbut : --pin ne prend qu'une equipe ({!r} en annonce plusieurs) : "
     "il n'y a jamais qu'une carte epinglee.":
         "butbutbut : --pin solo acepta un equipo ({!r} anuncia varios) : "

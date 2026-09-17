@@ -91,6 +91,7 @@ uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/deskt
 ```bash
 butbutbut                     # surveille en fond (comportement par defaut)
 butbutbut --speak             # ... et dit le but a voix haute, en plus du son
+butbutbut --gui               # le centre de controle graphique
 butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
