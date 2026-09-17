@@ -172,7 +172,7 @@ Write-Item "code        : $AppDir\butbutbut"
 $EngineVersion = '0.2.1'
 $EngineUrl = "https://github.com/boubou666/desktop-overlay/releases/download/v$EngineVersion/desktop_overlay-$EngineVersion-py3-none-any.whl"
 $EngineSha256 = 'c752c46c077390a1f6cc6569dae09df302a2d0810b6a555122366be38928c972'
-$EngineInstaller = @"
+$EngineInstaller = @'
 import hashlib
 import io
 import sys
@@ -191,9 +191,22 @@ if actual != expected:
     )
 with zipfile.ZipFile(io.BytesIO(wheel)) as archive:
     archive.extractall(target)
-"@
-& $python -c $EngineInstaller $EngineUrl $EngineSha256 $AppDir
-if ($LASTEXITCODE -ne 0) {
+'@
+# PowerShell 5.1 altere les guillemets d'un programme passe a `python -c`.
+# Un fichier temporaire garde ici le source Python intact, y compris ses
+# chaines multilignes, puis est efface meme si le telechargement echoue.
+$EngineInstallerPath = Join-Path ([System.IO.Path]::GetTempPath()) (
+    'butbutbut-engine-{0}.py' -f [guid]::NewGuid().ToString('N')
+)
+$EngineExitCode = 1
+try {
+    $EngineInstaller | Set-Content -LiteralPath $EngineInstallerPath -Encoding UTF8
+    & $python $EngineInstallerPath $EngineUrl $EngineSha256 $AppDir
+    $EngineExitCode = $LASTEXITCODE
+} finally {
+    Remove-Item -LiteralPath $EngineInstallerPath -Force -ErrorAction SilentlyContinue
+}
+if ($EngineExitCode -ne 0) {
     Write-Item "Echec de l'installation de desktop-overlay $EngineVersion."
     exit 1
 }

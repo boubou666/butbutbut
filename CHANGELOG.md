@@ -7,6 +7,14 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.17.1] - 2026-09-17
+
+### Corrige
+
+- L'installateur Windows execute le chargeur de `desktop-overlay` depuis un
+  fichier temporaire. PowerShell 5.1 ne peut ainsi plus alterer les guillemets
+  du programme Python et interrompre `butbutbut --update`.
+
 ## [1.17.0] - 2026-09-17
 
 ### Ajoute
@@ -2204,7 +2212,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.17.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.17.1...HEAD
+[1.17.1]: https://github.com/boubou666/butbutbut/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/butbutbut/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/butbutbut/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/boubou666/butbutbut/compare/v1.14.1...v1.15.0
