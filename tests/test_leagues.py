@@ -52,6 +52,41 @@ class TestCatalogue(unittest.TestCase):
         self.assertEqual(len(rows), len(leagues.CATALOGUE))
 
 
+class TestGoalCelebrationLanguage(unittest.TestCase):
+    """Le cri vient du terrain, sauf quand aucun pays ne peut le choisir."""
+
+    def test_each_big_league_uses_its_own_language(self):
+        expected = {
+            "fra.1": i18n.text("goal_celebration", lang="fr"),
+            "eng.1": i18n.text("goal_celebration", lang="en"),
+            "esp.1": i18n.text("goal_celebration", lang="es"),
+            "ita.1": i18n.text("goal_celebration", lang="it"),
+            "ger.1": i18n.text("goal_celebration", lang="de"),
+        }
+        for slug, wanted in expected.items():
+            cry = leagues.goal_celebration(leagues.BY_SLUG[slug], "en")
+            self.assertEqual(cry, wanted, slug)
+            self.assertGreater(len(cry), 10)
+
+    def test_a_national_cup_keeps_its_country_language(self):
+        coupe = leagues.BY_SLUG["fra.coupe_de_france"]
+        self.assertTrue(leagues.goal_celebration(coupe, "de").startswith("BU"))
+
+    def test_european_and_international_competitions_use_the_user_language(self):
+        for slug in ("uefa.champions", "fifa.world",
+                     "conmebol.libertadores", "concacaf.champions"):
+            league = leagues.BY_SLUG[slug]
+            self.assertTrue(
+                leagues.goal_celebration(league, "de").startswith("TO"), slug)
+            self.assertTrue(
+                leagues.goal_celebration(league, "fr").startswith("BU"), slug)
+
+    def test_other_domestic_languages_are_not_forced_to_the_interface(self):
+        for slug in ("por.1", "ned.1", "tur.1", "jpn.1"):
+            cry = leagues.goal_celebration(leagues.BY_SLUG[slug], "fr")
+            self.assertFalse(cry.startswith("BU"), (slug, cry))
+
+
 class TestSelection(unittest.TestCase):
     def test_aliases(self):
         for token, slug in (("l1", "fra.1"), ("ligue1", "fra.1"),

@@ -52,6 +52,7 @@ ENV = "BUTBUTBUT_LANG"
 MESSAGES = {
     "fr": {
         "title_goal": "BUT !",
+        "goal_celebration": "BUUUUUUUUUUUUUT !",
         "title_own_goal": "BUT CONTRE SON CAMP",
         "title_penalty": "BUT SUR PENALTY",
         "title_cancelled": "BUT ANNULE",
@@ -148,6 +149,7 @@ MESSAGES = {
     },
     "en": {
         "title_goal": "GOAL!",
+        "goal_celebration": "GOOOOOOOOOOOOOOAL!",
         "title_own_goal": "OWN GOAL",
         "title_penalty": "PENALTY GOAL",
         "title_cancelled": "GOAL DISALLOWED",
@@ -236,6 +238,7 @@ MESSAGES = {
     },
     "es": {
         "title_goal": "GOL!",
+        "goal_celebration": "GOOOOOOOOOOOOOOOL!",
         "title_own_goal": "GOL EN PROPIA",
         "title_penalty": "GOL DE PENALTI",
         "title_cancelled": "GOL ANULADO",
@@ -324,6 +327,7 @@ MESSAGES = {
     },
     "it": {
         "title_goal": "GOL!",
+        "goal_celebration": "GOOOOOOOOOOOOOOOL!",
         "title_own_goal": "AUTOGOL",
         "title_penalty": "GOL SU RIGORE",
         "title_cancelled": "GOL ANNULLATO",
@@ -412,6 +416,7 @@ MESSAGES = {
     },
     "de": {
         "title_goal": "TOR!",
+        "goal_celebration": "TOOOOOOOOOOOOOOOR!",
         "title_own_goal": "EIGENTOR",
         "title_penalty": "ELFMETERTOR",
         "title_cancelled": "TOR ABERKANNT",
