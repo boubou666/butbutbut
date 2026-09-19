@@ -580,7 +580,7 @@ class TestDates(unittest.TestCase):
         last = datetime(2026, 9, 13, tzinfo=timezone.utc)
         self.assertEqual(espn.date_span(first, last), "20260906-20260913")
 
-    def test_the_url_carries_the_window(self):
+    def test_a_window_is_read_as_a_month_now_that_ranges_are_refused(self):
         seen = []
 
         def opener(url, _timeout):
@@ -591,7 +591,29 @@ class TestDates(unittest.TestCase):
         self.assertEqual(len(seen), 1)
         self.assertTrue(seen[0].startswith(
             espn.SCOREBOARD_URL.format(sport=sports.DEFAULT.code, slug="fra.1")), seen[0])
-        self.assertIn("dates=20260906-20260913", seen[0])
+        self.assertIn("dates=202609", seen[0])
+        self.assertIn("limit=1000", seen[0])
+        self.assertNotIn("20260906-20260913", seen[0])
+
+    def test_a_window_across_two_months_is_merged_and_trimmed(self):
+        seen = []
+
+        def opener(url, _timeout):
+            seen.append(url)
+            if "dates=202608" in url:
+                events = [event(match_id="1", date="2026-08-30T15:00Z"),
+                          event(match_id="2", date="2026-08-31T15:00Z")]
+            else:
+                events = [event(match_id="3", date="2026-09-06T15:00Z"),
+                          event(match_id="4", date="2026-09-07T15:00Z")]
+            return json.dumps(payload(*events)).encode("utf-8")
+
+        raw = espn.fetch("fra.1", opener=opener,
+                         dates="20260831-20260906")
+        self.assertEqual(len(seen), 2)
+        self.assertIn("dates=202608", seen[0])
+        self.assertIn("dates=202609", seen[1])
+        self.assertEqual([item["id"] for item in raw["events"]], ["2", "3"])
 
     def test_without_dates_the_url_does_not_change(self):
         seen = []
@@ -611,7 +633,7 @@ class TestDates(unittest.TestCase):
             return b'{"events": []}'
 
         espn.scoreboard(LIGUE1, opener=opener, dates="20260906-20260913")
-        self.assertIn("dates=20260906-20260913", seen[0])
+        self.assertIn("dates=202609", seen[0])
 
 
 class TestTheMatchSummary(unittest.TestCase):

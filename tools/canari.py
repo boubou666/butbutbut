@@ -39,9 +39,10 @@ Deux niveaux d'exigence, parce que la source ne remplit pas tout a tout moment :
     n'est pas un echec.
 
 Un mardi de juillet, le tableau du jour peut etre vide : le canari ne crie pas
-au loup pour ca. Il redemande alors les quatre derniers mois d'un coup
-(`?dates=AAAAMMJJ-AAAAMMJJ`), de quoi retomber sur des matchs joues et donc sur
-des buts a inspecter, en toute saison.
+au loup pour ca. Il remonte alors les quatre derniers mois, un mois a la fois
+(`?dates=AAAAMM`), et s'arrete des qu'il retrouve des matchs joues. ESPN a
+cesse d'accepter ses anciens intervalles `AAAAMMJJ-AAAAMMJJ` en septembre
+2026 ; les mois gardent le rattrapage court sans multiplier les jours.
 
 Codes de sortie : 0 tout va bien, 1 une cle manque ou a change de type, 2 la
 source est injoignable. Le rapport complet est imprime dans tous les cas : on
@@ -908,16 +909,17 @@ def fetch_json(url, opener, timeout=TIMEOUT, attempts=ATTEMPTS):
     raise espn.SourceError("{} : {}".format(url, last))
 
 
-def lookback_range(today=None, days=LOOKBACK_DAYS):
-    """Le parametre `dates` d'un rattrapage : "AAAAMMJJ-AAAAMMJJ".
-
-    ESPN accepte un intervalle, ce qui evite de deviner un jour de match : on
-    demande les quatre derniers mois d'un coup et on y trouve forcement des
-    matchs joues, ete compris.
-    """
+def lookback_months(today=None, days=LOOKBACK_DAYS):
+    """Les mois `AAAAMM` d'un rattrapage, du plus recent au plus ancien."""
     today = today or datetime.now(timezone.utc).date()
     start = today - timedelta(days=days)
-    return "{}-{}".format(start.strftime("%Y%m%d"), today.strftime("%Y%m%d"))
+    cursor = today.replace(day=1)
+    final = start.replace(day=1)
+    months = []
+    while cursor >= final:
+        months.append(cursor.strftime("%Y%m"))
+        cursor = (cursor - timedelta(days=1)).replace(day=1)
+    return tuple(months)
 
 
 def split_sport(slug):
@@ -1006,20 +1008,25 @@ def check_league(slug, opener=None, dates="", timeout=TIMEOUT, out=None):
     empty = (not scored_event(first) if sport.summary_plays
              else not tally["goals"])
     if not dates and empty:
-        window = lookback_range()
-        try:
-            second = fetch_json(scoreboard_url(slug, window), opener, timeout)
-        except espn.SourceError as exc:
-            print("  INJOIGNABLE  {}\n".format(exc), file=out)
-            return INJOIGNABLE, ledger
-        boards.append(second)
-        extra = inspect_scoreboard(second, ledger, sport)
-        problems.extend(cross_check(second, slug, extra, ledger))
-        print("  rattrapage {:<10} {} match(s), {} but(s), {} expulsion(s){}"
-              .format(window, extra["events"], extra["goals"],
-                      extra["red_cards"], kicks_note(extra)), file=out)
-        for key in tally:
-            tally[key] += extra[key]
+        for month in lookback_months():
+            try:
+                second = fetch_json(scoreboard_url(slug, month), opener,
+                                    timeout)
+            except espn.SourceError as exc:
+                print("  INJOIGNABLE  {}\n".format(exc), file=out)
+                return INJOIGNABLE, ledger
+            boards.append(second)
+            extra = inspect_scoreboard(second, ledger, sport)
+            problems.extend(cross_check(second, slug, extra, ledger))
+            print("  rattrapage {:<10} {} match(s), {} but(s), {} expulsion(s){}"
+                  .format(month, extra["events"], extra["goals"],
+                          extra["red_cards"], kicks_note(extra)), file=out)
+            for key in tally:
+                tally[key] += extra[key]
+            found_play = (scored_event(second) if sport.summary_plays
+                          else extra["goals"])
+            if found_play:
+                break
 
     if not tally["events"]:
         print("  aucun match a inspecter : rien n'est verifie ici, et ce n'est"
@@ -1120,8 +1127,8 @@ def main(argv=None, opener=None, out=None):
                         help="codes ESPN a interroger (defaut : {})"
                              .format(",".join(DEFAULT_SLUGS)))
     parser.add_argument("--dates", default="",
-                        help="viser une date ou un intervalle : 20250517, "
-                             "20250501-20250517")
+                        help="viser une date, un mois ou une annee : "
+                             "20250517, 202505, 2025")
     parser.add_argument("--timeout", type=float, default=TIMEOUT,
                         help="delai reseau, en secondes")
     args = parser.parse_args(argv)

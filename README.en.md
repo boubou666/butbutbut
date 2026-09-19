@@ -2095,11 +2095,11 @@ undocumented API: everything is read defensively, and a key that disappears
 does not kill the daemon.
 
 Left alone, the endpoint only serves **the current day**: enough to watch for
-goals, not enough to say when the next match falls. For that it accepts a
-`dates` parameter, either one day (`?dates=20260908`) or a range
-(`?dates=20260908-20260915`), both ends included. That range is what lets
-`--next` cover a whole week in a single request per competition, where one day
-at a time would cost seven.
+goals, not enough to say when the next match falls. Its `dates` parameter
+accepts a day (`?dates=20260908`), month (`?dates=202609`) or year. Since
+September 16, 2026 ESPN rejects its former range form with HTTP 400. `--next`
+keeps the convenient range internally, translates it into one or two months
+with an explicit limit, then retains only the requested days.
 
 The same host publishes two more endpoints, read with the same client and the
 same headers: `.../teams`, which validates what you type into `--teams`, and the
@@ -2399,9 +2399,9 @@ Three verdicts, and the nuance is the whole point:
 | `non verifie` | nothing of that kind showed up (no goal that day): this is not a failure |
 
 On a Tuesday in July the day's board can be empty: the canary does not cry
-wolf over that. It then asks again for the last four months in one go
-(`?dates=YYYYMMDD-YYYYMMDD`), enough to land on matches that were actually
-played - and therefore on goals to inspect - in any season.
+wolf over that. It then walks back through the last four months, one month at
+a time (`?dates=YYYYMM`), and stops at the first one containing matches that
+were actually played - and therefore goals to inspect.
 
 It also runs on its own once a day
 ([`canari.yml`](.github/workflows/canari.yml)), and **never on a push or a

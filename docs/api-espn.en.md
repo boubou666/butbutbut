@@ -200,12 +200,12 @@ round of the loop, and everything shown on a card comes out of it.
 
 ### The parameters
 
-Checked on `soccer/eng.1`, on 7 September 2026:
+Checked on `soccer/eng.1` on 7 September 2026, then again on the 19th:
 
 | Parameter | Effect | Checked |
 | --- | --- | --- |
 | `dates=YYYYMMDD` | that day | `?dates=20260906` -> 2 matches |
-| `dates=YYYYMMDD-YYYYMMDD` | the interval, **both bounds included** | `?dates=20260901-20260930` -> 30 matches |
+| `dates=YYYYMMDD-YYYYMMDD` | **rejected since September 16, 2026** | HTTP 400, even for two days |
 | `dates=YYYYMM` | the whole month | `?dates=202609` -> 30 matches |
 | `dates=YYYY` | the whole season year | `?dates=2026` -> 100 matches (see `limit`) |
 | `limit=N` | the maximum number of matches returned | **defaults to 100** |
@@ -213,16 +213,15 @@ Checked on `soccer/eng.1`, on 7 September 2026:
 | `season`, `seasontype`, `week` | **no effect** in football | `?week=3` returns 0 matches, `?season=2025` returns today |
 
 Without `dates` the endpoint only serves **the current day**. That is enough
-to watch for goals, not to say when the next match falls: it is the interval
-that lets `--next` cover a week in one request per competition where a day at
-a time would cost seven.
+to watch for goals, not to say when the next match falls. `--next` still
+builds a range as an internal contract; the client covers it with one or two
+months (`limit=1000`), merges the responses and filters the exact two bounds.
 
 **The default `limit` is a silent trap.** `?dates=2026` on the Premier League
 returns 100 matches without saying so; the same call with `&limit=500` returns
-374, and an explicit interval (`?dates=20260801-20270601&limit=1000`) returns
-the 380 of the fixture list - the season year does not cover exactly the same
-range. Nothing in the response signals the truncation: no `next`, no total. A
-client sweeping wide has to set `limit` itself.
+374. Nothing in the response signals the truncation: no `next`, no total. A
+client sweeping wide has to set `limit` itself and, for an exact period, read
+the months then filter dates locally.
 
 ### The general shape
 
@@ -1378,7 +1377,7 @@ python - <<'EOF'
 import collections, json, urllib.request
 UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
 url = ("https://site.api.espn.com/apis/site/v2/sports/rugby/270559"
-       "/scoreboard?dates=20260201-20260401&limit=500")
+       "/scoreboard?dates=2026&limit=500")
 page = urllib.request.urlopen(
     urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
 data = json.load(page)
@@ -1402,7 +1401,7 @@ python - <<'EOF'
 import collections, json, urllib.request
 UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
 url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions"
-       "/scoreboard?dates=20250801-20260601&limit=1000")
+       "/scoreboard?dates=2025&limit=1000")
 page = urllib.request.urlopen(
     urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
 data = json.load(page)

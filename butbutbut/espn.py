@@ -108,11 +108,13 @@ DEFAULT_TIMEOUT = 8.0
 # ce delai on laisse tomber le nom, jamais la carte.
 SUMMARY_TIMEOUT = 1.5
 
-# Le tableau de bord accepte un parametre `dates` : un jour (AAAAMMJJ) ou un
-# intervalle (AAAAMMJJ-AAAAMMJJ), bornes comprises. Sans lui, il ne sert que la
-# journee en cours - assez pour surveiller les buts, pas pour dire quand tombe
-# le prochain match.
+# Le tableau de bord accepte un parametre `dates` : un jour (AAAAMMJJ), un mois
+# (AAAAMM) ou une annee (AAAA). Il acceptait aussi les intervalles jusqu'au
+# 15 septembre 2026, puis s'est mis a leur repondre 400. `fetch()` garde cette
+# interface pratique pour le reste du programme, mais la traduit desormais en
+# un ou plusieurs mois et filtre localement les jours demandes.
 DAY_FORMAT = "%Y%m%d"
+DATE_RANGE = re.compile(r"^(\d{8})-(\d{8})$")
 
 # Etats renvoyes par ESPN.
 PRE, LIVE, POST = "pre", "in", "post"
@@ -567,11 +569,9 @@ def day_code(moment) -> str:
 def date_span(first, last=None) -> str:
     """La valeur du parametre `dates` : un jour, ou un intervalle.
 
-    Verifie contre la source : `?dates=20260906` rend le programme de ce
-    jour-la, `?dates=20260906-20260919` celui de toute la periode, les deux
-    bornes comprises. C'est ce qui permet a `--next` de couvrir une semaine
-    entiere en **une** requete par competition la ou un jour a la fois en
-    couterait sept.
+    L'intervalle est une forme interne, lisible par les appelants. ESPN ne
+    l'accepte plus directement : `fetch()` le traduit en mois complets, puis
+    remet exactement les deux bornes ici demandees.
     """
     start = day_code(first)
     if last is None:
@@ -580,6 +580,56 @@ def date_span(first, last=None) -> str:
     # Un intervalle d'un seul jour n'apporte rien : autant poser la forme
     # courte, celle qu'on lit dans les journaux et dans les tests.
     return start if end == start else "{}-{}".format(start, end)
+
+
+def _range_months(dates):
+    """Les mois ESPN couvrant un intervalle, avec ses deux bornes.
+
+    Rend None pour toute autre forme : un jour, un mois ou une valeur saisie
+    par un appelant continue alors de voyager telle quelle jusqu'a la source.
+    """
+    found = DATE_RANGE.fullmatch(str(dates or ""))
+    if found is None:
+        return None
+    try:
+        first = datetime.strptime(found.group(1), DAY_FORMAT).date()
+        last = datetime.strptime(found.group(2), DAY_FORMAT).date()
+    except ValueError:
+        return None
+    if first > last:
+        return None
+
+    cursor = first.replace(day=1)
+    final = last.replace(day=1)
+    months = []
+    while cursor <= final:
+        months.append(cursor.strftime("%Y%m"))
+        if cursor.month == 12:
+            cursor = cursor.replace(year=cursor.year + 1, month=1)
+        else:
+            cursor = cursor.replace(month=cursor.month + 1)
+    return found.group(1), found.group(2), tuple(months)
+
+
+def _event_day(event):
+    """Le jour AAAAMMJJ d'un evenement brut, s'il est lisible."""
+    if not isinstance(event, dict):
+        return ""
+    stamps = [event.get("date")]
+    competitions = event.get("competitions")
+    if isinstance(competitions, list) and competitions:
+        first = competitions[0]
+        if isinstance(first, dict):
+            stamps.append(first.get("date"))
+    for stamp in stamps:
+        if not isinstance(stamp, str):
+            continue
+        head = stamp[:10]
+        if len(head) == 10 and head[4] == "-" and head[7] == "-":
+            code = head.replace("-", "")
+            if code.isdigit():
+                return code
+    return ""
 
 
 def _read_json(url: str, timeout: float, opener, label: str) -> dict:
@@ -619,17 +669,44 @@ def fetch(slug: str, timeout: float = DEFAULT_TIMEOUT, opener=None,
     `sport` : un sports.Sport, ou None pour le football. Il n'y a rien d'autre
     a passer : le sport n'est qu'un segment d'URL a ce niveau-la.
 
-    `dates` (voir date_span) demande une autre periode que la journee
-    en cours.
+    `dates` (voir date_span) demande une autre periode que la journee en
+    cours. Un intervalle est lu par mois, parce que la source refuse desormais
+    sa propre ancienne forme `AAAAMMJJ-AAAAMMJJ`.
 
     `opener` sert aux tests et a l'enregistrement : n'importe quel
     callable(url, timeout) -> bytes.
     """
     url = SCOREBOARD_URL.format(sport=(sport or sports.DEFAULT).code,
                                 slug=slug)
-    if dates:
-        url += "?" + urllib.parse.urlencode({"dates": dates})
-    return _read_json(url, timeout, opener, slug)
+    window = _range_months(dates)
+    if window is None:
+        if dates:
+            url += "?" + urllib.parse.urlencode({"dates": dates})
+        return _read_json(url, timeout, opener, slug)
+
+    first, last, months = window
+    pages = []
+    for month in months:
+        query = urllib.parse.urlencode({"dates": month, "limit": 1000})
+        pages.append(_read_json(url + "?" + query, timeout, opener, slug))
+
+    merged = dict(pages[0])
+    events = []
+    for page in pages:
+        candidates = page.get("events")
+        if not isinstance(candidates, list):
+            continue
+        for event in candidates:
+            day = _event_day(event)
+            # Une date absente ne doit pas faire disparaitre silencieusement
+            # un match : les filtres metier de l'appelant restent le dernier
+            # filet. Les dates lisibles, elles, rendent exactement l'ancien
+            # contrat aux deux bornes comprises.
+            if day and not first <= day <= last:
+                continue
+            events.append(event)
+    merged["events"] = events
+    return merged
 
 
 # ---------------------------------------------------------------- parsing ----

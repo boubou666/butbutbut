@@ -13,6 +13,7 @@ import io
 import json
 import os
 import unittest
+from unittest import mock
 
 from helpers import (event, goal_detail, hockey_event, hockey_noise,
                      hockey_play, hockey_summary, payload, red_card_detail,
@@ -213,7 +214,7 @@ def opener_for(live=None, past=None, teams=None, seen=None, digest=None):
         elif "/summary" in url:
             body = digest
         elif "dates=" in url:
-            body = past
+            body = past(url) if callable(past) else past
         else:
             body = live
         if body is None:
@@ -668,10 +669,27 @@ class TestLookback(unittest.TestCase):
                argv=("--leagues", "fra.1", "--dates", "20250517"))
         self.assertIn("dates=20250517", seen[0])
 
-    def test_the_lookback_window_is_an_espn_range(self):
+    def test_the_lookback_walks_whole_months_from_newest_to_oldest(self):
         import datetime
-        window = canari.lookback_range(datetime.date(2026, 9, 7), days=120)
-        self.assertEqual(window, "20260510-20260907")
+        months = canari.lookback_months(datetime.date(2026, 9, 7), days=120)
+        self.assertEqual(months,
+                         ("202609", "202608", "202607", "202606", "202605"))
+
+    def test_the_lookback_stops_at_the_first_month_with_goals(self):
+        seen = []
+
+        def past(url):
+            return played() if "dates=202608" in url else {"events": []}
+
+        with mock.patch.object(canari, "lookback_months",
+                               return_value=("202609", "202608", "202607")):
+            code, report = canary(live={"events": []}, past=past, seen=seen)
+        self.assertEqual(code, 0, report)
+        catchups = [url for url in seen if "dates=" in url]
+        self.assertEqual(len(catchups), 2, catchups)
+        self.assertIn("dates=202609", catchups[0])
+        self.assertIn("dates=202608", catchups[1])
+        self.assertNotIn("dates=202607", " ".join(catchups))
 
 
 class TestUnreachableSource(unittest.TestCase):
