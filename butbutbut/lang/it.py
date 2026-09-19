@@ -21,6 +21,18 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "  streaming   : {}": "  ritardo str.: {}",
+    "retard de {:.0f}s": "ritardo di {:.0f}s",
+    "direct": "diretta",
+    "sert l'ecran compagnon local (par defaut 127.0.0.1:8765) puis attend":
+        "serve lo schermo complementare locale (predefinito 127.0.0.1:8765) e attende",
+    "a lancer quand le coup d'envoi devient visible : mesure et applique le retard du flux":
+        "avvia quando vedi il calcio d'inizio: misura e applica il ritardo dello streaming",
+    "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
+        "esporta l'ultimo ricordo della partita o l'ultimo di questa squadra",
+    "chemin HTML de --story": "percorso HTML di --story",
+    "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
+        "ritarda schede, suono, voce e hook per allinearli allo streaming",
     'tirs au but': 'calci di rigore',
     'Exemples :':
         'Esempi:',

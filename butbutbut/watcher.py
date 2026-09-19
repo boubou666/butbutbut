@@ -72,6 +72,25 @@ RED_CARD = "red_card"
 PREMATCH = "prematch"
 CATCHUP = "catchup"
 
+# Le contexte d'un score qui monte. Ces valeurs sont aussi publiees dans
+# BUT_CONTEXT et dans l'API du compagnon : ce sont donc des noms stables,
+# independants de la langue affichee.
+OPENING = "opening"
+EQUALIZER = "equalizer"
+GO_AHEAD = "go_ahead"
+EXTENDS_LEAD = "extends_lead"
+CLOSES_GAP = "closes_gap"
+COMEBACK = "comeback"
+
+CONTEXT_KEYS = {
+    OPENING: "context_opening",
+    EQUALIZER: "context_equalizer",
+    GO_AHEAD: "context_go_ahead",
+    EXTENDS_LEAD: "context_extends_lead",
+    CLOSES_GAP: "context_closes_gap",
+    COMEBACK: "context_comeback",
+}
+
 # Les cartes de deroulement du match : meme carte, mais jamais de son.
 PHASES = (KICKOFF, HALFTIME, RESTART, FULLTIME)
 
@@ -124,6 +143,33 @@ def title_of(kind, play=None, lang=None, sport=None) -> str:
         return i18n.text(play.title_key, lang=lang)
     key = TITLE_KEYS.get(kind)
     return i18n.text(sport.title_key(key), lang=lang) if key else kind.upper()
+
+
+def context_of(side, home_score, away_score, delta) -> str:
+    """Ce que le nouveau score signifie, sans deviner l'avenir du match.
+
+    « But de la victoire » n'existe pas ici : on ne peut le savoir qu'au coup
+    de sifflet final. En revanche ouverture, egalisation, prise de l'avantage
+    et ecart qui grandit se lisent entierement dans l'avant et l'apres.
+    """
+    if not side or delta <= 0:
+        return ""
+    after = home_score if side == "home" else away_score
+    opponent = away_score if side == "home" else home_score
+    before = after - delta
+    if before == 0 and opponent == 0:
+        return OPENING
+    if before < opponent and after == opponent:
+        return EQUALIZER
+    if before < opponent and after > opponent:
+        return COMEBACK
+    if before == opponent and after > opponent:
+        return GO_AHEAD
+    if before > opponent and after > before:
+        return EXTENDS_LEAD
+    if before < opponent and after < opponent:
+        return CLOSES_GAP
+    return ""
 
 # Ce qui declenche une carte de phase : (phase precedente, phase actuelle).
 # Un match jamais vu en cours ne declenche pas de "fin du match" : on n'a rien
@@ -335,7 +381,7 @@ class Event:
 
     __slots__ = ("kind", "match", "side", "team", "opponent", "home_score",
                  "away_score", "delta", "play", "at", "countdown",
-                 "changes", "gap", "spoiler_free")
+                 "changes", "gap", "spoiler_free", "context")
 
     def __init__(self, kind, match, side, team, opponent, home_score,
                  away_score, delta, play, at=None, countdown=None,
@@ -365,6 +411,8 @@ class Event:
         # sonner. Marquer plutot que filtrer, c'est tout le reglage : couper
         # ici priverait aussi `--today` de son recapitulatif.
         self.spoiler_free = bool(spoiler_free)
+        self.context = (context_of(side, home_score, away_score, delta)
+                        if kind == GOAL else "")
 
     @property
     def league(self):
@@ -391,6 +439,15 @@ class Event:
     @property
     def title(self) -> str:
         return title_of(self.kind, self.play, sport=self.sport)
+
+    def context_label(self, lang=None) -> str:
+        """Le qualificatif visible de ce but, ou une chaine vide."""
+        key = CONTEXT_KEYS.get(self.context)
+        return i18n.text(key, lang=lang) if key else ""
+
+    def context_parts(self, lang=None) -> list:
+        label = self.context_label(lang=lang)
+        return [[(label, True)]] if label else []
 
     @property
     def minute(self) -> str:

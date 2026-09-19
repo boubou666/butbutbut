@@ -225,6 +225,12 @@ OPTIONS = (
            "tombes pendant l'absence. Non : le reveil reste silencieux, comme "
            "avant.",
            "oui"),
+    Option("stream_delay", _number,
+           "Retarder cartes, son, voix et crochet de ce nombre de secondes "
+           "pour les synchroniser avec un streaming. La commande "
+           "'butbutbut --sync-stream' mesure ce retard au coup d'envoi sans "
+           "modifier le fichier.",
+           "90", fallback="desactive"),
     Option("on_goal", _text,
            "Commande lancee a chaque but, avec le detail du but dans des "
            "variables d'environnement BUT_* ($BUT_TEXT sous un shell, "

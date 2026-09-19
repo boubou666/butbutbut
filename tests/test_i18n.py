@@ -43,7 +43,6 @@ PARTOUT_EN_FRANCAIS = frozenset({
     'butbutbut : {}',
     'butbutbut {}',
     'tout le {} ({} competitions)',
-    '{:6} {}',
     '{:<16} {}',
     '{}:',
 })

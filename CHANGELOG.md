@@ -7,6 +7,38 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.19.0] - 2026-09-20
+
+### Ajoute
+
+- Une action GitHub compare chaque semaine les clubs des premieres divisions
+  publies par ESPN au manifeste des illustrations. Une nouvelle equipe ouvre
+  une issue exploitable (ou actualise celle deja ouverte), avec son championnat,
+  son identifiant et le chemin de l'asset a produire ; le controle peut aussi
+  etre lance a la main.
+
+- Chaque club des premieres divisions couvertes a sa propre carte postale
+  territoriale en filigrane : 384 illustrations embarquees, dont 68 pour les
+  championnats feminins, dans une direction artistique commune bleu nuit et
+  or. Le club du buteur l'emporte ; les autres cartes prennent le recevant et
+  les souvenirs le vainqueur. Le pays du stade et le globe restent les replis
+  pour un promu ou une equipe encore inconnue, sans appel reseau.
+
+- `--stream-delay` retarde cartes, son, voix et crochet pour les aligner sur
+  un flux video. `--sync-stream`, le bouton de la GUI et celui de l'ecran
+  compagnon mesurent le retard au moment ou l'utilisateur voit le coup
+  d'envoi. Le journal garde l'heure du direct et la carte epinglee se masque
+  pendant la synchronisation pour ne pas spoiler le score brut.
+- Les buts portent leur contexte visible : ouverture du score, egalisation,
+  prise de l'avantage, ecart creuse ou reduit. La nature du but reste intacte
+  et le crochet recoit la valeur stable dans `BUT_CONTEXT`.
+- `--serve` ouvre un ecran compagnon HTTP autonome, local par defaut, avec les
+  matchs, les alertes effectivement livrees, le recalage du flux et les cartes
+  souvenir. Aucun contenu distant ni dependance n'est ajoute.
+- Chaque fin de match devient une carte souvenir persistante. `--story`
+  exporte le dernier match, ou celui d'une equipe, en HTML autonome ; les
+  cinquante derniers restent disponibles pour le compagnon.
+
 ## [1.18.0] - 2026-09-19
 
 ### Ajoute
@@ -2229,7 +2261,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.18.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/boubou666/butbutbut/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/boubou666/butbutbut/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/butbutbut/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/butbutbut/compare/v1.16.0...v1.17.0

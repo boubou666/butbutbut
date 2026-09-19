@@ -118,6 +118,19 @@ class TestCard(unittest.TestCase):
         self.assertEqual(card.accent, LIGUE1.accent)
         self.assertEqual(card.text_line(), "Angers 1 - 2 Stade Rennais")
 
+    def test_the_card_uses_the_country_of_the_stadium(self):
+        goal = one_goal(side="home", event_kwargs={"venue_country": "Italia"})
+        self.assertEqual(overlay.Card.from_event(goal).motif, "italy")
+
+    def test_a_domestic_card_falls_back_to_the_league_country(self):
+        self.assertEqual(overlay.Card.from_event(one_goal()).motif, "france")
+
+    def test_the_scoring_club_wins_over_the_country(self):
+        goal = one_goal(side="home")
+        goal.match.home_id = "176"
+        card = overlay.Card.from_event(goal)
+        self.assertEqual(card.motif_path.name, "176.png")
+
     def test_a_real_goal_carries_the_animated_celebration(self):
         card = overlay.Card.from_event(one_goal(side="home"))
         self.assertTrue(card.celebration.startswith("BU"))
@@ -475,6 +488,59 @@ class TestCrestImages(unittest.TestCase):
         card = _card(home_logo=CREST, away_logo=CREST)
         images = overlay.load_logos(_FakeTk(broken=True), card, self.box(card))
         self.assertEqual(images, {})
+
+
+class _AtlasImage:
+    def __init__(self, width, height, calls):
+        self._width = width
+        self._height = height
+        self.calls = calls
+        self.tk = self
+
+    def width(self):
+        return self._width
+
+    def height(self):
+        return self._height
+
+    def call(self, *args):
+        self.calls.append(args)
+
+    def subsample(self, factor, _factor_y):
+        self.calls.append(("subsample", factor))
+        return self
+
+
+class _AtlasTk:
+    def __init__(self):
+        self.calls = []
+        self.opened = []
+
+    def PhotoImage(self, file=None, master=None, width=None, height=None):  # noqa: N802
+        self.opened.append(file)
+        if file:
+            return _AtlasImage(1402, 1122, self.calls)
+        return _AtlasImage(width, height, self.calls)
+
+
+class TestCountryMotif(unittest.TestCase):
+    def test_the_atlas_is_cropped_and_kept_with_the_card(self):
+        card = _card()
+        card.motif = "france"
+        tk = _AtlasTk()
+        images = overlay.load_motif(tk, card, overlay._layout(card, fake_fonts()))
+
+        self.assertIn("motif", images)
+        self.assertIn("motif_atlas", images)
+        self.assertEqual(tk.opened[0], str(overlay.COUNTRY_ATLAS))
+        self.assertTrue(any("copy" in call for call in tk.calls))
+
+    def test_a_legacy_card_without_a_motif_does_not_open_the_atlas(self):
+        card = _card()
+        tk = _AtlasTk()
+        self.assertEqual(overlay.load_motif(
+            tk, card, overlay._layout(card, fake_fonts())), {})
+        self.assertEqual(tk.opened, [])
 
 
 def check_inside(case, card, fonts=None):

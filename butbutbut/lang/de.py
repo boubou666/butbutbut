@@ -21,6 +21,18 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "  streaming   : {}": "  Stream-Vers.: {}",
+    "retard de {:.0f}s": "{:.0f}s Verzoegerung",
+    "direct": "live",
+    "sert l'ecran compagnon local (par defaut 127.0.0.1:8765) puis attend":
+        "lokalen Begleitbildschirm bereitstellen (Standard 127.0.0.1:8765) und warten",
+    "a lancer quand le coup d'envoi devient visible : mesure et applique le retard du flux":
+        "beim sichtbaren Anstoss starten: Streamverzoegerung messen und anwenden",
+    "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
+        "letzte Spiel-Erinnerung oder die letzte dieses Teams exportieren",
+    "chemin HTML de --story": "HTML-Pfad fuer --story",
+    "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
+        "Karten, Ton, Sprache und Hook passend zum Stream verzoegern",
     'tirs au but': 'Elfmeterschiessen',
     'Exemples :': 'Beispiele:',
     "\n{} match(s), '>' = en cours.": "\n{} Spiel(e), '>' = live.",

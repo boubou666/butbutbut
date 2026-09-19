@@ -75,6 +75,20 @@ ACTIONS: Tuple[ActionSpec, ...] = (
         "Affiche le daemon, les matchs suivis, le son, les ecrans et la connexion.",
         "--status", button="Actualiser"),
     ActionSpec(
+        "sync_stream", "Je vois le coup d'envoi", "EN DIRECT",
+        "Mesure le retard du streaming et recale les prochaines alertes.",
+        "--sync-stream", fields=(FieldSpec(
+            "query", "Equipe (optionnel)", "text", "", None,
+            hint="Utile si plusieurs matchs commencent ensemble."),),
+        button="Synchroniser", tone="live"),
+    ActionSpec(
+        "serve", "Ecran compagnon local", "EN DIRECT",
+        "Affiche les matchs, alertes synchronisees et souvenirs dans un navigateur.",
+        "--serve", fields=(FieldSpec(
+            "bind", "Adresse", "text", "8765", None,
+            hint="8765 = cette machine ; 0.0.0.0:8765 = reseau local."),),
+        button="Demarrer", tone="live"),
+    ActionSpec(
         "stop", "Arreter la surveillance", "EN DIRECT",
         "Demande proprement au daemon actif de s'arreter.", "--stop",
         button="Arreter", tone="danger",
@@ -118,6 +132,12 @@ ACTIONS: Tuple[ActionSpec, ...] = (
         "today", "Buts d'aujourd'hui", "JOURNAL",
         "Recapitule les buts signales depuis le debut de la journee.",
         "--today", button="Consulter"),
+    ActionSpec(
+        "story", "Carte souvenir", "JOURNAL",
+        "Exporte la derniere fin de match en une carte HTML autonome.",
+        "--story", fields=(FieldSpec(
+            "query", "Equipe (optionnel)", "text", "", None,
+            hint="Vide = le dernier match termine."),), button="Creer"),
     ActionSpec(
         "week", "Sept derniers jours", "JOURNAL",
         "Recapitule les buts signales sur les sept derniers jours.",
@@ -270,6 +290,9 @@ SETTINGS: Tuple[SettingSpec, ...] = (
     SettingSpec("quiet_while_presenting", "Silence pendant une presentation",
                 "RYTHME ET DISCRETION", "switch", False),
     SettingSpec("catch_up", "Resume au retour de veille", "RYTHME ET DISCRETION", "switch", False),
+    SettingSpec("stream_delay", "Retard du streaming (s)",
+                "RYTHME ET DISCRETION", "number", "0",
+                hint="0 = direct ; ou clique « Je vois le coup d'envoi »."),
     SettingSpec("quiet", "Journal seulement dans le fichier", "RYTHME ET DISCRETION", "switch", False),
     SettingSpec("on_goal", "Commande a chaque but", "AUTOMATISATION", "text", "",
                 hint="Les variables BUT_* sont fournies a la commande."),

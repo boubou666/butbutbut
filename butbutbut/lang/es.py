@@ -29,10 +29,22 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "sert l'ecran compagnon local (par defaut 127.0.0.1:8765) puis attend":
+        "sirve la pantalla complementaria local (por defecto 127.0.0.1:8765) y espera",
+    "a lancer quand le coup d'envoi devient visible : mesure et applique le retard du flux":
+        "ejecutar al ver el saque inicial: mide y aplica el retraso del streaming",
+    "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
+        "exporta el ultimo recuerdo del partido o el ultimo de este equipo",
+    "chemin HTML de --story": "ruta HTML de --story",
+    "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
+        "retrasa tarjetas, sonido, voz y hook para alinearlos con un streaming",
     "tirs au but": "tanda de penaltis",
     # ---------------------------------------------------------- --status ----
     "actif (pid {})": "activo (pid {})",
     "arrete": "detenido",
+    "  streaming   : {}": "  retardo str.: {}",
+    "retard de {:.0f}s": "retraso de {:.0f}s",
+    "direct": "directo",
     "  releve      : {}": "  sondeo      : {}",
     "aucun pour l'instant": "todavia ninguno",
     "aucun (le daemon efface son etat en s'arretant)":

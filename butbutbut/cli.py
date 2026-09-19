@@ -18,9 +18,10 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import (__version__, config, crests, espn, fullscreen, hook, i18n,
-               journal, leagues, pinned, presenting, replay, screens, silence,
-               sound, speech, state, teams, watcher)
+from . import (__version__, companion, config, crests, espn, fullscreen, hook,
+               i18n, journal, leagues, pinned, presenting, replay, screens,
+               silence, sound, souvenir, speech, state, streaming, teams,
+               watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -118,6 +119,9 @@ def paths() -> dict:
         "pid": root / "butbutbut.pid",
         "config": root / config.FILENAME,
         "state": root / "butbutbut.json",
+        "stream_control": root / "stream-control.json",
+        "stories": root / "souvenirs.json",
+        "souvenir_dir": root / "souvenirs",
     }
     found.update(_REDIRECTED)
     return found
@@ -125,7 +129,7 @@ def paths() -> dict:
 
 @contextmanager
 def sandbox_paths(root):
-    """Detourne le journal, l'etat et le pid vers `root`, le temps d'un bloc.
+    """Detourne journal, etat, pid, synchronisation et souvenirs vers `root`.
 
     C'est l'isolation du rejeu, et elle se prend ici plutot qu'a chaque appel.
     Un rejeu traverse expres les memes chemins qu'un vrai samedi soir : il
@@ -135,7 +139,7 @@ def sandbox_paths(root):
     des matchs qui sont finis depuis longtemps, et le fichier pid ferait
     croire au vrai daemon qu'une instance tourne deja - ou l'inverse.
 
-    Detourner les trois d'un bloc, a la racine, evite de trainer un chemin en
+    Tout detourner d'un bloc, a la racine, evite de trainer un chemin en
     parametre dans dix fonctions et surtout d'en oublier une : tout ce qui
     passe par paths() est isole, y compris le code qu'on ecrira demain.
 
@@ -157,6 +161,9 @@ def sandbox_paths(root):
         "log": root / "butbutbut.log",
         "pid": root / "butbutbut.pid",
         "state": root / "butbutbut.json",
+        "stream_control": root / "stream-control.json",
+        "stories": root / "souvenirs.json",
+        "souvenir_dir": root / "souvenirs",
     }
     try:
         yield paths()
@@ -822,6 +829,70 @@ def needs_display(args) -> bool:
     return stream is None or not stream.isatty()
 
 
+def do_sync_stream(args) -> int:
+    """Le clic humain qui aligne le direct de la source sur l'image vue."""
+    if not running_pid():
+        print("butbutbut : aucun daemon actif a synchroniser.", file=sys.stderr)
+        return 1
+    data = state.read(paths()["state"])
+    try:
+        delay = streaming.delay_from_kickoff(data, match=args.sync_stream)
+        streaming.request(paths()["stream_control"], delay)
+    except (streaming.Invalid, OSError) as exc:
+        print("butbutbut : synchronisation impossible : {}".format(exc),
+              file=sys.stderr)
+        return 2
+    print("butbutbut : retard du streaming mesure a {:.0f} s. Le daemon "
+          "l'appliquera aux prochaines alertes.".format(delay))
+    return 0
+
+
+def do_serve(args) -> int:
+    """Sert l'etat local au navigateur, sans prendre la place du daemon."""
+    try:
+        host, port = companion.parse_bind(args.serve)
+    except companion.Invalid as exc:
+        print("butbutbut : {}".format(exc), file=sys.stderr)
+        return 2
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    print("butbutbut : ecran compagnon sur http://{}:{}/".format(shown, port))
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        print("butbutbut : ecoute sur le reseau local ; les scores sont lisibles "
+              "par les appareils qui peuvent joindre ce port.")
+    try:
+        companion.serve(paths()["state"], paths()["stream_control"],
+                        args.serve, stories_path=paths()["stories"])
+    except KeyboardInterrupt:
+        print("\nbutbutbut : ecran compagnon arrete.")
+    except OSError as exc:
+        print("butbutbut : serveur compagnon impossible : {}".format(exc),
+              file=sys.stderr)
+        return 1
+    return 0
+
+
+def do_story(args) -> int:
+    """Exporte en HTML autonome la derniere carte souvenir correspondante."""
+    store = souvenir.Store(paths()["stories"])
+    story = store.latest(args.story or "")
+    if story is None:
+        suffix = " pour {!r}".format(args.story) if args.story else ""
+        print("butbutbut : aucune carte souvenir{} ; elle est creee a la fin "
+              "d'un match suivi.".format(suffix), file=sys.stderr)
+        return 1
+    target = (Path(args.story_output).expanduser() if args.story_output else
+              paths()["souvenir_dir"] / souvenir.filename(story))
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(souvenir.render(story), encoding="utf-8")
+    except OSError as exc:
+        print("butbutbut : carte souvenir impossible : {}".format(exc),
+              file=sys.stderr)
+        return 1
+    print("butbutbut : carte souvenir -> {}".format(target))
+    return 0
+
+
 def do_daemon(args) -> int:
     from . import overlay
 
@@ -932,6 +1003,18 @@ def do_daemon(args) -> int:
         # se decouvrirait sinon au premier but, c'est-a-dire trop tard.
         log("annonce vocale : {}".format(voice.describe()), quiet=args.quiet)
 
+    delay = streaming.Delay(
+        args.stream_delay, paths()["stream_control"],
+        on_change=lambda seconds: log(
+            "synchronisation du streaming : retard regle a {:.0f}s"
+            .format(seconds), quiet=args.quiet))
+    if delay.active:
+        log("synchronisation du streaming : cartes, son, voix et crochet "
+            "retardes de {:.0f}s".format(delay.seconds), quiet=args.quiet)
+        if pin.active:
+            log("carte epinglee masquee pendant la synchronisation : son score "
+                "vient du direct", quiet=args.quiet)
+
     log("pour tout arreter : butbutbut --stop", quiet=args.quiet)
 
     guard.prime()
@@ -941,13 +1024,16 @@ def do_daemon(args) -> int:
     # foulee du demarrage annoncerait un daemon sans aucune activite.
     reporter = state.Reporter(paths()["state"], leagues=selection,
                               interval=args.interval,
-                              idle_interval=args.idle_interval, pin=args.pin)
+                              idle_interval=args.idle_interval, pin=args.pin,
+                              stories_path=paths()["stories"],
+                              stream_delay=delay.seconds)
     # Un match deja en cours au demarrage est epingle tout de suite : attendre
     # le coup d'envoi suivant priverait de carte celui qui lance le daemon a la
     # mi-temps, c'est-a-dire justement quand il en a envie.
     follow = pin.update(guard.all_matches())
     reporter.update(guard.all_matches(),
-                    pinned=follow.match if follow is not None else None)
+                    pinned=(follow.match if follow is not None and not delay.active
+                            else None), stream_delay=delay.seconds)
 
     stack, printer = None, None
     if args.no_overlay:
@@ -979,10 +1065,11 @@ def do_daemon(args) -> int:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
                             on_goal=on_goal, hush=hush, voice=voice,
-                            printer=printer)
+                            printer=printer, delay=delay)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                              crest, on_goal=on_goal, hush=hush, voice=voice)
+                              crest, on_goal=on_goal, hush=hush, voice=voice,
+                              delay=delay)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -1046,7 +1133,8 @@ def show_in_terminal(printer, args, event) -> None:
 
 
 def _watch_headless(guard, args, stopping, reporter, pin,
-                    on_goal=None, hush=None, voice=None, printer=None) -> None:
+                    on_goal=None, hush=None, voice=None, printer=None,
+                    delay=None) -> None:
     """Sans fenetre : un seul fil, le son, le journal, et le terminal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
@@ -1057,17 +1145,22 @@ def _watch_headless(guard, args, stopping, reporter, pin,
     l'ancien comportement - le son et le journal, rien de plus.
     """
     hush = hush if hush is not None else silence.Silence()
+    delay = delay if delay is not None else streaming.Delay()
     while not stopping.is_set():
-        events = guard.tick()
+        detected = guard.tick()
+        for event in detected:
+            log(event.log_line(), quiet=args.quiet)
+        events = delay.push(detected)
         # "Est-ce le moment ?" une fois par releve, pas une fois par but : la
         # reponse ne bougerait pas entre deux buts du meme tour, et la poser
         # deux fois ferait deux lignes de journal pour un seul changement.
         hushed = hush.reason()
-        follow = pin.update(guard.all_matches())
-        reporter.update(guard.all_matches(), events,
-                        pinned=follow.match if follow is not None else None)
+        selected = pin.update(guard.all_matches())
+        follow = None if delay.active else selected
+        reporter.update(guard.all_matches(), detected, visible_events=events,
+                        pinned=follow.match if follow is not None else None,
+                        stream_delay=delay.seconds)
         for event in events:
-            log(event.log_line(), quiet=args.quiet)
             if event.spoiler_free:
                 continue            # match en differe : le journal, et rien d'autre
             # Le crochet part avec le journal, pas avec la carte : il decrit
@@ -1097,11 +1190,12 @@ def _watch_headless(guard, args, stopping, reporter, pin,
 
         # plan_wait() et pas next_delay() : le watcher retient ce qu'on s'est
         # engage a attendre, et voit ainsi au tick suivant qu'on a dormi.
-        stopping.wait(guard.plan_wait())
+        stopping.wait(delay.next_wait(guard.plan_wait()))
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
-                      crest=None, on_goal=None, hush=None, voice=None) -> None:
+                      crest=None, on_goal=None, hush=None, voice=None,
+                      delay=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -1115,17 +1209,24 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
     from . import overlay
 
     hush = hush if hush is not None else silence.Silence()
+    delay = delay if delay is not None else streaming.Delay()
     pending = queue.Queue()
     pinning = queue.Queue()
 
     def poll():
         while not stopping.is_set():
             try:
-                events = guard.tick()
+                detected = guard.tick()
+                for event in detected:
+                    log(event.log_line(), quiet=args.quiet)
+                events = delay.push(detected)
                 hushed = hush.reason()
-                follow = pin.update(guard.all_matches())
-                reporter.update(guard.all_matches(), events,
-                                pinned=follow.match if follow is not None else None)
+                selected = pin.update(guard.all_matches())
+                follow = None if delay.active else selected
+                reporter.update(guard.all_matches(), detected,
+                                visible_events=events,
+                                pinned=(follow.match if follow is not None else None),
+                                stream_delay=delay.seconds)
                 if pin.active:
                     # "AUCUNE carte" vaut aussi pour l'epinglee : un tableau de
                     # bord allume toute la nuit est exactement ce dont on se
@@ -1133,7 +1234,6 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     # le silence, puisque chaque tour repose la question.
                     pinning.put(None if hushed else follow)
                 for event in events:
-                    log(event.log_line(), quiet=args.quiet)
                     # Depuis le fil de surveillance, et non depuis drain() :
                     # le crochet ne doit rien devoir a tkinter, et il part
                     # meme quand l'affichage de la carte echoue. Un match
@@ -1156,7 +1256,7 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
-            stopping.wait(guard.plan_wait())
+            stopping.wait(delay.next_wait(guard.plan_wait()))
 
     thread = threading.Thread(target=poll, name="butbutbut-watch", daemon=True)
     thread.start()
@@ -3072,6 +3172,16 @@ def do_status(args) -> int:
              silence.Silence(args.quiet_hours,
                              while_presenting=args.quiet_while_presenting
                              ).describe()))
+    live_state = state.read(p["state"]) if pid else None
+    active_delay = ((live_state or {}).get("stream_delay")
+                    if live_state else args.stream_delay)
+    try:
+        active_delay = float(active_delay or 0)
+    except (TypeError, ValueError):
+        active_delay = 0.0
+    print(tr("  streaming   : {}",
+             tr("retard de {:.0f}s", active_delay) if active_delay
+             else tr("direct")))
     print(tr("  langue      : {}", i18n.describe()))
     summary = leagues.describe(selection)
     names = ", ".join(league.name for league in selection)
@@ -3206,8 +3316,10 @@ def do_screens(args) -> int:
 
 
 def do_paths(args) -> int:
-    for key, value in paths().items():
-        print(tr("{:6} {}", key, value))
+    found = paths()
+    width = max(len(key) for key in found)
+    for key, value in found.items():
+        print("{:<{}} {}".format(key, width, value))
     return 0
 
 
@@ -3279,6 +3391,21 @@ def build_parser() -> argparse.ArgumentParser:
                         version="butbutbut {}".format(__version__))
     parser.add_argument("--gui", action="store_true",
                         help=tr("ouvre le centre de controle graphique"))
+    parser.add_argument("--serve", nargs="?", const="", default=None,
+                        metavar="[HOTE:]PORT",
+                        help=tr("sert l'ecran compagnon local (par defaut "
+                                "127.0.0.1:8765) puis attend"))
+    parser.add_argument("--sync-stream", nargs="?", const="", default=None,
+                        dest="sync_stream", metavar=tr("EQUIPE"),
+                        help=tr("a lancer quand le coup d'envoi devient visible : "
+                                "mesure et applique le retard du flux"))
+    parser.add_argument("--story", nargs="?", const="", default=None,
+                        metavar=tr("EQUIPE"),
+                        help=tr("exporte la derniere carte souvenir, ou la "
+                                "derniere qui concerne cette equipe"))
+    parser.add_argument("--story-output", default=None, dest="story_output",
+                        metavar=tr("FICHIER"),
+                        help=tr("chemin HTML de --story"))
 
     parser.add_argument("--test", nargs="?", type=int, const=1, default=0,
                         metavar=tr("N"),
@@ -3471,6 +3598,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help=tr("au reveil apres une veille, resume en une "
                              "carte muette les buts tombes pendant l'absence "
                              "(par defaut le reveil reste silencieux)"))
+    parser.add_argument("--stream-delay", type=float, default=0.0,
+                        dest="stream_delay", metavar=tr("SECONDES"),
+                        help=tr("retarde cartes, son, voix et crochet pour les "
+                                "aligner sur un streaming"))
     parser.add_argument("--on-goal", default=None, dest="on_goal",
                         metavar=tr("COMMANDE"),
                         help=tr("commande a lancer a chaque but, avec le detail "
@@ -3606,6 +3737,15 @@ def main(argv=None) -> int:
               file=sys.stderr)
         args.quiet_while_presenting = False
     args.before_kickoff = max(0, args.before_kickoff)
+    try:
+        args.stream_delay = streaming.normalize_delay(args.stream_delay)
+    except streaming.Invalid as exc:
+        print("butbutbut : {}".format(exc), file=sys.stderr)
+        return 2
+    if args.story_output and args.story is None:
+        print("butbutbut : --story-output ne sert qu'avec --story.",
+              file=sys.stderr)
+        return 2
     # `--volume 0`, c'est le mode muet dit autrement. Le ramener a --no-sound
     # ici evite d'aller choisir un son, d'en mesurer la duree et de le tendre a
     # un lecteur pour qu'il ne le joue pas : la carte reste a l'ecran le temps
@@ -3705,6 +3845,12 @@ def main(argv=None) -> int:
         return do_screens(args)
     if args.paths:
         return do_paths(args)
+    if args.sync_stream is not None:
+        return do_sync_stream(args)
+    if args.serve is not None:
+        return do_serve(args)
+    if args.story is not None:
+        return do_story(args)
     if args.check_update:
         return do_check_update(args)
     if args.update:

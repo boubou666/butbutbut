@@ -58,12 +58,13 @@ peine de la faire remonter par-dessus le jeu (voir `desktop_overlay.window.prepa
 
 from __future__ import annotations
 
+import math
 import sys
 import time
 
 from desktop_overlay import window as overlay_window
 
-from . import crests, fullscreen, i18n, leagues, screens, sound, sports
+from . import crests, fullscreen, i18n, leagues, screens, sound, sports, themes
 
 TRANSPARENT_KEY = "#ff00fe"
 CARD_BG = "#0d1017"
@@ -72,6 +73,7 @@ TEXT = "#f3f5f9"
 MUTED = "#8b95a7"
 CANCEL_ACCENT = "#ffa63d"
 RED_CARD = "#e5484d"
+COUNTRY_ATLAS = themes.ATLAS
 
 PAD_X = 22
 PAD_Y = 16
@@ -242,12 +244,14 @@ class Card:
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
                  "away_score", "side", "parts", "accent", "title_color",
                  "extra", "team_accent", "home_logo", "away_logo",
-                 "home_reds", "away_reds", "celebration")
+                 "home_reds", "away_reds", "celebration", "motif",
+                 "motif_path")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
                  side, detail, accent, title_color=None, extra=(),
                  team_accent=None, home_logo=None, away_logo=None,
-                 home_reds=0, away_reds=0, celebration=""):
+                 home_reds=0, away_reds=0, celebration="", motif="",
+                 motif_path=None):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -281,6 +285,10 @@ class Card:
         # Vide sur toutes les cartes sauf un vrai but de football. La chaine
         # est deja localisee au moment ou la carte est construite.
         self.celebration = str(celebration or "")
+        # Une cle dans l'atlas de cartes postales. Vide reste accepte pour les
+        # integrations et les anciennes cartes construites a la main.
+        self.motif = str(motif or "")
+        self.motif_path = motif_path
 
     @property
     def detail(self) -> str:
@@ -298,6 +306,10 @@ class Card:
         title_color = accent
         team_accent = accent
         reds = event.match.red_card_tally()
+        motif = themes.match_motif(event.match)
+        themed_id = (event.match.away_id if event.side == "away"
+                     else event.match.home_id)
+        motif_path = themes.club_asset(themed_id)
 
         if event.sober:
             # Temps forts, expulsion, avant-match : rien de tout ca ne doit
@@ -323,7 +335,10 @@ class Card:
             detail=event.detail_parts(),
             accent=accent,
             title_color=title_color,
-            extra=event.extra_parts(),
+            # Le contexte est une ligne de carte, pas une nouvelle nature de
+            # but : le titre garde « BUT SUR PENALTY », le journal garde sa
+            # grammaire stable, et « EGALISATION » vient juste en dessous.
+            extra=event.context_parts() + event.extra_parts(),
             team_accent=team_accent,
             home_logo=_crest(crest, event.match.home_logo),
             away_logo=_crest(crest, event.match.away_logo),
@@ -334,6 +349,8 @@ class Card:
             away_reds=reds[1],
             celebration=(leagues.goal_celebration(event.league)
                          if event.goal and event.sport is sports.SOCCER else ""),
+            motif=motif,
+            motif_path=motif_path,
         )
 
     @classmethod
@@ -373,6 +390,8 @@ class Card:
             away_reds=sample.get("reds", (0, 0))[1],
             celebration=(leagues.goal_celebration(league)
                          if sport is sports.SOCCER else ""),
+            motif=themes.league_motif(league),
+            motif_path=themes.club_asset(scoring[1]),
         )
 
     @classmethod
@@ -407,6 +426,8 @@ class Card:
             away_logo=_crest(crest, match.away_logo),
             home_reds=reds[0],
             away_reds=reds[1],
+            motif=themes.match_motif(match),
+            motif_path=themes.club_asset(match.home_id),
         )
 
     @classmethod
@@ -439,6 +460,8 @@ class Card:
             away_logo=_crest(crest, espn.logo_url(away[1])),
             home_reds=sample.get("reds", (0, 0))[0],
             away_reds=sample.get("reds", (0, 0))[1],
+            motif=themes.league_motif(league),
+            motif_path=themes.club_asset(home[1]),
         )
 
     def text_line(self) -> str:
@@ -744,11 +767,64 @@ def load_logos(tk, card: Card, box, master=None) -> dict:
     return found
 
 
+def load_motif(tk, card: Card, box, master=None, atlas=None, cache=None) -> dict:
+    """Decoupe le filigrane du pays dans l'atlas, sans Pillow ni reseau.
+
+    Tk sait copier une zone d'un ``PhotoImage``. Le fichier reste donc unique
+    dans le paquet — la garantie concrete que les vingt dessins partagent le
+    meme traitement — et une carte ne garde en memoire que sa petite vignette.
+    Une version ancienne de Tk ou un PNG illisible retire simplement le decor :
+    le score, lui, doit toujours s'afficher.
+    """
+    if not card.motif and not card.motif_path:
+        return {}
+    try:
+        if card.motif_path:
+            source = tk.PhotoImage(file=str(card.motif_path), master=master)
+            target = max(48, int(box["height"] * 0.78))
+            factor = max(1, int(math.ceil(source.height() / float(target))))
+            key = ("club", str(card.motif_path), factor)
+            sprite = (cache or {}).get(key)
+            if sprite is None:
+                sprite = source.subsample(factor, factor) if factor > 1 else source
+                if cache is not None:
+                    cache[key] = sprite
+            return {"motif": sprite, "motif_source": source}
+
+        atlas = atlas or tk.PhotoImage(file=str(COUNTRY_ATLAS), master=master)
+        width, height = atlas.width(), atlas.height()
+        x0, y0, x1, y1 = themes.atlas_box(card.motif, width, height)
+        # Le motif occupe environ les trois quarts de la hauteur et reste un
+        # filigrane, jamais une quatrieme ligne a lire.
+        target = max(48, int(box["height"] * 0.78))
+        factor = max(1, int(math.ceil((y1 - y0) / float(target))))
+        key = (card.motif, factor)
+        sprite = (cache or {}).get(key)
+        if sprite is None:
+            sprite = tk.PhotoImage(width=x1 - x0, height=y1 - y0,
+                                   master=master)
+            sprite.tk.call(sprite, "copy", atlas, "-from", x0, y0, x1, y1,
+                           "-to", 0, 0)
+            if factor > 1:
+                sprite = sprite.subsample(factor, factor)
+            if cache is not None:
+                cache[key] = sprite
+        return {"motif": sprite, "motif_atlas": atlas}
+    except Exception:
+        return {}
+
+
 def _draw(canvas, card: Card, fonts, box, background, images=None):
     width, height = box["width"], box["height"]
 
     canvas.create_rectangle(0, 0, width, height, fill=background, outline=background)
     _rounded(canvas, 0, 0, width - 1, height - 1, RADIUS, fill=CARD_BG, outline=CARD_EDGE)
+    # Carte postale en filigrane : elle est posee avant tout le texte. Sa
+    # palette sombre et or fait partie du PNG ; le score reste donc au-dessus
+    # et garde exactement la meme hierarchie dans tous les pays.
+    motif = (images or {}).get("motif")
+    if motif is not None:
+        canvas.create_image(width - 9, height - 3, image=motif, anchor="se")
     # Filet vertical aux couleurs du championnat, cale dans l'arrondi.
     canvas.create_rectangle(3, RADIUS // 2, 3 + BAR_WIDTH, height - RADIUS // 2,
                             fill=card.accent, outline=card.accent)
@@ -889,6 +965,14 @@ class _Panel:
         # reference, tkinter les ramasse et les ecussons disparaissent.
         self.images = load_logos(self.stack.tk, card, self.box,
                                  master=self.window)
+        motif_cache = getattr(self.stack, "_motif_cache", None)
+        decor = load_motif(
+            self.stack.tk, card, self.box, master=self.window,
+            atlas=getattr(self.stack, "_country_atlas", None),
+            cache=motif_cache)
+        if decor.get("motif_atlas") is not None:
+            self.stack._country_atlas = decor["motif_atlas"]
+        self.images.update(decor)
 
         self.canvas.delete("all")
         self.canvas.configure(width=self.width, height=self.height)
@@ -1092,6 +1176,10 @@ class Stack:
         self._pinned = None    # la carte epinglee, ou None : elle tient le coin
         self._pending = 0      # cartes programmees mais pas encore affichees
         self._monitor = None
+        # Un atlas par racine Tk, puis une petite vignette par pays/taille. La
+        # carte epinglee se redessine souvent : elle ne relit jamais le PNG.
+        self._country_atlas = None
+        self._motif_cache = {}
 
     # ------------------------------------------------------------- cycle ----
 
@@ -1132,6 +1220,8 @@ class Stack:
             except Exception:
                 pass
             self.root = None
+            self._country_atlas = None
+            self._motif_cache = {}
 
     def stop(self) -> None:
         """Fait rendre la main a run()."""

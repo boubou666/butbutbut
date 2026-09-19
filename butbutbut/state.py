@@ -27,9 +27,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from . import souvenir
 from .i18n import tr
 
-VERSION = 1
+VERSION = 2
+RECENT_EVENTS = 24
 
 # On tolere trois releves manques avant de crier : la source repond parfois
 # lentement, et le backoff de watcher.py peut deja avoir espace un passage.
@@ -144,12 +146,33 @@ def today() -> str:
 
 def _match_row(match) -> dict:
     return {
+        "id": str(match.id),
         "league": match.league.name,
         "home": match.home,
         "away": match.away,
         "home_score": match.home_score,
         "away_score": match.away_score,
         "clock": match.clock or match.detail or "",
+    }
+
+
+def _event_row(event) -> dict:
+    """La forme publique d'une alerte, pour l'ecran compagnon."""
+    return {
+        "at": event.at,
+        "kind": event.kind,
+        "title": event.title,
+        "context": getattr(event, "context", ""),
+        "context_label": event.context_label() if event.goal else "",
+        "league": event.league.name,
+        "home": event.match.home,
+        "away": event.match.away,
+        "home_score": event.home_score,
+        "away_score": event.away_score,
+        "score_line": event.score_line,
+        "team": event.team,
+        "detail": event.detail_line(),
+        "minute": event.minute,
     }
 
 
@@ -161,9 +184,12 @@ class Reporter:
     """
 
     __slots__ = ("path", "leagues", "interval", "idle_interval", "started_at",
-                 "goals", "day", "pin")
+                 "goals", "day", "pin", "recent", "last_kickoff_at",
+                 "last_kickoff_match", "recent_kickoffs", "stream_delay",
+                 "stories")
 
-    def __init__(self, path, leagues=(), interval=0, idle_interval=0, pin=""):
+    def __init__(self, path, leagues=(), interval=0, idle_interval=0, pin="",
+                 stories_path=None, stream_delay=0.0):
         self.path = Path(path)
         self.leagues = [league.name for league in leagues]
         self.interval = interval
@@ -176,6 +202,12 @@ class Reporter:
         # daemon suit vraiment - le sien peut avoir ete lance avec d'autres
         # options, ou avant une modification du fichier de configuration.
         self.pin = str(pin or "")
+        self.recent = []
+        self.last_kickoff_at = None
+        self.last_kickoff_match = ""
+        self.recent_kickoffs = []
+        self.stream_delay = float(stream_delay or 0.0)
+        self.stories = souvenir.Store(stories_path) if stories_path else None
 
     def record(self, events=()) -> None:
         """Compte les buts du jour, buts annules et phases de match exclus."""
@@ -183,6 +215,26 @@ class Reporter:
             if getattr(event, "goal", False):
                 self._roll()
                 self.goals += 1
+            if getattr(event, "kind", "") == "kickoff":
+                self.last_kickoff_at = event.at
+                self.last_kickoff_match = event.score_line
+                self.recent_kickoffs.append({
+                    "id": str(event.match.id),
+                    "at": event.at,
+                    "match": event.score_line,
+                    "home": event.match.home,
+                    "away": event.match.away,
+                })
+                self.recent_kickoffs = self.recent_kickoffs[-8:]
+            if getattr(event, "kind", "") == "fulltime" and self.stories:
+                self.stories.add(souvenir.from_match(event.match, event.at))
+
+    def remember(self, events=()) -> None:
+        """Garde les alertes effectivement livrees, jamais le direct brut."""
+        for event in events:
+            if not getattr(event, "spoiler_free", False):
+                self.recent.append(_event_row(event))
+        self.recent = self.recent[-RECENT_EVENTS:]
 
     def snapshot(self, matches=(), pinned=None) -> dict:
         matches = list(matches)
@@ -201,6 +253,13 @@ class Reporter:
             "started_at": self.started_at,
             "day": self.day,
             "goals_today": self.goals,
+            "stream_delay": self.stream_delay,
+            "last_kickoff_at": self.last_kickoff_at,
+            "last_kickoff_match": self.last_kickoff_match,
+            "recent_kickoffs": list(self.recent_kickoffs),
+            "recent_events": list(self.recent),
+            "souvenirs": (list(self.stories.stories[-10:])
+                           if self.stories is not None else []),
             "interval": self.interval,
             "idle_interval": self.idle_interval,
             "leagues": list(self.leagues),
@@ -208,9 +267,18 @@ class Reporter:
             "matches": [_match_row(match) for match in live],
         }
 
-    def update(self, matches=(), events=(), pinned=None) -> bool:
-        """Un releve vient de finir : compter, puis publier."""
+    def update(self, matches=(), events=(), pinned=None, visible_events=None,
+               stream_delay=None) -> bool:
+        """Un releve vient de finir : compter, puis publier.
+
+        ``events`` est le direct reel, pour le journal de bord et les totaux.
+        ``visible_events`` est ce qui vient d'etre livre apres retard. Omis,
+        il vaut ``events`` et preserve le contrat des anciens appelants.
+        """
         self.record(events)
+        self.remember(events if visible_events is None else visible_events)
+        if stream_delay is not None:
+            self.stream_delay = float(stream_delay)
         return write(self.path, self.snapshot(matches, pinned=pinned))
 
     def _roll(self) -> None:

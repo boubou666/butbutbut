@@ -173,10 +173,13 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
           date="2026-09-06T15:15Z", details=(), status_name="",
           home_colors=(), away_colors=(), home_logo="", away_logo="",
           home_form="", away_form="", home_record="", away_record="",
-          notes=(), home_stats=(), away_stats=()):
+          notes=(), home_stats=(), away_stats=(), venue_country=""):
+    venue = ({"venue": {"fullName": "Stade de test",
+                         "address": {"country": venue_country}}}
+             if venue_country else {})
     return {
         "id": match_id,
-        "competitions": [{
+        "competitions": [dict({
             "id": match_id,
             "date": date,
             # La source pose `notes` sur CHAQUE match, et la laisse vide sur 97
@@ -199,7 +202,7 @@ def event(match_id="1", home="Angers", away="Stade Rennais", home_score=0,
                        "type": {"state": state, "shortDetail": detail,
                                 "name": status_name}},
             "details": list(details),
-        }],
+        }, **venue)],
     }
 
 

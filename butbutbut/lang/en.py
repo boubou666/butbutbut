@@ -22,10 +22,22 @@ nouvelle qui ne serait ni traduite ici ni declaree laissee en francais.
 """
 
 MESSAGES = {
+    "sert l'ecran compagnon local (par defaut 127.0.0.1:8765) puis attend":
+        "serve the local companion screen (default 127.0.0.1:8765) and wait",
+    "a lancer quand le coup d'envoi devient visible : mesure et applique le retard du flux":
+        "run when kick-off becomes visible: measure and apply the stream delay",
+    "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
+        "export the latest match keepsake, or the latest for this team",
+    "chemin HTML de --story": "HTML path for --story",
+    "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
+        "delay cards, sound, speech and hook to align them with a stream",
     "tirs au but": "penalty shootout",
     # ------------------------------------------------------------ --status --
     "actif (pid {})": "running (pid {})",
     "arrete": "stopped",
+    "  streaming   : {}": "  stream delay: {}",
+    "retard de {:.0f}s": "{:.0f}s delay",
+    "direct": "live",
     "  releve      : {}": "  last poll   : {}",
     "aucun pour l'instant": "none yet",
     "aucun (le daemon efface son etat en s'arretant)":

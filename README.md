@@ -92,6 +92,9 @@ uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/deskt
 butbutbut                     # surveille en fond (comportement par defaut)
 butbutbut --speak             # ... et dit le but a voix haute, en plus du son
 butbutbut --gui               # le centre de controle graphique
+butbutbut --sync-stream       # a lancer quand le coup d'envoi apparait sur ton flux
+butbutbut --serve             # l'ecran compagnon sur http://127.0.0.1:8765
+butbutbut --story om          # une carte souvenir HTML du dernier match de l'OM
 butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
@@ -376,6 +379,15 @@ vraiment, c'est-a-dire ses pauses - il n'a pas de mi-temps, il a deux pauses
 entre trois tiers-temps. Le rugby, lui, garde le vocabulaire du football pour
 le deroulement du match (il a bien deux mi-temps) et n'apporte que ses actions.
 
+Un score qui monte porte aussi son **contexte** : `OUVERTURE DU SCORE`,
+`EGALISATION`, `PREND L'AVANTAGE`, `CREUSE L'ECART` ou `REDUIT L'ECART`.
+Le contexte vient uniquement de l'avant et de l'apres ; butbutbut n'annonce
+jamais un « but de la victoire » avant la fin. Il apparait sur une ligne de la
+carte sans remplacer sa nature : un `BUT SUR PENALTY` peut donc etre aussi une
+`EGALISATION`. Le crochet recoit le meme verdict, sans traduction, dans
+`BUT_CONTEXT` (`opening`, `equalizer`, `go_ahead`, `extends_lead`,
+`closes_gap`, `comeback`).
+
 ### Ce que chaque sport publie vraiment
 
 Les trois ont ete verifies contre la source, endpoint par endpoint. Ils ne
@@ -601,6 +613,30 @@ Le reglage a sa cle de configuration, pour ne pas le retaper le samedi suivant :
 teams = om
 spoiler_free = om
 ```
+
+### Synchroniser avec un streaming
+
+Un flux internet peut avoir trente secondes, une minute ou davantage de
+retard sur le direct. Le mode sans spoiler coupe les alertes ; la
+synchronisation les **garde et les decale** :
+
+```bash
+butbutbut --stream-delay 90       # retard connu : 90 secondes
+butbutbut --sync-stream           # a cliquer quand TU vois le coup d'envoi
+butbutbut --sync-stream om        # precise le match pendant un multiplex
+```
+
+La seconde commande lit l'instant ou le daemon a detecte le coup d'envoi,
+mesure l'ecart avec le clic et recale le daemon deja lance. Le bouton
+« Je vois le coup d'envoi » de la GUI et celui de l'ecran compagnon font la
+meme chose. Le retard vaut pour **la carte, le son, la voix et `--on-goal`** :
+aucune integration ne raconte le but avant l'image. Une carte epinglee est
+masquee pendant ce mode, car son score vient necessairement du direct brut.
+
+Le journal, lui, garde l'heure reelle de detection. C'est volontaire :
+`--today`, les statistiques et une enquete de panne ne doivent pas dater un but
+d'apres la latence d'un fournisseur video. La cle permanente est
+`stream_delay = 90`; zero revient au direct au prochain demarrage.
 
 ### Ne pas deranger
 
@@ -1137,6 +1173,29 @@ montre la carte d'exemple, et `--replay` rejoue une soiree entiere, cartes de
 terminal comprises : voir [Enregistrer un match, et le
 rejouer](#enregistrer-un-match-et-le-rejouer).
 
+### Une carte postale propre a chaque club
+
+Chaque club des premieres divisions couvertes possede son **propre filigrane
+territorial** : un monument, un paysage, une architecture ou un symbole local
+de sa ville ou de sa region. Les 384 illustrations embarquees couvrent 316 clubs
+masculins et 68 clubs feminins. Elles partagent toutes la meme direction
+artistique : encre bleu nuit et or vieilli, grain d'affiche de voyage, cadrage
+et densite identiques. Le score, les ecussons et la couleur du buteur gardent
+donc exactement la meme hierarchie partout.
+
+Sur une carte de but, **le territoire du club qui marque l'emporte**. Un but de
+l'OM montre Marseille, meme a Paris ; un but du PSG montre Paris, meme au
+Velodrome. Les cartes sans camp explicite prennent le club recevant. Une carte
+souvenir prend le vainqueur, ou le club recevant si le match est nul. Cette
+regle fonctionne aussi pour deux equipes de pays differents sans fabriquer un
+theme hybride illisible.
+
+Si un club vient d'etre promu ou n'a pas encore son illustration, butbutbut
+retombe sur la **carte postale du pays du stade**. Le pays vient de
+`competitions[0].venue.address.country` ; a defaut, un championnat national
+donne son pays et une coupe internationale prend le globe de voyage. Les images
+sont toutes embarquees dans le paquet : aucun telechargement n'attend le but.
+
 ### Les ecussons et les couleurs des clubs
 
 La source publie, pour chaque equipe, l'URL de son ecusson et ses deux
@@ -1640,6 +1699,7 @@ no_overlay = non
 terminal = non
 no_phase_cards = non
 catch_up = non
+stream_delay = 0
 quiet = non
 
 # Ne pas deranger : la nuit, et quand on presente
@@ -1882,6 +1942,7 @@ dans la commande : `$BUT_TEXT` sous un shell, `%BUT_TEXT%` sous cmd.
 | `BUT_SCORER`, `BUT_MINUTE` | `M. Greenwood`, `67'` | vides tant que la source ne les publie pas |
 | `BUT_OWN_GOAL`, `BUT_PENALTY` | `0`, `0` | `1` ou `0` |
 | `BUT_DELTA` | `1` | `-1` quand le but est retire, `2` quand un doublon est rattrape |
+| `BUT_CONTEXT` | `go_ahead` | `opening`, `equalizer`, `go_ahead`, `extends_lead`, `closes_gap`, `comeback`, ou vide |
 
 Ces noms sont un **contrat** : ils partent vivre dans des scripts qui ne sont
 pas dans ce depot, ils ne bougeront plus. Ils sont en anglais, contrairement au
@@ -2714,6 +2775,41 @@ releve, mais il peut mettre un peu plus longtemps que le match d'origine -
 
 ---
 
+## L'ecran compagnon local
+
+```bash
+butbutbut --serve                    # http://127.0.0.1:8765
+butbutbut --serve 0.0.0.0:8765       # visible sur le reseau local
+```
+
+Le premier n'ecoute que cette machine. Le second ouvre explicitement le port
+au telephone, a la tablette, a OBS ou a un autre ecran du meme reseau. La page
+montre les matchs, les alertes effectivement livrees et les derniers
+souvenirs ; elle se rafraichit sans rechargement. Elle est autonome : aucune
+police, bibliotheque JavaScript ni image distante n'est chargee.
+
+Quand un retard de streaming est actif, les scores bruts du direct sont
+masques : seules les alertes deja sorties de la file retardee apparaissent.
+Le bouton de synchronisation mesure le retard au coup d'envoi. Il n'y a ni
+compte ni mot de passe ; pour cette raison l'ecoute reseau n'est jamais le
+defaut et ne doit pas etre exposee a Internet.
+
+## La carte souvenir du match
+
+Chaque fin de match suivie rejoint `souvenirs.json`, avec le score, les
+equipes et la chronologie que la source publie. Les cinquante dernieres sont
+gardees. L'ecran compagnon les montre ; la commande en fabrique une page HTML
+autonome, facile a conserver ou partager :
+
+```bash
+butbutbut --story                 # le dernier match termine
+butbutbut --story om              # le dernier qui concerne l'OM
+butbutbut --story om --story-output ~/om-lyon.html
+```
+
+Le fichier n'appelle aucun service externe. Si la source a omis un buteur ou
+une action, la carte le laisse absent plutot que de l'inventer.
+
 ## Savoir si la surveillance tourne vraiment
 
 Un daemon vivant mais bloque ressemble a un daemon qui marche : le fichier pid
@@ -3341,7 +3437,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 ```
 
-**1649 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1708 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,
