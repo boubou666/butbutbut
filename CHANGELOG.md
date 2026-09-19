@@ -7,6 +7,16 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.18.0] - 2026-09-19
+
+### Ajoute
+
+- Les cartes de vrai but s'ouvrent sur un cri anime qui entre par la droite,
+  respire au centre puis ressort a gauche avant de reveler le score. Le texte
+  suit la langue du championnat ou de la coupe nationale ; les competitions
+  europeennes, continentales et internationales suivent la langue de
+  l'utilisateur.
+
 ### Corrige
 
 - Le calendrier `--next` et le canari traduisent les intervalles de dates en
@@ -2219,7 +2229,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.17.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.18.0...HEAD
+[1.18.0]: https://github.com/boubou666/butbutbut/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/butbutbut/compare/v1.17.0...v1.17.1
 [1.17.0]: https://github.com/boubou666/butbutbut/compare/v1.16.0...v1.17.0
 [1.16.0]: https://github.com/boubou666/butbutbut/compare/v1.15.0...v1.16.0

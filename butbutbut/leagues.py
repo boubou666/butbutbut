@@ -108,6 +108,64 @@ SPORT_SEPARATORS = ":/"
 # Couleur des competitions ouvertes a la volee, hors catalogue.
 NEUTRAL_ACCENT = "#7cc0ff"
 
+# La celebration qui traverse une carte de but parle la langue du pays ou se
+# joue la competition, pas necessairement celle de l'interface. Les cinq
+# langues que l'application parle deja vivent dans i18n ; les autres n'ont
+# besoin que de ce cri, et restent donc ici plutot que de faire croire a une
+# sixieme traduction complete de l'interface.
+_DOMESTIC_LANGUAGES = {
+    "fra": "fr",
+    "eng": "en",
+    "sco": "en",
+    "usa": "en",
+    "esp": "es",
+    "mex": "es",
+    "arg": "es",
+    "ita": "it",
+    "ger": "de",
+    "por": "pt",
+    "bra": "pt",
+    "ned": "nl",
+    "bel": "nl",
+    "tur": "tr",
+    "ksa": "ar",
+    "jpn": "ja",
+}
+
+_EXTRA_GOAL_CELEBRATIONS = {
+    "pt": "GOOOOOOOOOOOOOOOL!",
+    "nl": "GOOOOOOOOOOOOOOAL!",
+    "tr": "GOOOOOOOOOOOOOOOL!",
+    "ar": "هــــــــــــــدف!",
+    "ja": "ゴーーーーーーーーール！",
+}
+
+# Ces competitions n'appartiennent pas a une seule langue : une Ligue des
+# champions ou une Coupe du monde suit donc expres la langue de l'utilisateur.
+_INTERNATIONAL_PREFIXES = ("uefa.", "fifa.", "conmebol.", "concacaf.")
+
+
+def goal_celebration(league, user_lang=None) -> str:
+    """Le long cri de but propre a une competition.
+
+    Les championnats et coupes nationales suivent leur pays (le prefixe ESPN
+    du slug). Les competitions continentales/internationales, ainsi que les
+    slugs inconnus dont le pays n'est pas identifiable, retombent sur la
+    langue active de l'utilisateur.
+    """
+    slug = str(getattr(league, "slug", "") or "").lower()
+    fallback = i18n.normalize(user_lang) or i18n.language()
+    if slug.startswith(_INTERNATIONAL_PREFIXES):
+        language = fallback
+    else:
+        country = slug.partition(".")[0]
+        language = _DOMESTIC_LANGUAGES.get(country, fallback)
+
+    if language in i18n.LANGUAGES:
+        return i18n.text("goal_celebration", lang=language)
+    return _EXTRA_GOAL_CELEBRATIONS.get(
+        language, i18n.text("goal_celebration", lang=fallback))
+
 
 class League:
     """Une competition : identite ESPN + habillage de la carte."""

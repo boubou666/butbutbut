@@ -63,7 +63,7 @@ import time
 
 from desktop_overlay import window as overlay_window
 
-from . import crests, fullscreen, i18n, screens, sound
+from . import crests, fullscreen, i18n, leagues, screens, sound, sports
 
 TRANSPARENT_KEY = "#ff00fe"
 CARD_BG = "#0d1017"
@@ -102,6 +102,17 @@ FADE_IN = 0.22
 FADE_OUT = 0.40
 FADE_STEPS = 12
 PUMP_MS = 120            # cadence des petites taches de la boucle tkinter
+
+# Un but commence par un bandeau qui traverse la carte, puis laisse place au
+# score et au buteur. Trois temps courts : entree, respiration, sortie.
+CELEBRATION_FRAME_MS = 25
+CELEBRATION_ENTER_FRAMES = 14
+CELEBRATION_HOLD_FRAMES = 18
+CELEBRATION_EXIT_FRAMES = 14
+CELEBRATION_FRAMES = (CELEBRATION_ENTER_FRAMES
+                      + CELEBRATION_HOLD_FRAMES
+                      + CELEBRATION_EXIT_FRAMES)
+CELEBRATION_MS = CELEBRATION_FRAMES * CELEBRATION_FRAME_MS
 
 MAX_VISIBLE = 5          # au-dela, la plus ancienne carte cede sa place
 
@@ -231,12 +242,12 @@ class Card:
     __slots__ = ("title", "league", "minute", "home", "away", "home_score",
                  "away_score", "side", "parts", "accent", "title_color",
                  "extra", "team_accent", "home_logo", "away_logo",
-                 "home_reds", "away_reds")
+                 "home_reds", "away_reds", "celebration")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
                  side, detail, accent, title_color=None, extra=(),
                  team_accent=None, home_logo=None, away_logo=None,
-                 home_reds=0, away_reds=0):
+                 home_reds=0, away_reds=0, celebration=""):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -267,6 +278,9 @@ class Card:
         # aucun carton et reste exactement la carte qu'elle etait.
         self.home_reds = int(home_reds or 0)
         self.away_reds = int(away_reds or 0)
+        # Vide sur toutes les cartes sauf un vrai but de football. La chaine
+        # est deja localisee au moment ou la carte est construite.
+        self.celebration = str(celebration or "")
 
     @property
     def detail(self) -> str:
@@ -318,6 +332,8 @@ class Card:
             # dix minutes plus tot explique le but.
             home_reds=reds[0],
             away_reds=reds[1],
+            celebration=(leagues.goal_celebration(event.league)
+                         if event.goal and event.sport is sports.SOCCER else ""),
         )
 
     @classmethod
@@ -355,6 +371,8 @@ class Card:
             away_logo=_crest(crest, espn.logo_url(away[1], sport)),
             home_reds=sample.get("reds", (0, 0))[0],
             away_reds=sample.get("reds", (0, 0))[1],
+            celebration=(leagues.goal_celebration(league)
+                         if sport is sports.SOCCER else ""),
         )
 
     @classmethod
@@ -802,6 +820,33 @@ def _draw(canvas, card: Card, fonts, box, background, images=None):
 
 # ------------------------------------------------------------------ pile -----
 
+def _celebration_x(frame: int, width: float, text_width: float) -> float:
+    """Abscisse du cri de but a une image donnee, avec acceleration douce.
+
+    La chaine commence entierement a droite du canvas, freine jusqu'au centre,
+    y respire, puis accelere vers la gauche jusqu'a en sortir entierement.
+    Fonction pure pour que la trajectoire reste testable sans ouvrir tkinter.
+    """
+    start = float(width) + float(text_width) / 2.0 + PAD_X
+    middle = float(width) / 2.0
+    end = -float(text_width) / 2.0 - PAD_X
+    frame = max(0, min(int(frame), CELEBRATION_FRAMES))
+
+    if frame <= CELEBRATION_ENTER_FRAMES:
+        progress = frame / float(CELEBRATION_ENTER_FRAMES)
+        eased = 1.0 - (1.0 - progress) ** 3
+        return start + (middle - start) * eased
+
+    if frame <= CELEBRATION_ENTER_FRAMES + CELEBRATION_HOLD_FRAMES:
+        return middle
+
+    progress = ((frame - CELEBRATION_ENTER_FRAMES
+                 - CELEBRATION_HOLD_FRAMES)
+                / float(CELEBRATION_EXIT_FRAMES))
+    eased = progress ** 3
+    return middle + (end - middle) * eased
+
+
 class _Panel:
     """Une carte a l'ecran : sa fenetre, son canvas, sa taille.
 
@@ -903,6 +948,63 @@ class _Toast(_Panel):
         self.duration = max(1.0, float(duration))
         self.closing = False
 
+    def _celebration_frame(self, item, frame, text_width, done) -> None:
+        """Fait entrer le cri, le pose un instant, puis le chasse a gauche."""
+        if not self.window.winfo_exists():
+            return
+        if frame >= CELEBRATION_FRAMES:
+            try:
+                self.canvas.delete("celebration")
+            except Exception:
+                pass
+            done()
+            return
+
+        x = _celebration_x(frame, self.width, text_width)
+        try:
+            self.canvas.coords(item, x, self.height / 2.0)
+        except Exception:
+            # Une animation ne doit jamais retenir la vraie carte : si le
+            # canvas refuse un mouvement, on retire le cache et on continue.
+            try:
+                self.canvas.delete("celebration")
+            except Exception:
+                pass
+            done()
+            return
+        self._after(
+            CELEBRATION_FRAME_MS,
+            lambda: self._celebration_frame(
+                item, frame + 1, text_width, done),
+        )
+
+    def _celebrate(self, done) -> None:
+        """Pose le bandeau anime par-dessus la carte deja dessinee."""
+        try:
+            _rounded(self.canvas, 0, 0, self.width - 1, self.height - 1,
+                     RADIUS, fill=CARD_BG, outline=CARD_EDGE,
+                     tags="celebration")
+            self.canvas.create_rectangle(
+                3, RADIUS // 2, 3 + BAR_WIDTH, self.height - RADIUS // 2,
+                fill=self.card.accent, outline=self.card.accent,
+                tags="celebration",
+            )
+            font = self.stack.fonts["score"]
+            text_width = font.measure(self.card.celebration)
+            item = self.canvas.create_text(
+                _celebration_x(0, self.width, text_width),
+                self.height / 2.0,
+                text=self.card.celebration,
+                fill=self.card.team_accent,
+                font=font,
+                anchor="center",
+                tags="celebration",
+            )
+        except Exception:
+            done()
+            return
+        self._celebration_frame(item, 0, text_width, done)
+
     def start(self) -> None:
         try:
             overlay_window.show_window(self.window)
@@ -910,12 +1012,19 @@ class _Toast(_Panel):
             return
 
         hold_ms = max(200, int((self.duration - FADE_IN - FADE_OUT) * 1000))
-        self._fade(self.stack.opacity, FADE_STEPS,
-                   max(10, int(FADE_IN * 1000 / FADE_STEPS)),
-                   lambda: self._after(hold_ms, self.close))
+        fade_step = max(10, int(FADE_IN * 1000 / FADE_STEPS))
+        if self.card.celebration:
+            # Le fondu ouvre sur le cri en mouvement. Une fois celui-ci sorti,
+            # la carte normale reste lisible pendant sa duree habituelle.
+            self._fade(self.stack.opacity, FADE_STEPS, fade_step, lambda: None)
+            self._celebrate(lambda: self._after(hold_ms, self.close))
+        else:
+            self._fade(self.stack.opacity, FADE_STEPS, fade_step,
+                       lambda: self._after(hold_ms, self.close))
         # Filet de securite : si le gestionnaire de fenetres avale les
         # animations, la carte disparait quand meme.
-        self._after(int(self.duration * 1000) + 3000, self.destroy)
+        intro_ms = CELEBRATION_MS if self.card.celebration else 0
+        self._after(int(self.duration * 1000) + intro_ms + 3000, self.destroy)
 
     def close(self) -> None:
         if self.closing:

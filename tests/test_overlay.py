@@ -118,6 +118,15 @@ class TestCard(unittest.TestCase):
         self.assertEqual(card.accent, LIGUE1.accent)
         self.assertEqual(card.text_line(), "Angers 1 - 2 Stade Rennais")
 
+    def test_a_real_goal_carries_the_animated_celebration(self):
+        card = overlay.Card.from_event(one_goal(side="home"))
+        self.assertTrue(card.celebration.startswith("BU"))
+        self.assertGreater(len(card.celebration), 10)
+
+    def test_a_cancelled_goal_does_not_celebrate(self):
+        card = overlay.Card.from_event(one_goal(side="home", by=-1))
+        self.assertEqual(card.celebration, "")
+
     def test_scorer_is_the_highlighted_part(self):
         goal = one_goal(side="home",
                         details=(goal_detail("H1", "12'", "H. Kane", index=2),))
@@ -180,6 +189,7 @@ class TestPhaseCards(unittest.TestCase):
         self.assertIsNone(card.side)
         self.assertEqual(card.parts, ())
         self.assertEqual(card.detail, "")
+        self.assertEqual(card.celebration, "")
 
     def test_a_phase_card_is_shorter_than_a_goal_card(self):
         fonts = fake_fonts()
@@ -501,6 +511,31 @@ def check_inside(case, card, fonts=None):
                              "l'ecusson de droite sort de la carte")
         case.assertGreaterEqual(round(box["away_logo_x"], 3), round(away_right, 3))
     return box
+
+
+class TestGoalCelebrationMotion(unittest.TestCase):
+    """Le cri entre en entier, respire au centre, puis sort en entier."""
+
+    def test_the_path_starts_right_holds_center_and_ends_left(self):
+        width, text_width = 420, 250
+        enter = overlay.CELEBRATION_ENTER_FRAMES
+        hold_end = enter + overlay.CELEBRATION_HOLD_FRAMES
+
+        self.assertGreater(
+            overlay._celebration_x(0, width, text_width), width + text_width / 2)
+        self.assertEqual(overlay._celebration_x(enter, width, text_width),
+                         width / 2)
+        self.assertEqual(overlay._celebration_x(hold_end, width, text_width),
+                         width / 2)
+        self.assertLess(
+            overlay._celebration_x(overlay.CELEBRATION_FRAMES,
+                                   width, text_width),
+            -text_width / 2)
+
+    def test_the_path_only_moves_towards_the_exit(self):
+        positions = [overlay._celebration_x(frame, 420, 250)
+                     for frame in range(overlay.CELEBRATION_FRAMES + 1)]
+        self.assertEqual(positions, sorted(positions, reverse=True))
 
 
 class TestLayoutStaysInsideTheCard(unittest.TestCase):
