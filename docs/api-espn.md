@@ -203,12 +203,12 @@ par tour de boucle, et tout ce qui s'affiche sur une carte en sort.
 
 ### Les parametres
 
-Verifie sur `soccer/eng.1`, le 7 septembre 2026 :
+Verifie sur `soccer/eng.1` le 7 septembre 2026, puis de nouveau le 19 :
 
 | Parametre | Effet | Verifie |
 | --- | --- | --- |
 | `dates=AAAAMMJJ` | ce jour-la | `?dates=20260906` -> 2 matchs |
-| `dates=AAAAMMJJ-AAAAMMJJ` | l'intervalle, **bornes comprises** | `?dates=20260901-20260930` -> 30 matchs |
+| `dates=AAAAMMJJ-AAAAMMJJ` | **refuse depuis le 16 septembre 2026** | HTTP 400, meme sur deux jours |
 | `dates=AAAAMM` | le mois entier | `?dates=202609` -> 30 matchs |
 | `dates=AAAA` | l'annee de saison entiere | `?dates=2026` -> 100 matchs (voir `limit`) |
 | `limit=N` | le nombre maximum de matchs rendus | **defaut 100** |
@@ -216,17 +216,16 @@ Verifie sur `soccer/eng.1`, le 7 septembre 2026 :
 | `season`, `seasontype`, `week` | **sans effet** au football | `?week=3` rend 0 match, `?season=2025` rend la journee en cours |
 
 Sans `dates`, l'endpoint ne sert que **la journee en cours**. C'est assez pour
-guetter les buts, pas pour dire quand tombe le prochain match : c'est
-l'intervalle qui permet a `--next` de couvrir une semaine en une requete par
-competition la ou un jour a la fois en couterait sept.
+guetter les buts, pas pour dire quand tombe le prochain match. `--next`
+fabrique encore un intervalle comme contrat interne ; le client le couvre avec
+un ou deux mois (`limit=1000`), fusionne les reponses et filtre exactement les
+deux bornes demandees.
 
 **Le `limit` par defaut est un piege silencieux.** `?dates=2026` sur la
 Premier League rend 100 matchs sans le dire ; le meme appel avec `&limit=500`
-en rend 374, et un intervalle explicite (`?dates=20260801-20270601&limit=1000`)
-rend les 380 du calendrier - l'annee de saison ne couvre pas exactement le
-meme domaine. Rien dans la reponse ne signale la troncature : pas de `next`,
-pas de compteur total. Un client qui balaie large doit poser `limit`
-lui-meme.
+en rend 374. Rien dans la reponse ne signale la troncature : pas de `next`,
+pas de compteur total. Un client qui balaie large doit poser `limit` lui-meme
+et, pour une periode exacte, lire les mois puis filtrer les dates localement.
 
 ### La forme generale
 
@@ -1393,7 +1392,7 @@ python - <<'EOF'
 import collections, json, urllib.request
 UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
 url = ("https://site.api.espn.com/apis/site/v2/sports/rugby/270559"
-       "/scoreboard?dates=20260201-20260401&limit=500")
+       "/scoreboard?dates=2026&limit=500")
 page = urllib.request.urlopen(
     urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
 data = json.load(page)
@@ -1418,7 +1417,7 @@ python - <<'EOF'
 import collections, json, urllib.request
 UA = "butbutbut/1.9.0 (+https://github.com/boubou666/butbutbut)"
 url = ("https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions"
-       "/scoreboard?dates=20250801-20260601&limit=1000")
+       "/scoreboard?dates=2025&limit=1000")
 page = urllib.request.urlopen(
     urllib.request.Request(url, headers={"User-Agent": UA}), timeout=30)
 data = json.load(page)

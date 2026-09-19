@@ -7,6 +7,13 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+### Corrige
+
+- Le calendrier `--next` et le canari traduisent les intervalles de dates en
+  mois avant d'interroger ESPN. La source refuse depuis le 16 septembre 2026
+  son ancienne forme `AAAAMMJJ-AAAAMMJJ` avec une erreur HTTP 400, tandis que
+  les requetes mensuelles restent acceptees.
+
 ## [1.17.1] - 2026-09-17
 
 ### Corrige

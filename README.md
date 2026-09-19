@@ -2112,10 +2112,11 @@ defensive, une cle qui disparait ne tue pas le daemon.
 
 Sans rien de plus, l'endpoint ne sert que **la journee en cours** : assez pour
 guetter les buts, pas pour dire quand tombe le prochain match. Il accepte pour
-ca un parametre `dates`, un jour (`?dates=20260908`) ou un intervalle
-(`?dates=20260908-20260915`), bornes comprises. C'est ce dernier qui permet a
-`--next` de couvrir une semaine entiere en une seule requete par competition,
-la ou un jour a la fois en couterait sept.
+ca un parametre `dates`, par jour (`?dates=20260908`), mois
+(`?dates=202609`) ou annee. ESPN refuse depuis le 16 septembre 2026 son
+ancienne forme d'intervalle avec une erreur 400. `--next` conserve son
+intervalle pratique en interne, le traduit en un ou deux mois avec une limite
+explicite, puis ne garde que les jours demandes.
 
 Le meme hote publie deux autres endpoints, lus avec le meme client et les memes
 en-tetes : `.../teams`, qui sert a valider ce qu'on tape dans `--teams`, et le
@@ -2416,9 +2417,9 @@ Trois verdicts, et c'est la nuance qui compte :
 | `non verifie` | rien de cette espece ne s'est presente (aucun but ce jour-la) : ce n'est pas un echec |
 
 Un mardi de juillet, le tableau du jour peut etre vide : le canari ne crie pas
-au loup pour ca. Il redemande alors les quatre derniers mois d'un coup
-(`?dates=AAAAMMJJ-AAAAMMJJ`), de quoi retomber sur des matchs joues - et donc
-sur des buts a inspecter - en toute saison.
+au loup pour ca. Il remonte alors les quatre derniers mois, un mois a la fois
+(`?dates=AAAAMM`), et s'arrete au premier qui contient des matchs joues - et
+donc des buts a inspecter.
 
 Il tourne aussi tout seul une fois par jour
 ([`canari.yml`](.github/workflows/canari.yml)), et **jamais sur un push ni une
