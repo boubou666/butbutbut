@@ -265,7 +265,8 @@ class TestPaths(unittest.TestCase):
         paths = cli.paths()
         self.assertEqual(set(paths),
                          {"data", "sound", "logos", "wav", "log", "pid",
-                          "config", "state"})
+                          "config", "state", "stream_control", "stories",
+                          "souvenir_dir"})
         root = paths["data"]
         for key, value in paths.items():
             self.assertIsInstance(value, Path)
@@ -281,7 +282,9 @@ class TestWatchLoops(unittest.TestCase):
         # Une boucle qui appellerait next_delay() dormirait sans rien promettre
         # au watcher : la sortie de veille repasserait inapercue.
         source = Path(cli.__file__).read_text(encoding="utf-8")
-        self.assertEqual(source.count("stopping.wait(guard.plan_wait())"), 2)
+        self.assertEqual(
+            source.count("stopping.wait(delay.next_wait(guard.plan_wait()))"),
+            2)
         self.assertNotIn("guard.next_delay()", source)
 class TestCrestCache(unittest.TestCase):
     def test_the_cache_lives_in_the_data_dir(self):

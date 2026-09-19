@@ -114,6 +114,9 @@ def environment(event) -> dict:
         PREFIX + "OWN_GOAL": _flag(play is not None and play.own_goal),
         PREFIX + "PENALTY": _flag(play is not None and play.penalty),
         PREFIX + "DELTA": str(event.delta),                 # +1, -1, +2...
+        # opening | equalizer | go_ahead | extends_lead | closes_gap |
+        # comeback. Vide pour une annulation ou un cas qui ne se qualifie pas.
+        PREFIX + "CONTEXT": event.context or "",
         PREFIX + "TEXT": phrase_of(event),
     }
 
@@ -142,6 +145,7 @@ def demo() -> dict:
         PREFIX + "OWN_GOAL": "0",
         PREFIX + "PENALTY": "0",
         PREFIX + "DELTA": "1",
+        PREFIX + "CONTEXT": watcher.GO_AHEAD,
         PREFIX + "TEXT": "BUT ! [Ligue 1] Marseille 2 - 1 Paris FC"
                          " - But de M. Greenwood (67')",
     }

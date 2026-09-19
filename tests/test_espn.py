@@ -33,6 +33,14 @@ class TestParse(unittest.TestCase):
         self.assertEqual(match.score_line(), "Angers 1 - 2 Stade Rennais")
         self.assertIs(match.league, LIGUE1)
 
+    def test_reads_the_stadium_country_for_the_card_theme(self):
+        match = espn.parse(payload(event(venue_country="España")), LIGUE1)[0]
+        self.assertEqual(match.venue_country, "España")
+
+    def test_a_missing_stadium_address_stays_empty(self):
+        match = espn.parse(payload(event()), LIGUE1)[0]
+        self.assertEqual(match.venue_country, "")
+
     def test_long_names_fall_back_to_short_name(self):
         matches = espn.parse(payload(event(
             home=("Borussia Monchengladbach", "M'gladbach", "BMG"))), LIGUE1)

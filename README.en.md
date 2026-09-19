@@ -91,6 +91,9 @@ uv run --no-project --with "desktop-overlay @ https://github.com/boubou666/deskt
 butbutbut                     # watch in the background (the default)
 butbutbut --speak             # ... and say the goal out loud, on top of the sound
 butbutbut --gui               # open the graphical control centre
+butbutbut --sync-stream       # run when kick-off appears on your stream
+butbutbut --serve             # companion screen on http://127.0.0.1:8765
+butbutbut --story om          # an HTML keepsake of OM's latest match
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
@@ -369,6 +372,14 @@ its breaks - it has no half-time, it has two breaks between three periods.
 Rugby keeps football's wording for the run of play (it does have two halves)
 and only brings its own scoring actions.
 
+A score going up also carries its **context**: `OPENING SCORE`, `EQUALISER`,
+`TAKES THE LEAD`, `EXTENDS THE LEAD` or `CLOSES THE GAP`. It only comes from
+the score before and after; butbutbut never calls something a “winner” before
+full-time. The context gets its own card line without replacing the action: a
+`PENALTY GOAL` can also be an `EQUALISER`. Hooks receive the same language-free
+verdict in `BUT_CONTEXT` (`opening`, `equalizer`, `go_ahead`, `extends_lead`,
+`closes_gap`, `comeback`).
+
 ### What each sport actually publishes
 
 All three were checked against the source, endpoint by endpoint. They do not
@@ -593,6 +604,27 @@ Saturday:
 teams = om
 spoiler_free = om
 ```
+
+### Synchronising with a stream
+
+An internet stream may be thirty seconds, a minute or more behind live play.
+Spoiler-free mode removes alerts; synchronisation **keeps and delays** them:
+
+```bash
+butbutbut --stream-delay 90       # known delay: 90 seconds
+butbutbut --sync-stream           # click when YOU see kick-off
+butbutbut --sync-stream om        # select the match during a multiplex
+```
+
+The second command compares the click with the kick-off detected by the daemon
+and retunes the running daemon. The GUI and companion-screen buttons do the
+same. The delay covers **cards, sound, speech and `--on-goal`**, so an
+integration cannot reveal a goal before the picture. A pinned card is hidden
+while synchronised because its score necessarily comes from the raw live feed.
+
+The journal keeps the real detection time: round-ups, statistics and
+diagnostics must not date a goal from a video provider's latency. Use
+`stream_delay = 90` for a lasting setting; zero returns to live on next start.
 
 ### Do not disturb
 
@@ -1126,6 +1158,27 @@ first, the list of scorers next, never the score:
 terminal cards included: see [Recording a real match, and replaying
 it](#recording-a-real-match-and-replaying-it).
 
+### A postcard of each club's home
+
+Every club in the covered top divisions has its **own territorial watermark**:
+a landmark, landscape, architectural feature or local symbol from its city or
+region. The 384 bundled illustrations cover 316 men's clubs and 68 women's
+clubs. They all share the same art direction: midnight-blue and aged-gold ink,
+travel-poster grain, framing and density. The score, crests and scorer colour
+therefore keep exactly the same hierarchy everywhere.
+
+On a goal card, **the scoring club's territory wins**. A Marseille goal shows
+Marseille even in Paris; a PSG goal shows Paris even at the Velodrome. Cards
+without an explicit side use the home club. A match keepsake uses the winner,
+or the home club after a draw. This also handles clubs from different countries
+without inventing an unreadable hybrid theme.
+
+If a club has just been promoted or does not have an illustration yet,
+butbutbut falls back to the **postcard of the ground's country**. The country
+comes from `competitions[0].venue.address.country`; failing that, a domestic
+league supplies its country and an international cup uses the travel globe.
+All images are bundled with the package, so no download delays the goal.
+
 ### Club crests and colours
 
 For every team, the source publishes the URL of its crest and its two colours.
@@ -1631,6 +1684,7 @@ no_overlay = non
 terminal = non
 no_phase_cards = non
 catch_up = non
+stream_delay = 0
 quiet = non
 
 # Do not disturb: at night, and while presenting
@@ -1868,6 +1922,7 @@ the command: `$BUT_TEXT` under a shell, `%BUT_TEXT%` under cmd.
 | `BUT_SCORER`, `BUT_MINUTE` | `M. Greenwood`, `67'` | empty until the source publishes them |
 | `BUT_OWN_GOAL`, `BUT_PENALTY` | `0`, `0` | `1` or `0` |
 | `BUT_DELTA` | `1` | `-1` when the goal is taken back, `2` when a missed one is caught up |
+| `BUT_CONTEXT` | `go_ahead` | `opening`, `equalizer`, `go_ahead`, `extends_lead`, `closes_gap`, `comeback`, or empty |
 
 These names are a **contract**: they go and live in scripts that are not in
 this repository, so they will not change. They are in English, unlike the rest
@@ -2695,6 +2750,39 @@ may take a little longer than the original match - `--interval` and
 
 ---
 
+## The local companion screen
+
+```bash
+butbutbut --serve                    # http://127.0.0.1:8765
+butbutbut --serve 0.0.0.0:8765       # visible on the local network
+```
+
+The first listens on this machine only. The second explicitly opens the port
+to a phone, tablet, OBS or another screen on the same network. The page shows
+matches, alerts actually delivered and recent keepsakes, refreshing without a
+reload. It is autonomous: no remote font, JavaScript library or image is
+loaded.
+
+With a stream delay, raw live scores are hidden and only alerts that have left
+the delayed queue are shown. The synchronisation button measures the delay at
+kick-off. There is no account or password, so LAN binding is never the default
+and must not be exposed to the Internet.
+
+## The match keepsake
+
+Each followed full-time match is added to `souvenirs.json`, with its score,
+teams and the timeline published by the source. The latest fifty are kept.
+The companion displays them; the command creates an autonomous HTML page:
+
+```bash
+butbutbut --story
+butbutbut --story om
+butbutbut --story om --story-output ~/om-lyon.html
+```
+
+The file calls no external service. If the source omitted a scorer or action,
+the keepsake leaves it out rather than inventing it.
+
 ## Knowing whether the watch is really running
 
 A daemon that is alive but stuck looks just like a daemon that works: the pid
@@ -3319,7 +3407,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1649 tests**, with no network and no screen: the source is simulated by an
+**1708 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

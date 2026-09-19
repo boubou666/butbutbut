@@ -69,9 +69,22 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv build
-      - name: le son est bien dans le paquet
+      - name: les assets sont bien dans le paquet
         run: |
           uv run --no-project python -m zipfile -l dist/*.whl | grep -q 'butbutbut/assets/but.mp3'
+          uv run --no-project python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel, = glob.glob("dist/*.whl")
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+          clubs = [name for name in names
+                   if "/assets/clubs/" in name and name.endswith(".png")]
+          assert len(clubs) == 384, len(clubs)
+          assert "butbutbut/assets/club-themes.json" in names
+          assert "butbutbut/assets/country-postcards-v2.png" in names
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: butbutbut-dist

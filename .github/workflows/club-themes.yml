@@ -1,0 +1,79 @@
+name: nouvelles equipes a illustrer
+
+# Les saisons couvertes ne commencent pas toutes en aout : MLS, Bresil, Japon
+# et NWSL changent de plateau a d'autres dates. Un mardi par semaine reste peu
+# couteux (21 petites reponses ESPN) et evite un calendrier europeocentre.
+on:
+  schedule:
+    - cron: "37 6 * * 2"      # chaque mardi, 6h37 UTC ; hors du pic de l'heure
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: club-theme-inventory
+  cancel-in-progress: false
+
+jobs:
+  inventaire:
+    name: de nouvelles equipes ont-elles rejoint les premieres divisions ?
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: comparer ESPN au manifeste embarque
+        id: compare
+        shell: bash
+        run: |
+          set +e
+          python tools/club_theme_inventory.py --check-updates club-theme-report.md
+          status=$?
+          set -e
+          if [ "$status" -eq 3 ]; then
+            echo "updates=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 0 ]; then
+            echo "updates=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
+
+      - name: garder le rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventaire-themes-clubs
+          path: club-theme-report.md
+          if-no-files-found: ignore
+
+      - name: synchroniser l'issue
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "Nouvelles equipes a illustrer"
+          UPDATES: ${{ steps.compare.outputs.updates }}
+        run: |
+          number="$(gh issue list --state open --search "\"$TITLE\" in:title" \
+                    --json number --jq '.[0].number // empty')"
+          if [ "$UPDATES" = true ]; then
+            printf '\n---\n[Voir le passage GitHub Actions](%s/%s/actions/runs/%s).\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" \
+              >> club-theme-report.md
+            if [ -n "$number" ]; then
+              gh issue edit "$number" --title "$TITLE" \
+                --body-file club-theme-report.md
+            else
+              gh issue create --title "$TITLE" \
+                --body-file club-theme-report.md
+            fi
+          elif [ -n "$number" ]; then
+            gh issue comment "$number" \
+              --body "Le manifeste correspond de nouveau aux premieres divisions ESPN. Fermeture automatique."
+            gh issue close "$number"
+          fi

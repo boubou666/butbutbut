@@ -304,7 +304,7 @@ class Match:
                  "winner", "home_logo", "away_logo", "home_color",
                  "away_color", "home_alt", "away_alt", "home_form",
                  "away_form", "home_record", "away_record", "note",
-                 "home_stats", "away_stats")
+                 "home_stats", "away_stats", "venue_country")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
@@ -313,7 +313,7 @@ class Match:
                  home_logo="", away_logo="", home_color="", away_color="",
                  home_alt="", away_alt="", home_form="", away_form="",
                  home_record="", away_record="", note="",
-                 home_stats=None, away_stats=None):
+                 home_stats=None, away_stats=None, venue_country=""):
         self.id = id
         self.league = league
         self.home = home
@@ -379,6 +379,10 @@ class Match:
         # dictionnaire partage finit toujours par etre modifie par quelqu'un.
         self.home_stats = dict(home_stats or {})
         self.away_stats = dict(away_stats or {})
+        # Le pays du STADE, pas celui d'un club. C'est cette nuance qui rend
+        # une finale internationale non ambigue et qui habille la carte sans
+        # choisir arbitrairement un des deux camps.
+        self.venue_country = str(venue_country or "").strip()
 
     @property
     def sport(self):
@@ -1158,6 +1162,28 @@ def parse(payload: dict, league) -> list:
         home_color, home_alt = team_colors(home)
         away_color, away_alt = team_colors(away)
 
+        # La competition est la copie la plus complete du stade. L'evenement
+        # en porte parfois une seconde ; elle reste un repli utile si la
+        # premiere disparait sur une competition encore inconnue.
+        venue = competition.get("venue") or {}
+        address = venue.get("address") if isinstance(venue, dict) else {}
+        if not isinstance(address, dict):
+            address = {}
+        venue_country = address.get("country") or ""
+        if not venue_country:
+            event_venue = event.get("venue") or {}
+            event_address = (event_venue.get("address")
+                             if isinstance(event_venue, dict) else {})
+            if isinstance(event_address, dict):
+                venue_country = event_address.get("country") or ""
+        # Le rugby range parfois "France" sous state, la ou le hockey range
+        # une province courte comme "ON". Une valeur longue reste exploitable
+        # par themes.country_motif ; une abreviation de province ne se fait pas
+        # passer pour un pays.
+        if not venue_country:
+            venue_state = str(address.get("state") or "").strip()
+            venue_country = venue_state if len(venue_state) > 2 else ""
+
         home_id = str((home.get("team") or {}).get("id") or "H")
         away_id = str((away.get("team") or {}).get("id") or "A")
         # Le vainqueur d'un match nul : sur un 1-1 de coupe, c'est la seule
@@ -1204,6 +1230,7 @@ def parse(payload: dict, league) -> list:
             away_color=away_color,
             home_alt=home_alt,
             away_alt=away_alt,
+            venue_country=venue_country,
         ))
     return matches
 
