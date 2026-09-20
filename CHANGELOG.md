@@ -7,6 +7,18 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.22.0] - 2026-09-20
+
+### Ajoute
+
+- La carte souvenir adopte une composition de billet collector : score central,
+  equipes symetriques, date et pays du stade, chronologie editoriale et
+  illustration du club en filigrane.
+- Chaque carte peut etre enregistree en PNG haute resolution directement dans
+  le navigateur, sans service distant ni contenu ajoute a l'image.
+- L'ecran compagnon ouvre maintenant chaque souvenir dans sa carte complete,
+  prete a etre conservee ou partagee.
+
 ## [1.21.0] - 2026-09-20
 
 ### Ajoute
@@ -2311,7 +2323,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.21.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.22.0...HEAD
+[1.22.0]: https://github.com/boubou666/butbutbut/compare/v1.21.0...v1.22.0
 [1.21.0]: https://github.com/boubou666/butbutbut/compare/v1.20.1...v1.21.0
 [1.20.1]: https://github.com/boubou666/butbutbut/compare/v1.20.0...v1.20.1
 [1.20.0]: https://github.com/boubou666/butbutbut/compare/v1.19.0...v1.20.0

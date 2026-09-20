@@ -25,6 +25,8 @@ class TestPage(unittest.TestCase):
         self.assertNotIn("http://", companion.PAGE)
         self.assertIn("/api/state", companion.PAGE)
         self.assertIn("/api/sync", companion.PAGE)
+        self.assertIn("/souvenir?id=", companion.PAGE)
+        self.assertIn("Ouvrir et enregistrer la carte", companion.PAGE)
 
 
 if __name__ == "__main__":
