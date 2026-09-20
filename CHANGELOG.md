@@ -7,6 +7,27 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.21.0] - 2026-09-20
+
+### Ajoute
+
+- Le rituel d'avant-match forme maintenant un arc complet avec un generique de
+  fin : au coup de sifflet final, les deux territoires reviennent en miroir
+  autour du score final, puis revelent les buteurs et les statistiques que la
+  source a effectivement publies.
+- `--night [AAAA-MM-JJ]` cree « La Nuit des buts », une chronique HTML autonome
+  de la derniere soiree ou de celle demandee : matchs, chronologies, rafales de
+  buts, changements de leader et buteurs de la nuit. Une soiree va de 6 h a
+  6 h, donc un match qui franchit minuit reste d'un seul bloc.
+- `--constellation` cartographie le journal en HTML autonome, avec un point par
+  but confirme, place par soiree et minute de jeu. `--week`, `--month`,
+  `--since` et `--teams` bornent la carte comme les autres lectures du journal.
+- La GUI expose La Nuit des buts et la Constellation dans les sections Journal
+  et Analyse.
+- 1708 -> **1732 tests**, dont les soirees a cheval sur minuit, la VAR, les
+  minutes illisibles, l'autonomie des pages et le cablage CLI/GUI des deux
+  recits.
+
 ## [1.20.1] - 2026-09-20
 
 ### Corrige
@@ -2290,7 +2311,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.20.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.21.0...HEAD
+[1.21.0]: https://github.com/boubou666/butbutbut/compare/v1.20.1...v1.21.0
 [1.20.1]: https://github.com/boubou666/butbutbut/compare/v1.20.0...v1.20.1
 [1.20.0]: https://github.com/boubou666/butbutbut/compare/v1.19.0...v1.20.0
 [1.19.0]: https://github.com/boubou666/butbutbut/compare/v1.18.0...v1.19.0

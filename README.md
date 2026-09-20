@@ -95,6 +95,8 @@ butbutbut --gui               # le centre de controle graphique
 butbutbut --sync-stream       # a lancer quand le coup d'envoi apparait sur ton flux
 butbutbut --serve             # l'ecran compagnon sur http://127.0.0.1:8765
 butbutbut --story om          # une carte souvenir HTML du dernier match de l'OM
+butbutbut --night             # la derniere soiree racontee en HTML
+butbutbut --constellation     # un point par but sur la carte de la saison
 butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
@@ -2810,6 +2812,43 @@ butbutbut --story om --story-output ~/om-lyon.html
 Le fichier n'appelle aucun service externe. Si la source a omis un buteur ou
 une action, la carte le laisse absent plutot que de l'inventer.
 
+Au coup de sifflet final, la carte a aussi son **generique de fin** : les deux
+territoires reviennent en miroir autour du score, puis la composition finale
+revele les buteurs et les statistiques disponibles. C'est le pendant du rituel
+d'avant-match ; un match sans illustration garde les noms et les ecussons.
+
+## La Nuit des buts
+
+```bash
+butbutbut --night                         # la derniere soiree du journal
+butbutbut --night 2026-09-19              # une soiree precise
+butbutbut --night --chronicle-output nuit.html
+```
+
+La page HTML autonome rassemble les matchs ou un but a ete signale, leur
+chronologie, les buteurs, les changements de leader et les buts tombes dans la
+meme rafale de deux minutes. La VAR est rejouee avant le recit : un but annule
+ne reste ni dans le total ni dans la chronologie.
+
+Une soiree va de **6 h a 6 h**. Le but de 00 h 12 appartient ainsi au meme
+samedi que celui de 23 h 50, comme dans `--stats`. Aucun daemon ni acces reseau
+n'est necessaire : tout vient du journal deja present sur la machine.
+
+## La constellation de la saison
+
+```bash
+butbutbut --constellation                 # tout le journal
+butbutbut --constellation --month         # les trente derniers jours
+butbutbut --constellation --since 2026-08-01 --teams om
+butbutbut --constellation --chronicle-output saison.html
+```
+
+Chaque but confirme devient une etoile, rangee par soiree et par minute de jeu.
+Les competitions ont une couleur stable ; survoler un point donne le score, le
+buteur et le championnat. Les minutes illisibles restent visibles a l'origine
+de la frise au lieu d'etre inventees. La page est un SVG HTML autonome, sans
+police, script ou ressource distante.
+
 ## Savoir si la surveillance tourne vraiment
 
 Un daemon vivant mais bloque ressemble a un daemon qui marche : le fichier pid
@@ -3437,7 +3476,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # ou -Purge
 PYTHONPATH=".:tests" uv run --no-project python -m unittest discover -s tests
 ```
 
-**1708 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
+**1732 tests**, sans reseau ni ecran : la source est simulee par un `opener`, le
 cache d'ecussons par un `fetcher`, l'horloge par un `FakeClock`, et la geometrie
 des cartes (empilement, debordement, troncature, place des ecussons) est
 verifiee avec une police factice, donc sans tkinter. Le choix de couleur, lui,

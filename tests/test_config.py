@@ -464,7 +464,7 @@ class TestNoOptionIsForgotten(unittest.TestCase):
         "stats", "export", "list_leagues", "list_teams", "regen_sound",
         "write_config", "config", "update", "check_update", "dev", "record",
         "replay", "speed", "gui", "serve", "sync_stream", "story",
-        "story_output",
+        "story_output", "night", "constellation", "chronicle_output",
     }
 
     def test_every_lasting_option_has_its_key(self):

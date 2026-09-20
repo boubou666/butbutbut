@@ -29,6 +29,12 @@ MESSAGES = {
     "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
         "export the latest match keepsake, or the latest for this team",
     "chemin HTML de --story": "HTML path for --story",
+    "cree la Nuit des buts en HTML autonome. Sans date : derniere soiree du journal ; sinon AAAA-MM-JJ":
+        "create the Night of Goals as standalone HTML. Without a date: latest log evening; otherwise YYYY-MM-DD",
+    "cree une carte HTML de la saison, un point par but. Accepte --week, --month et --since":
+        "create an HTML season map, one point per goal. Accepts --week, --month and --since",
+    "chemin HTML de --night ou --constellation":
+        "HTML path for --night or --constellation",
     "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
         "delay cards, sound, speech and hook to align them with a stream",
     "tirs au but": "penalty shootout",

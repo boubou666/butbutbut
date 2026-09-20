@@ -139,6 +139,12 @@ ACTIONS: Tuple[ActionSpec, ...] = (
             "query", "Equipe (optionnel)", "text", "", None,
             hint="Vide = le dernier match termine."),), button="Creer"),
     ActionSpec(
+        "night", "La Nuit des buts", "JOURNAL",
+        "Raconte une soiree en HTML : matchs, chronologies et temps forts.",
+        "--night", fields=(FieldSpec(
+            "query", "Date (optionnelle)", "date", "", None,
+            hint="Vide = la derniere soiree du journal."),), button="Raconter"),
+    ActionSpec(
         "week", "Sept derniers jours", "JOURNAL",
         "Recapitule les buts signales sur les sept derniers jours.",
         "--week", button="Consulter"),
@@ -160,6 +166,10 @@ ACTIONS: Tuple[ActionSpec, ...] = (
         "stats", "Statistiques du journal", "ANALYSE",
         "Revele les buts par minute, competition et soiree prolifique.",
         "--stats", fields=(PERIOD_FIELD, SINCE_FIELD), button="Analyser"),
+    ActionSpec(
+        "constellation", "Constellation de la saison", "ANALYSE",
+        "Cree une carte HTML, un point par but confirme dans le journal.",
+        "--constellation", fields=(PERIOD_FIELD, SINCE_FIELD), button="Creer"),
     ActionSpec(
         "export", "Exporter les donnees", "ANALYSE",
         "Exporte les buts du journal en JSON ou CSV, dans un fichier ou la console.",

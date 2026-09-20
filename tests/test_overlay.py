@@ -136,7 +136,7 @@ class TestCard(unittest.TestCase):
         self.assertTrue(card.celebration.startswith("BU"))
         self.assertGreater(len(card.celebration), 10)
 
-    def test_only_the_approach_to_a_match_carries_the_faceoff_intro(self):
+    def test_the_match_ritual_and_final_credits_carry_the_faceoff(self):
         with mock.patch.object(
                 overlay.themes, "club_asset",
                 side_effect=lambda team_id: str(team_id) + ".png"):
@@ -144,10 +144,12 @@ class TestCard(unittest.TestCase):
             kickoff = overlay.Card.from_event(one_phase(
                 {"state": "pre", "clock": "0'"},
                 {"state": "in", "clock": "1'"}))
+            fulltime = overlay.Card.from_event(one_fulltime())
             goal = overlay.Card.from_event(one_goal(side="home"))
 
         self.assertEqual(prematch.match_intro, "prematch")
         self.assertEqual(kickoff.match_intro, "kickoff")
+        self.assertEqual(fulltime.match_intro, "fulltime")
         self.assertEqual(goal.match_intro, "")
         self.assertEqual((prematch.home_motif_path,
                           prematch.away_motif_path),
@@ -224,7 +226,9 @@ class TestPhaseCards(unittest.TestCase):
     def test_a_phase_card_is_shorter_than_a_goal_card(self):
         fonts = fake_fonts()
         phase = overlay._layout(
-            overlay.Card.from_event(one_phase({"state": "in"}, {"state": "post"})),
+            overlay.Card.from_event(one_phase(
+                {"state": "in"},
+                {"state": "in", "status_name": "STATUS_HALFTIME"})),
             fonts)
         goal = overlay._layout(overlay.Card.demo(), fonts)
         self.assertLess(phase["height"], goal["height"])
@@ -299,11 +303,12 @@ class TestFullTimeCard(unittest.TestCase):
         self.assertEqual(bare["extra"], [])
         self.assertGreater(listed["height"], bare["height"])
 
-    def test_a_goalless_final_stays_a_plain_phase_card(self):
+    def test_a_goalless_final_still_gets_the_final_credits(self):
         fonts = fake_fonts()
-        box = overlay._layout(self.card(), fonts)
-        goal = overlay._layout(overlay.Card.demo(), fonts)
-        self.assertLess(box["height"], goal["height"])
+        card = self.card()
+        box = overlay._layout(card, fonts)
+        self.assertEqual(card.match_intro, "fulltime")
+        self.assertGreaterEqual(box["width"], overlay.MATCH_INTRO_MIN_WIDTH)
 
 
 class TestCatchUpCard(unittest.TestCase):
