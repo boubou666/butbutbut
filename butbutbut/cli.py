@@ -21,7 +21,7 @@ from pathlib import Path
 from . import (__version__, chronicle, companion, config, crests, espn,
                fullscreen, hook, i18n, journal, leagues, pinned, presenting,
                replay, screens, silence, sound, souvenir, speech, state,
-               streaming, teams, watcher)
+               streaming, site_feed, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -122,6 +122,8 @@ def paths() -> dict:
         "stream_control": root / "stream-control.json",
         "stories": root / "souvenirs.json",
         "souvenir_dir": root / "souvenirs",
+        "site_feed": root / "site-feed.sqlite3",
+        "site_feed_raw": root / "site-feed-raw",
     }
     found.update(_REDIRECTED)
     return found
@@ -860,8 +862,10 @@ def do_serve(args) -> int:
         print("butbutbut : ecoute sur le reseau local ; les scores sont lisibles "
               "par les appareils qui peuvent joindre ce port.")
     try:
-        companion.serve(paths()["state"], paths()["stream_control"],
-                        args.serve, stories_path=paths()["stories"])
+        companion.serve(
+            paths()["state"], paths()["stream_control"], args.serve,
+            stories_path=paths()["stories"], feed_path=paths()["site_feed"],
+            followed=leagues.resolve(args.leagues, args.exclude))
     except KeyboardInterrupt:
         print("\nbutbutbut : ecran compagnon arrete.")
     except OSError as exc:
@@ -869,6 +873,59 @@ def do_serve(args) -> int:
               file=sys.stderr)
         return 1
     return 0
+
+
+def do_site_feed_backfill(args) -> int:
+    """Remplit le cache et la base du feed sans demarrer la surveillance."""
+    if args.site_feed_season:
+        if args.site_feed_from or args.site_feed_to:
+            print("butbutbut : --site-feed-season ne se combine pas avec "
+                  "--site-feed-from/--site-feed-to.", file=sys.stderr)
+            return 2
+        try:
+            first, last = site_feed.season_range(args.site_feed_season)
+        except site_feed.InvalidQuery as exc:
+            print("butbutbut : {}".format(exc), file=sys.stderr)
+            return 2
+    else:
+        raw_first = (args.site_feed_from or "").strip()
+        if raw_first.lower() in ("beginning", "debut", "début"):
+            raw_first = (args.site_feed_earliest or "").strip()
+            if not raw_first:
+                print("butbutbut : 'beginning' exige --site-feed-earliest : "
+                      "ESPN ne publie pas de premiere date fiable.", file=sys.stderr)
+                return 2
+        if not raw_first or not args.site_feed_to:
+            print("butbutbut : le backfill exige --site-feed-season ou les "
+                  "deux bornes --site-feed-from/--site-feed-to.", file=sys.stderr)
+            return 2
+        try:
+            first = datetime.strptime(raw_first, "%Y-%m-%d").date()
+            last = datetime.strptime(args.site_feed_to, "%Y-%m-%d").date()
+        except ValueError:
+            print("butbutbut : les bornes du backfill attendent AAAA-MM-JJ.",
+                  file=sys.stderr)
+            return 2
+
+    try:
+        selection = leagues.resolve(args.leagues, args.exclude)
+    except leagues.SelectionError as exc:
+        print("butbutbut : {}".format(exc), file=sys.stderr)
+        return 2
+    worker = site_feed.Backfill(
+        paths()["site_feed"], paths()["site_feed_raw"],
+        request_delay=args.site_feed_request_delay,
+        on_progress=lambda message: print("butbutbut : " + message))
+    try:
+        result = worker.run(selection, first, last,
+                            dry_run=args.site_feed_dry_run)
+    except (site_feed.InvalidQuery, OSError) as exc:
+        print("butbutbut : backfill impossible : {}".format(exc), file=sys.stderr)
+        return 2
+    print("butbutbut : backfill : {completed} traite(s), {cached} depuis le "
+          "cache, {skipped} deja termine(s), {errors_count} erreur(s).".format(
+              errors_count=len(result["errors"]), **result))
+    return 1 if result["errors"] else 0
 
 
 def do_story(args) -> int:
@@ -1082,13 +1139,18 @@ def do_daemon(args) -> int:
     guard.prime()
     log(_startup_summary(guard), quiet=args.quiet)
 
+    feed_writer = site_feed.AsyncWriter(
+        paths()["site_feed"], leagues=selection,
+        on_log=lambda message: log(message, quiet=args.quiet))
+
     # L'etat est publie des le premier releve : sinon un --status lance dans la
     # foulee du demarrage annoncerait un daemon sans aucune activite.
     reporter = state.Reporter(paths()["state"], leagues=selection,
                               interval=args.interval,
                               idle_interval=args.idle_interval, pin=args.pin,
                               stories_path=paths()["stories"],
-                              stream_delay=delay.seconds)
+                              stream_delay=delay.seconds,
+                              on_update=feed_writer.submit)
     # Un match deja en cours au demarrage est epingle tout de suite : attendre
     # le coup d'envoi suivant priverait de carte celui qui lance le daemon a la
     # mi-temps, c'est-a-dire justement quand il en a envie.
@@ -1142,6 +1204,7 @@ def do_daemon(args) -> int:
         if recorder is not None:
             recorder.close()
             log(recorder.summary(), quiet=args.quiet)
+        feed_writer.close()
         crest.join(2.0)
         sound.stop_all()
         release_pid_file()
@@ -3356,6 +3419,7 @@ def do_list(args) -> int:
     print(tr("  butbutbut --leagues all                (tout le catalogue de football)"))
     print(tr("  butbutbut --leagues l1f,wsl,uclf       (le meme, au feminin : un f a la fin)"))
     print(tr("  butbutbut --leagues feminines          (tout le football feminin)"))
+    print("  butbutbut --leagues all-football       (football masculin et feminin)")
     print(tr("  butbutbut --leagues nhl,top14          (hockey et rugby, a la demande)"))
     print(tr("  butbutbut --leagues rugby              (tout le rugby du catalogue)"))
     print(tr("  butbutbut --leagues all-sports         (vraiment tout)"))
@@ -3457,6 +3521,22 @@ def build_parser() -> argparse.ArgumentParser:
                         metavar="[HOTE:]PORT",
                         help=tr("sert l'ecran compagnon local (par defaut "
                                 "127.0.0.1:8765) puis attend"))
+    parser.add_argument("--site-feed-backfill", action="store_true",
+                        help="remplit explicitement l'historique du feed local ESPN")
+    parser.add_argument("--site-feed-from", default=None, metavar="DATE",
+                        help="premier jour du backfill (AAAA-MM-JJ ou beginning)")
+    parser.add_argument("--site-feed-to", default=None, metavar="DATE",
+                        help="dernier jour du backfill (AAAA-MM-JJ, inclus)")
+    parser.add_argument("--site-feed-season", default=None, metavar="SAISON",
+                        help="saison du backfill (2025 ou 2025-2026)")
+    parser.add_argument("--site-feed-earliest", default=None, metavar="DATE",
+                        help="borne employee avec --site-feed-from beginning")
+    parser.add_argument("--site-feed-dry-run", action="store_true",
+                        help="liste les lots du backfill sans reseau ni ecriture")
+    parser.add_argument("--site-feed-request-delay", type=float,
+                        default=site_feed.DEFAULT_REQUEST_DELAY, metavar="SECONDES",
+                        help="delai entre requetes ESPN du backfill (defaut : {})".format(
+                            site_feed.DEFAULT_REQUEST_DELAY))
     parser.add_argument("--sync-stream", nargs="?", const="", default=None,
                         dest="sync_stream", metavar=tr("EQUIPE"),
                         help=tr("a lancer quand le coup d'envoi devient visible : "
@@ -3771,6 +3851,17 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
     args.config = chosen        # le chemin retenu, pour --status et --write-config
+
+    # Commande de donnees autonome : les preferences d'affichage, d'equipe,
+    # de son ou de hook du daemon ne doivent ni la modifier ni la bloquer.
+    if args.site_feed_backfill:
+        return do_site_feed_backfill(args)
+    if (args.site_feed_from or args.site_feed_to or args.site_feed_season
+            or args.site_feed_earliest or args.site_feed_dry_run
+            or args.site_feed_request_delay != site_feed.DEFAULT_REQUEST_DELAY):
+        print("butbutbut : les options --site-feed-* exigent "
+              "--site-feed-backfill.", file=sys.stderr)
+        return 2
 
     if args.gui:
         # Importe tkinter uniquement sur demande : un serveur sans ecran garde

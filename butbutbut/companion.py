@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import souvenir, state, streaming
+from . import site_feed, souvenir, state, streaming
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -44,9 +45,11 @@ async function refresh(){try{const r=await fetch('/api/state',{cache:'no-store'}
 </script></body></html>"""
 
 
-def handler(state_path, control_path, stories_path=None):
+def handler(state_path, control_path, stories_path=None, feed_path=None,
+            followed=()):
     state_path, control_path = Path(state_path), Path(control_path)
     stories_path = Path(stories_path) if stories_path else None
+    feed_path = Path(feed_path) if feed_path else state_path.with_name("site-feed.sqlite3")
 
     class Handler(BaseHTTPRequestHandler):
         def _json(self, payload, status=200):
@@ -74,6 +77,17 @@ def handler(state_path, control_path, stories_path=None):
                 if stories_path is not None:
                     data["souvenirs"] = souvenir.read(stories_path)[-10:]
                 return self._json(data)
+            if parsed.path == "/api/v1/site-feed":
+                try:
+                    params = parse_qs(parsed.query, keep_blank_values=True)
+                    payload = site_feed.Store(feed_path).feed(
+                        params, followed=followed,
+                        current_state=state.read(state_path))
+                except site_feed.InvalidQuery as exc:
+                    return self._json({"error": str(exc)}, 400)
+                except (OSError, sqlite3.Error, TypeError, ValueError):
+                    return self._json({"error": "site-feed indisponible"}, 503)
+                return self._json(payload)
             if parsed.path == "/souvenir":
                 chosen = (parse_qs(parsed.query).get("id") or [""])[0]
                 stories = souvenir.read(stories_path) if stories_path else []
@@ -106,10 +120,12 @@ def handler(state_path, control_path, stories_path=None):
     return Handler
 
 
-def serve(state_path, control_path, bind="", on_ready=None, stories_path=None):
+def serve(state_path, control_path, bind="", on_ready=None, stories_path=None,
+          feed_path=None, followed=()):
     host, port = parse_bind(bind)
     server = ThreadingHTTPServer(
-        (host, port), handler(state_path, control_path, stories_path))
+        (host, port), handler(state_path, control_path, stories_path,
+                              feed_path=feed_path, followed=followed))
     if on_ready:
         on_ready(host, server.server_address[1])
     try:
