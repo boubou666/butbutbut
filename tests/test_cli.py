@@ -266,7 +266,7 @@ class TestPaths(unittest.TestCase):
         self.assertEqual(set(paths),
                          {"data", "sound", "logos", "wav", "log", "pid",
                           "config", "state", "stream_control", "stories",
-                          "souvenir_dir"})
+                          "souvenir_dir", "site_feed", "site_feed_raw"})
         root = paths["data"]
         for key, value in paths.items():
             self.assertIsInstance(value, Path)

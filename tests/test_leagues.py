@@ -293,7 +293,7 @@ class TestWomenCatalogue(unittest.TestCase):
         words = set()
         for league in leagues.FULL_CATALOGUE:
             words |= words_of(league)
-        for keyword in (leagues._ALL + leagues._EVERYTHING
+        for keyword in (leagues._ALL + leagues._ALL_FOOTBALL + leagues._EVERYTHING
                         + leagues._BIG_FIVE + leagues._WOMEN):
             self.assertNotIn(keyword, words, keyword)
 

@@ -215,11 +215,11 @@ class Play:
 
     __slots__ = ("key", "team_id", "minute", "kind", "scorer", "own_goal",
                  "penalty", "shootout", "red_card", "kind_key", "points",
-                 "assists")
+                 "assists", "sequence")
 
     def __init__(self, key, team_id, minute, kind, scorer, own_goal, penalty,
                  shootout, red_card=False, kind_key="", points=None,
-                 assists=()):
+                 assists=(), sequence=0):
         self.key = key
         self.team_id = team_id
         self.minute = minute          # 35' ou vide
@@ -244,6 +244,7 @@ class Play:
         # couterait le meme demi-mega que le buteur du hockey pour un sport qui
         # a deja son nom.
         self.assists = tuple(assists)
+        self.sequence = int(sequence or 0)
 
     def _default_key(self) -> str:
         if self.red_card:
@@ -304,7 +305,9 @@ class Match:
                  "winner", "home_logo", "away_logo", "home_color",
                  "away_color", "home_alt", "away_alt", "home_form",
                  "away_form", "home_record", "away_record", "note",
-                 "home_stats", "away_stats", "venue_country")
+                 "home_stats", "away_stats", "venue_country", "venue",
+                 "season", "home_short", "away_short", "home_slug",
+                 "away_slug")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
@@ -313,7 +316,9 @@ class Match:
                  home_logo="", away_logo="", home_color="", away_color="",
                  home_alt="", away_alt="", home_form="", away_form="",
                  home_record="", away_record="", note="",
-                 home_stats=None, away_stats=None, venue_country=""):
+                 home_stats=None, away_stats=None, venue_country="", venue="",
+                 season="", home_short="", away_short="", home_slug="",
+                 away_slug=""):
         self.id = id
         self.league = league
         self.home = home
@@ -383,6 +388,12 @@ class Match:
         # une finale internationale non ambigue et qui habille la carte sans
         # choisir arbitrairement un des deux camps.
         self.venue_country = str(venue_country or "").strip()
+        self.venue = str(venue or "").strip()
+        self.season = str(season or "").strip()
+        self.home_short = str(home_short or home).strip()
+        self.away_short = str(away_short or away).strip()
+        self.home_slug = str(home_slug or "").strip()
+        self.away_slug = str(away_slug or "").strip()
 
     @property
     def sport(self):
@@ -894,6 +905,33 @@ def team_logo(competitor) -> str:
     return url if url.lower().startswith(("http://", "https://")) else ""
 
 
+def competition_metadata(payload) -> tuple:
+    """(logo_url, country_code) lu dans l'en-tete ESPN, sans URL inventee."""
+    header = (payload.get("leagues") or [{}])[0]
+    if not isinstance(header, dict):
+        return "", ""
+    url = header.get("logo")
+    if not url:
+        for entry in header.get("logos") or []:
+            if isinstance(entry, dict) and entry.get("href"):
+                url = entry["href"]
+                break
+    url = str(url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        url = ""
+
+    country = header.get("country") or {}
+    if isinstance(country, dict):
+        country = (country.get("code") or country.get("abbreviation")
+                   or country.get("isoCode") or "")
+    country = str(country or "").strip().upper()
+    # Un code pays publie par la source est court. Un libelle libre n'est pas
+    # transforme ici : le contrat du feed fera son repli depuis le catalogue.
+    if len(country) not in (2, 3):
+        country = ""
+    return url, country
+
+
 def logo_url(team_id, sport=None) -> str:
     """L'ecusson d'une equipe a partir de son seul identifiant ESPN.
 
@@ -982,7 +1020,8 @@ def _soccer_details(competition) -> tuple:
         clock, team_id, scorer, athlete_id = _detail_common(detail)
 
         # Cle stable : la meme action relue dix fois garde la meme identite.
-        key = "|".join((team_id, str(clock), kind, athlete_id, str(index)))
+        key = str(detail.get("id") or "|".join(
+            (team_id, str(clock), kind, athlete_id, str(index))))
 
         play = Play(
             key=key,
@@ -994,6 +1033,7 @@ def _soccer_details(competition) -> tuple:
             penalty=bool(detail.get("penaltyKick")),
             shootout=bool(detail.get("shootout")),
             red_card=red and not scoring,
+            sequence=index,
         )
         if play.shootout:
             # Un tir au but est mis de cote meme quand la source le marque
@@ -1061,7 +1101,8 @@ def _rugby_details(competition) -> tuple:
 
         clock, team_id, scorer, athlete_id = _detail_common(detail)
         kind_key, points = scored if scored else ("red_card", 0)
-        key = "|".join((team_id, clock, text or kind_key, athlete_id, str(index)))
+        key = str(detail.get("id") or "|".join(
+            (team_id, clock, text or kind_key, athlete_id, str(index))))
 
         play = Play(
             key=key,
@@ -1075,6 +1116,7 @@ def _rugby_details(competition) -> tuple:
             red_card=bool(red and scored is None),
             kind_key=kind_key,
             points=points,
+            sequence=index,
         )
         (red_cards if scored is None else scores).append(play)
     return scores, red_cards, []
@@ -1124,6 +1166,9 @@ def parse(payload: dict, league) -> list:
         header = (payload.get("leagues") or [{}])[0]
         if isinstance(header, dict):
             league.adopt_name(header.get("name"), header.get("abbreviation"))
+    logo, country = competition_metadata(payload)
+    if hasattr(league, "adopt_metadata"):
+        league.adopt_metadata(logo, country)
 
     matches = []
     for event in payload.get("events") or []:
@@ -1184,6 +1229,23 @@ def parse(payload: dict, league) -> list:
             venue_state = str(address.get("state") or "").strip()
             venue_country = venue_state if len(venue_state) > 2 else ""
 
+        venue_name = str(venue.get("fullName") or venue.get("name") or "").strip()
+        if not venue_name:
+            event_venue = event.get("venue") or {}
+            if isinstance(event_venue, dict):
+                venue_name = str(event_venue.get("fullName")
+                                 or event_venue.get("name") or "").strip()
+
+        season_data = event.get("season") or payload.get("season") or {}
+        if isinstance(season_data, dict):
+            season = (season_data.get("displayName") or season_data.get("slug")
+                      or season_data.get("year") or "")
+        else:
+            season = season_data
+
+        home_team = home.get("team") or {}
+        away_team = away.get("team") or {}
+
         home_id = str((home.get("team") or {}).get("id") or "H")
         away_id = str((away.get("team") or {}).get("id") or "A")
         # Le vainqueur d'un match nul : sur un 1-1 de coupe, c'est la seule
@@ -1231,6 +1293,14 @@ def parse(payload: dict, league) -> list:
             home_alt=home_alt,
             away_alt=away_alt,
             venue_country=venue_country,
+            venue=venue_name,
+            season=season,
+            home_short=(home_team.get("shortDisplayName")
+                        or home_team.get("abbreviation") or ""),
+            away_short=(away_team.get("shortDisplayName")
+                        or away_team.get("abbreviation") or ""),
+            home_slug=home_team.get("slug") or "",
+            away_slug=away_team.get("slug") or "",
         ))
     return matches
 
@@ -1360,6 +1430,7 @@ def summary_goals(payload: dict) -> list:
             penalty=False,
             shootout=False,
             assists=assists,
+            sequence=index,
         ))
     return goals
 

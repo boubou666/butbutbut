@@ -11,6 +11,7 @@ sports.py, qui dit lesquels et pourquoi).
     butbutbut --leagues all                # tout le catalogue de football
     butbutbut --leagues l1f,wsl,uclf       # le meme, au feminin
     butbutbut --leagues feminines          # tout le football feminin
+    butbutbut --leagues all-football       # football masculin et feminin
     butbutbut --leagues nhl,top14          # hockey et rugby, a la demande
     butbutbut --leagues rugby              # tout le rugby du catalogue
     butbutbut --leagues all-sports         # vraiment tout
@@ -34,7 +35,8 @@ avant l'ouverture aux autres sports. Deux raisons, et la premiere suffit :
 Le reste se demande, donc : par competition (`nhl`, `top14`, `wsl`), par
 groupe entier (`hockey`, `rugby`, `feminines`, et `foot` pour le catalogue
 masculin de football), ou d'un bloc avec `all-sports` / `tous-sports`, qui lui
-prend vraiment tout.
+prend vraiment tout. `all-football` reunit explicitement les catalogues
+masculin et feminin, sans ouvrir les autres sports.
 
 
 Le football feminin
@@ -171,7 +173,7 @@ class League:
     """Une competition : identite ESPN + habillage de la carte."""
 
     __slots__ = ("slug", "name", "_label", "accent", "aliases", "provisional",
-                 "key", "sport")
+                 "key", "sport", "logo_url", "country_code")
 
     def __init__(self, slug, name, label, accent, aliases=(), provisional=False,
                  key="", sport=None):
@@ -190,6 +192,11 @@ class League:
         # Vrai pour une competition ouverte a la volee : on ne connait pas
         # encore son vrai nom, la source nous le dira au premier releve.
         self.provisional = provisional
+        # Metadonnees publiees par ESPN. Le logo reste vide tant qu'une vraie
+        # reponse ne l'a pas fourni : il ne doit jamais etre devine a partir
+        # du code de la competition.
+        self.logo_url = ""
+        self.country_code = ""
 
     @property
     def label(self) -> str:
@@ -222,6 +229,11 @@ class League:
         self.name = str(name).strip()
         self._label = str(abbreviation or name).strip().upper()
         self.provisional = False
+
+    def adopt_metadata(self, logo_url="", country_code="") -> None:
+        """Retient uniquement les metadonnees effectivement lues chez ESPN."""
+        self.logo_url = str(logo_url or "").strip()
+        self.country_code = str(country_code or "").strip().upper()
 
     def __repr__(self):
         return "<League {} {}>".format(self.slug, self.name)
@@ -436,6 +448,8 @@ BY_SPORT = {sports.SOCCER: CATALOGUE,
 # Mots-cles de la ligne de commande. `_ALL` ne sort pas du catalogue masculin
 # de football : voir l'en-tete du module pour la raison.
 _ALL = ("all", "tout", "tous", "toutes", "*")
+_ALL_FOOTBALL = ("all-football", "allfootball", "tout-football",
+                 "toutlefootball", "football-all")
 _EVERYTHING = ("all-sports", "allsports", "tous-sports", "toussports",
                "tout-sport", "everything", "**")
 _BIG_FIVE = ("big5", "top5", "les5", "5", "grands")
@@ -572,7 +586,7 @@ def names_a_league(token) -> bool:
     lowered = str(token or "").strip().lower()
     if not lowered:
         return False
-    if (lowered in _ALL or lowered in _EVERYTHING or lowered in _BIG_FIVE
+    if (lowered in _ALL or lowered in _ALL_FOOTBALL or lowered in _EVERYTHING or lowered in _BIG_FIVE
             or lowered in _WOMEN):
         return True
     if sports.find(lowered) is not None or sports.declined(lowered):
@@ -601,6 +615,9 @@ def _expand(value, default=()) -> list:
         lowered = token.lower()
         if lowered in _ALL:
             found.extend(l for l in CATALOGUE if l not in found)
+            continue
+        if lowered in _ALL_FOOTBALL:
+            found.extend(l for l in FOOTBALL if l not in found)
             continue
         if lowered in _EVERYTHING:
             found.extend(l for l in FULL_CATALOGUE if l not in found)

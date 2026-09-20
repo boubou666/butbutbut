@@ -465,6 +465,9 @@ class TestNoOptionIsForgotten(unittest.TestCase):
         "write_config", "config", "update", "check_update", "dev", "record",
         "replay", "speed", "gui", "serve", "sync_stream", "story",
         "story_output", "night", "constellation", "chronicle_output",
+        "site_feed_backfill", "site_feed_from", "site_feed_to",
+        "site_feed_season", "site_feed_earliest", "site_feed_dry_run",
+        "site_feed_request_delay",
     }
 
     def test_every_lasting_option_has_its_key(self):

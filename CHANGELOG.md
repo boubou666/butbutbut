@@ -7,6 +7,22 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.24.0] - 2026-09-20
+
+### Ajoute
+
+- Le serveur compagnon expose maintenant `GET /api/v1/site-feed`, un flux JSON
+  local, versionne et pagine pour alimenter un site sans lui transmettre les
+  secrets, chemins ou reglages prives de l'installation.
+- Le daemon conserve les matchs ESPN dans une base SQLite normalisee, avec le
+  payload brut compresse en cache, afin que le flux reste stable entre deux
+  releves et puisse servir un historique fiable.
+- `--site-feed-backfill` remplit cet historique sur une saison ou une plage de
+  dates. La commande reprend les lots deja termines, isole les erreurs et offre
+  un mode `--site-feed-dry-run` sans reseau ni ecriture.
+- La selection `all-football` regroupe tout le football masculin et feminin
+  connu, sans inclure les autres sports.
+
 ## [1.23.1] - 2026-09-20
 
 ### Corrige
@@ -2345,7 +2361,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.23.1...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.24.0...HEAD
+[1.24.0]: https://github.com/boubou666/butbutbut/compare/v1.23.1...v1.24.0
 [1.23.1]: https://github.com/boubou666/butbutbut/compare/v1.23.0...v1.23.1
 [1.23.0]: https://github.com/boubou666/butbutbut/compare/v1.22.0...v1.23.0
 [1.22.0]: https://github.com/boubou666/butbutbut/compare/v1.21.0...v1.22.0

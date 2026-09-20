@@ -2796,6 +2796,12 @@ Le bouton de synchronisation mesure le retard au coup d'envoi. Il n'y a ni
 compte ni mot de passe ; pour cette raison l'ecoute reseau n'est jamais le
 defaut et ne doit pas etre exposee a Internet.
 
+Le meme serveur expose aussi le flux JSON versionne
+`GET /api/v1/site-feed`, destine a un site ou un outil local qui vient le lire
+(butbutbut ne pousse rien vers lui). Le contrat, la pagination, le cache et la
+commande de backfill reprenable sont documentes dans
+[`docs/site-feed.md`](docs/site-feed.md).
+
 ## La carte souvenir du match
 
 Chaque fin de match suivie rejoint `souvenirs.json`, avec le score, les

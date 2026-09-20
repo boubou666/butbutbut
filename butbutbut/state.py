@@ -186,10 +186,10 @@ class Reporter:
     __slots__ = ("path", "leagues", "interval", "idle_interval", "started_at",
                  "goals", "day", "pin", "recent", "last_kickoff_at",
                  "last_kickoff_match", "recent_kickoffs", "stream_delay",
-                 "stories")
+                 "stories", "on_update")
 
     def __init__(self, path, leagues=(), interval=0, idle_interval=0, pin="",
-                 stories_path=None, stream_delay=0.0):
+                 stories_path=None, stream_delay=0.0, on_update=None):
         self.path = Path(path)
         self.leagues = [league.name for league in leagues]
         self.interval = interval
@@ -208,6 +208,7 @@ class Reporter:
         self.recent_kickoffs = []
         self.stream_delay = float(stream_delay or 0.0)
         self.stories = souvenir.Store(stories_path) if stories_path else None
+        self.on_update = on_update
 
     def record(self, events=()) -> None:
         """Compte les buts du jour, buts annules et phases de match exclus."""
@@ -282,7 +283,15 @@ class Reporter:
         self.remember(events if visible_events is None else visible_events)
         if stream_delay is not None:
             self.stream_delay = float(stream_delay)
-        return write(self.path, self.snapshot(matches, pinned=pinned))
+        written = write(self.path, self.snapshot(matches, pinned=pinned))
+        if self.on_update is not None:
+            try:
+                self.on_update(matches)
+            except Exception:
+                # La publication versionnee est annexe : elle ne doit jamais
+                # interrompre la surveillance ni les hooks existants.
+                pass
+        return written
 
     def _roll(self) -> None:
         """Minuit : le compteur du jour repart de zero.
