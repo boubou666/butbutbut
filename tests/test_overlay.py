@@ -136,6 +136,23 @@ class TestCard(unittest.TestCase):
         self.assertTrue(card.celebration.startswith("BU"))
         self.assertGreater(len(card.celebration), 10)
 
+    def test_only_the_approach_to_a_match_carries_the_faceoff_intro(self):
+        with mock.patch.object(
+                overlay.themes, "club_asset",
+                side_effect=lambda team_id: str(team_id) + ".png"):
+            prematch = overlay.Card.from_event(one_prematch())
+            kickoff = overlay.Card.from_event(one_phase(
+                {"state": "pre", "clock": "0'"},
+                {"state": "in", "clock": "1'"}))
+            goal = overlay.Card.from_event(one_goal(side="home"))
+
+        self.assertEqual(prematch.match_intro, "prematch")
+        self.assertEqual(kickoff.match_intro, "kickoff")
+        self.assertEqual(goal.match_intro, "")
+        self.assertEqual((prematch.home_motif_path,
+                          prematch.away_motif_path),
+                         ("H1.png", "A1.png"))
+
     def test_a_cancelled_goal_does_not_celebrate(self):
         card = overlay.Card.from_event(one_goal(side="home", by=-1))
         self.assertEqual(card.celebration, "")
@@ -219,10 +236,12 @@ class TestRedCardAndPrematchCards(unittest.TestCase):
     def test_a_red_card_is_as_quiet_as_a_phase_card(self):
         card = overlay.Card.from_event(one_red_card(team_id="A1"))
         self.assertEqual(card.title, "CARTON ROUGE")
-        self.assertEqual(card.title_color, overlay.MUTED)
+        self.assertEqual(card.title_color, overlay.RED_CARD)
         self.assertEqual(card.accent, LIGUE1.accent)
         # Aucune equipe en couleur : la carte n'est pas une bonne nouvelle.
         self.assertIsNone(card.side)
+        self.assertEqual(card.moment, "red_card")
+        self.assertEqual(card.focus_side, "away")
 
     def test_a_red_card_names_the_team_and_the_player(self):
         card = overlay.Card.from_event(
@@ -230,6 +249,18 @@ class TestRedCardAndPrematchCards(unittest.TestCase):
         self.assertEqual(card.detail, "Stade Rennais : J. Lefort")
         self.assertEqual([t for t, strong in card.parts if strong], ["J. Lefort"])
         self.assertEqual(card.minute, "62'")
+
+    def test_goals_and_red_cards_share_the_same_minimum_width(self):
+        goal = overlay.Card.demo(LIGUE1)
+        red = overlay.Card.from_event(one_red_card(team_id="A1"))
+        goal_box = overlay._layout(goal, fake_fonts())
+        red_box = overlay._layout(red, fake_fonts())
+        self.assertEqual(goal_box["width"], overlay.MOMENT_MIN_WIDTH)
+        self.assertEqual(red_box["width"], overlay.MOMENT_MIN_WIDTH)
+        self.assertEqual(goal_box["body_height"], red_box["body_height"])
+        self.assertGreaterEqual(goal_box["body_height"], 150)
+        self.assertEqual(goal_box["moment_top"], 0)
+        self.assertEqual(red_box["moment_top"], 0)
 
     def test_the_prematch_card_counts_down(self):
         card = overlay.Card.from_event(one_prematch())
@@ -543,6 +574,54 @@ class TestCountryMotif(unittest.TestCase):
         self.assertEqual(tk.opened, [])
 
 
+class TestMatchIntroImages(unittest.TestCase):
+    def test_both_club_scenes_are_loaded_and_reduced(self):
+        card = _card()
+        card.match_intro = "prematch"
+        card.home_motif_path = "home.png"
+        card.away_motif_path = "away.png"
+        box = overlay._layout(card, fake_fonts())
+        tk = _FakeTk(size=500)
+
+        images = overlay.load_match_intro(tk, card, box)
+
+        self.assertIn("home_scene", images)
+        self.assertIn("away_scene", images)
+        self.assertEqual(tk.opened, ["home.png", "away.png"])
+        self.assertLess(images["home_scene"].size, 500)
+
+    def test_an_ordinary_card_opens_no_scene(self):
+        card = _card()
+        tk = _FakeTk()
+        self.assertEqual(overlay.load_match_intro(
+            tk, card, overlay._layout(card, fake_fonts())), {})
+        self.assertEqual(tk.opened, [])
+
+    def test_crests_become_small_medallions_when_scenes_exist(self):
+        card = _card(home_logo="home-crest.png", away_logo="away-crest.png")
+        card.match_intro = "prematch"
+        card.home_motif_path = "home-scene.png"
+        card.away_motif_path = "away-scene.png"
+        box = overlay._layout(card, fake_fonts())
+        tk = _FakeTk(size=500)
+        scenes = overlay.load_match_intro(tk, card, box)
+
+        images = overlay.load_match_crests(tk, card, box, scenes=scenes)
+
+        self.assertEqual(sorted(images), ["away_crest", "home_crest"])
+        self.assertLessEqual(images["home_crest"].size, box["crest_size"])
+
+    def test_a_crest_takes_the_scene_place_when_the_scene_is_missing(self):
+        card = _card(home_logo="home-crest.png")
+        card.match_intro = "kickoff"
+        box = overlay._layout(card, fake_fonts())
+
+        images = overlay.load_match_crests(_FakeTk(), card, box, scenes={})
+
+        self.assertEqual(list(images), ["home"])
+        self.assertLessEqual(images["home"].size, box["fallback_logo"])
+
+
 def check_inside(case, card, fonts=None):
     """Verifie que rien de la carte ne sort de la carte. Rend la mise en page.
 
@@ -579,29 +658,107 @@ def check_inside(case, card, fonts=None):
     return box
 
 
-class TestGoalCelebrationMotion(unittest.TestCase):
-    """Le cri entre en entier, respire au centre, puis sort en entier."""
+class TestMomentMotion(unittest.TestCase):
+    """Buts et rouges partagent une entree fluide et exactement symetrique."""
 
-    def test_the_path_starts_right_holds_center_and_ends_left(self):
-        width, text_width = 420, 250
-        enter = overlay.CELEBRATION_ENTER_FRAMES
-        hold_end = enter + overlay.CELEBRATION_HOLD_FRAMES
+    def test_the_club_art_enters_from_its_side_and_holds(self):
+        width = 500
+        for frame in range(overlay.MOMENT_FRAMES + 1):
+            home = overlay._moment_x(frame, width, "home")
+            away = overlay._moment_x(frame, width, "away")
+            self.assertAlmostEqual(home + away, width)
+
+        self.assertLess(overlay._moment_x(0, width, "home"), 0)
+        self.assertGreater(overlay._moment_x(0, width, "away"), width)
+        self.assertAlmostEqual(
+            overlay._moment_x(overlay.MOMENT_ENTER_FRAMES, width, "home"),
+            width * 0.22)
+        self.assertAlmostEqual(
+            overlay._moment_x(overlay.MOMENT_FRAMES, width, "away"),
+            width * 0.78)
+
+    def test_the_club_art_eases_at_both_edges(self):
+        points = [overlay._moment_x(frame, 500, "home")
+                  for frame in range(overlay.MOMENT_ENTER_FRAMES + 1)]
+        steps = [right - left for left, right in zip(points, points[1:])]
+        middle = steps[len(steps) // 2]
+        self.assertLess(steps[0], middle)
+        self.assertLess(steps[-1], middle)
+
+    def test_the_red_card_drops_then_holds_on_an_integer_pixel(self):
+        height = 120
+        self.assertLess(overlay._red_card_y(0, height), 0)
+        self.assertEqual(
+            overlay._red_card_y(overlay.MOMENT_ENTER_FRAMES, height), 66)
+        self.assertEqual(
+            overlay._red_card_y(overlay.MOMENT_FRAMES, height), 66)
+        self.assertIsInstance(overlay._red_card_y(7, height), int)
+
+    def test_the_goal_cry_crosses_the_card_during_the_same_animation(self):
+        width, text_width = 500, 360
+        total_frames = 240
 
         self.assertGreater(
-            overlay._celebration_x(0, width, text_width), width + text_width / 2)
-        self.assertEqual(overlay._celebration_x(enter, width, text_width),
-                         width / 2)
-        self.assertEqual(overlay._celebration_x(hold_end, width, text_width),
-                         width / 2)
+            overlay._goal_cry_x(0, width, text_width, total_frames),
+            width + text_width / 2)
+        self.assertEqual(
+            overlay._goal_cry_x(
+                total_frames // 2, width, text_width, total_frames),
+            width / 2)
         self.assertLess(
-            overlay._celebration_x(overlay.CELEBRATION_FRAMES,
-                                   width, text_width),
+            overlay._goal_cry_x(
+                total_frames, width, text_width, total_frames),
             -text_width / 2)
 
-    def test_the_path_only_moves_towards_the_exit(self):
-        positions = [overlay._celebration_x(frame, 420, 250)
-                     for frame in range(overlay.CELEBRATION_FRAMES + 1)]
+    def test_the_goal_cry_never_changes_direction(self):
+        total_frames = 240
+        positions = [overlay._goal_cry_x(frame, 500, 360, total_frames)
+                     for frame in range(total_frames + 1)]
         self.assertEqual(positions, sorted(positions, reverse=True))
+
+    def test_the_goal_cry_grows_enough_letters_for_a_long_card(self):
+        font = fake_fonts()["score"]
+        stretched = overlay._stretch_goal_cry("GOOOOL", font, 1100)
+        self.assertGreaterEqual(font.measure(stretched), 1100)
+        self.assertTrue(stretched.startswith("G"))
+        self.assertTrue(stretched.endswith("L"))
+        self.assertGreater(stretched.count("O"), 4)
+
+
+class TestMatchIntroMotion(unittest.TestCase):
+    """Les deux camps rejoignent sans saut leur place sur la carte finale."""
+
+    def test_the_two_paths_are_symmetric_and_hold_their_quarters(self):
+        width = 420
+        enter = overlay.DUEL_ENTER_FRAMES
+        hold_end = enter + overlay.DUEL_HOLD_FRAMES
+
+        for frame in range(overlay.DUEL_FRAMES + 1):
+            home = overlay._duel_x(frame, width, "home")
+            away = overlay._duel_x(frame, width, "away")
+            self.assertAlmostEqual(home + away, width)
+
+        self.assertAlmostEqual(overlay._duel_x(enter, width, "home"),
+                               width * 0.24)
+        self.assertAlmostEqual(overlay._duel_x(hold_end, width, "away"),
+                               width * 0.76)
+        self.assertLess(overlay._duel_x(0, width, "home"), 0)
+        self.assertAlmostEqual(
+            overlay._duel_x(overlay.DUEL_FRAMES, width, "away"), width * 0.76)
+
+    def test_the_motion_eases_instead_of_jumping_at_the_edges(self):
+        points = [overlay._duel_x(frame, 500, "home")
+                  for frame in range(overlay.DUEL_ENTER_FRAMES + 1)]
+        steps = [right - left for left, right in zip(points, points[1:])]
+        middle = steps[len(steps) // 2]
+        self.assertLess(steps[0], middle)
+        self.assertLess(steps[-1], middle)
+
+    def test_the_center_badge_is_always_a_square(self):
+        x0, y0, x1, y1 = overlay._duel_badge_box(250.5, 100.5)
+        self.assertEqual((x1 - x0, y1 - y0), (48, 48))
+        self.assertTrue(all(isinstance(value, int)
+                            for value in (x0, y0, x1, y1)))
 
 
 class TestLayoutStaysInsideTheCard(unittest.TestCase):

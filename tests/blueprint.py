@@ -117,6 +117,9 @@ class _Pen:
     def create_rectangle(self, x0, y0, x1, y1, fill=None, outline=None):
         return self._add("rect", (x0, y0, x1, y1), fill=fill)
 
+    def create_oval(self, x0, y0, x1, y1, fill=None, outline=None):
+        return self._add("frame", (x0, y0, x1, y1), fill=fill)
+
     def create_polygon(self, points, smooth=False, fill=None, outline=None):
         xs = points[0::2]
         ys = points[1::2]
@@ -125,13 +128,19 @@ class _Pen:
     def create_text(self, x, y, text="", fill=None, font=None, anchor="w"):
         width = font.measure(text)
         line = font.metrics("linespace")
-        x0 = x - width if anchor == "e" else x
+        if anchor in ("center", "c", "n", "s"):
+            x0 = x - width / 2.0
+        else:
+            x0 = x - width if anchor == "e" else x
         return self._add("text", (x0, y - line / 2.0, x0 + width, y + line / 2.0),
                          text=text, font=font, anchor=anchor)
 
     def create_image(self, x, y, image=None, anchor="w"):
         size = image.size
-        x0 = x - size if anchor == "e" else x
+        if anchor in ("center", "c"):
+            x0 = x - size / 2.0
+        else:
+            x0 = x - size if anchor == "e" else x
         return self._add("logo", (x0, y - size / 2.0, x0 + size, y + size / 2.0),
                          anchor=anchor)
 
@@ -167,7 +176,15 @@ def _named(pen, card, box, sheet):
             # ne dit rien que la ligne "carte" ne dise deja.
             continue
         elif kind == "logo":
-            name = "ecusson dom." if item["anchor"] == "e" else "ecusson ext."
+            if card.match_intro:
+                center = (item["bounds"][0] + item["bounds"][2]) / 2.0
+                camp = "dom." if center < box["center_x"] else "ext."
+                size = item["bounds"][2] - item["bounds"][0]
+                name = (("ecusson " if size <= box["crest_size"] else "visuel ")
+                        + camp)
+            else:
+                name = ("ecusson dom." if item["anchor"] == "e"
+                        else "ecusson ext.")
         else:
             role = roles.get(id(item["font"]), "?")
             middle = (item["bounds"][1] + item["bounds"][3]) / 2.0
@@ -176,9 +193,16 @@ def _named(pen, card, box, sheet):
             elif role == "label":
                 name = "competition" if item["anchor"] == "w" else "minute"
             elif role == "team":
-                name = "equipe dom." if item["anchor"] == "e" else "equipe ext."
+                if card.match_intro:
+                    center = (item["bounds"][0] + item["bounds"][2]) / 2.0
+                    name = ("equipe dom." if center < box["center_x"]
+                            else "equipe ext.")
+                else:
+                    name = ("equipe dom." if item["anchor"] == "e"
+                            else "equipe ext.")
             elif role == "score":
-                name = scores[min(scored, 2)]
+                name = ("duel" if card.match_intro
+                        else scores[min(scored, 2)])
                 scored += 1
             else:
                 # Le buteur et les lignes de fin de match partagent leurs deux
@@ -265,10 +289,21 @@ def plan(card, scale=1.0, note=""):
     sheet = fonts(scale)
     box = overlay._layout(card, sheet)
     images = {}
-    if box["logo"]:
+    if box["logo"] and not card.match_intro:
         for key, path in (("home", card.home_logo), ("away", card.away_logo)):
             if path is not None:
                 images[key] = _Logo(box["logo"])
+    if card.match_intro:
+        for key, path in (("home", card.home_motif_path),
+                          ("away", card.away_motif_path)):
+            if path is not None:
+                images[key + "_scene"] = _Logo(box["scene_size"])
+        for key, path in (("home", card.home_logo),
+                          ("away", card.away_logo)):
+            if path is not None:
+                suffix = "_crest" if key + "_scene" in images else ""
+                size = (box["crest_size"] if suffix else box["fallback_logo"])
+                images[key + suffix] = _Logo(size)
 
     pen = _Pen()
     overlay._draw(pen, card, sheet, box, overlay.CARD_BG, images)
@@ -345,39 +380,47 @@ def _scenarios():
                       home_logo=CREST, away_logo=CREST)),
 
         ("avant-match", 1.0,
-         "L'avant-match : le compte a rebours en troisieme ligne, la forme des"
-         " deux camps dessous, et pas de minute dans l'en-tete.",
+         "L'avant-match : les deux territoires face a face, le compte a"
+         " rebours centre, puis la forme des deux camps.",
          overlay.Card(title="LE MATCH VA COMMENCER", league="LIGUE 1",
                       minute="", home="Angers", away="Stade Rennais",
                       home_score=0, away_score=0, side=None,
                       detail=[("Coup d'envoi dans 5 min", False)],
                       accent="#f2e34c", title_color=overlay.MUTED,
+                      match_intro="prematch",
+                      home_motif_path=CREST, away_motif_path=CREST,
+                      home_logo=CREST, away_logo=CREST,
                       extra=[[("Angers : ", False), ("PPGGG  1G 0N 2P", True)],
                              [("Stade Rennais : ", False),
                               ("GGNGP  2G 1N 0P", True)]])),
 
         ("avant-match-aller", 1.0,
-         "Le meme avant-match, celui d'un match aller : l'enjeu se pose dans le"
-         " coin laisse vide par la minute, et la carte ne grandit pas d'un"
-         " pixel en hauteur.",
+         "Le meme avant-match, celui d'un match aller : l'enjeu garde le coin"
+         " droit de l'en-tete sans bousculer le face-a-face.",
          overlay.Card(title="LE MATCH VA COMMENCER",
                       league="LIGUE DES CHAMPIONS", minute="Match aller",
                       home="Real Madrid", away="Benfica",
                       home_score=0, away_score=0, side=None,
                       detail=[("Coup d'envoi dans 5 min", False)],
                       accent="#4c6ef5", title_color=overlay.MUTED,
+                      match_intro="prematch",
+                      home_motif_path=CREST, away_motif_path=CREST,
+                      home_logo=CREST, away_logo=CREST,
                       extra=[[("Real Madrid : ", False),
                               ("GGNGG  3G 1N 0P", True)],
                              [("Benfica : ", False),
                               ("GPGGN  2G 1N 1P", True)]])),
 
         ("coup-d-envoi", 1.0,
-         "Le coup d'envoi : une ligne par camp sous le score, sa forme et son"
-         " bilan, et pas de troisieme ligne au-dessus d'elles.",
+         "Le coup d'envoi : les deux territoires encadrent le 0 - 0, puis une"
+         " ligne par camp donne sa forme et son bilan.",
          overlay.Card(title="COUP D'ENVOI", league="LIGUE 1", minute="1'",
                       home="Angers", away="Stade Rennais",
                       home_score=0, away_score=0, side=None, detail=[],
                       accent="#f2e34c", title_color=overlay.MUTED,
+                      match_intro="kickoff",
+                      home_motif_path=CREST, away_motif_path=CREST,
+                      home_logo=CREST, away_logo=CREST,
                       extra=[[("Angers : ", False), ("PPGGG  1G 0N 2P", True)],
                              [("Stade Rennais : ", False),
                               ("GGNGP  2G 1N 0P", True)]])),

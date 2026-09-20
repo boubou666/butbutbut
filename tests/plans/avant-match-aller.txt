@@ -1,42 +1,63 @@
-# Le meme avant-match, celui d'un match aller : l'enjeu se pose dans le coin laisse vide par la minute, et la carte ne grandit pas d'un pixel en hauteur.
+# Le meme avant-match, celui d'un match aller : l'enjeu garde le coin droit de l'en-tete sans bousculer le face-a-face.
 # echelle 1.00 - police (largeur/interligne) detail 8/14  label 7/12  score 15/27  scorer 9/15  team 11/20  title 9/15
-# carte 486 x 153 px - grille 8 x 8 px par caractere
+# carte 500 x 260 px - grille 8 x 8 px par caractere
 
      0         80        160       240       320       400       480
-  0 |+-----------------------------------------------------------+|
-  8 |##                                                          ||
- 16 |##  LE MATCH VA COMMENCER    LIGUE DES CHAMPIO  Match alle  ||
- 24 |##                                                          ||
- 32 |##                                                          ||
- 40 |##                                                          ||
- 48 |##                                                          ||
- 56 |##      Real Madrid       0  -    0    Benfica              ||
- 64 |##                                                          ||
- 72 |##                                                          ||
- 80 |##  Coup d'envoi dans 5 min                                 ||
- 88 |##                                                          ||
- 96 |##                                                          ||
-104 |##  Real Madrid : GGNGG  3G 1N 0P                           ||
-112 |##                                                          ||
-120 |##                                                          ||
-128 |##  Benfica : GPGGN  2G 1N 1P                               ||
-136 |##                                                          ||
-144 |##----------------------------------------------------------+|
+  0 |+-------------------------------------------------------------+|
+  8 |##                                                            ||
+ 16 |##--LE MATCH VA COMMENCER---+LIGUE DES CHAMPIO----Match alle-+||
+ 24 |##                          |     |                          |||
+ 32 |##                          |     |                          |||
+ 40 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 48 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 56 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 64 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 72 |##      oooooooooooooo      +-----+      oooooooooooooo      |||
+ 80 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 88 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+ 96 |##      oooooooooooooo      | VS  |      oooooooooooooo      |||
+104 |##     +oooo+ooooooooo      |     |      ooooooooo+oooo+     |||
+112 |##     |oooo|ooooooooo      |     |      ooooooooo|oooo|     |||
+120 |##     |oooo|ooooooooo      +-----+      ooooooooo|oooo|     |||
+128 |##     |oooo|ooooooooo      |     |      ooooooooo|oooo|     |||
+136 |##     |oooo|ooooooooo      |     |      ooooooooo|oooo|     |||
+144 |##     +----+ooooooooo      |     |      ooooooooo+----+     |||
+152 |##      oooooooooooooo      |     |      oooooooooooooo      |||
+160 |##     Real Madrid          |     |        Benfica           |||
+168 |##                          |     |                          |||
+176 |##                          |     |                          |||
+184 |##                          |     |                          |||
+192 |##                  Coup d'envoi dans 5 min                  |||
+200 |##                          |     |                          |||
+208 |##  Real Madrid : GGNGG  3G 1N 0P |                          |||
+216 |##                          |     |                          |||
+224 |##                          |     |                          |||
+232 |##  Benfica : GPGGN  2G 1N 1P     |                          |||
+240 |##--------------------------+     +--------------------------+||
+248 |##                                                            ||
+256 |+-------------------------------------------------------------+|
 
 boite              x0     y0     x1     y1  contenu
 ------------------------------------------  ------------------------------
-carte               0      0    485    152
-filet               3      7     10    146
+carte               0      0    499    259
+carte              10     14    230    246
+carte             270     14    490    246
+filet               3      7     10    253
 titre              29     16    218     31  "LE MATCH VA COMMENCER"
 competition       232   17.5    365   29.5  "LIGUE DES CHAMPIONS"
-minute            387   17.5    464   29.5  "Match aller"
-equipe dom.        62   46.5    183   66.5  "Real Madrid"
-score dom.        209     43    224     70  "0"
-separateur        224     43    269     70  " - "
-score ext.        269     43    284     70  "0"
-equipe ext.       310   46.5    387   66.5  "Benfica"
-detail             29   80.5    213   94.5  "Coup d'envoi dans 5 min"
-ligne 1            29  101.5    141  115.5  "Real Madrid : "
-ligne 1           141    101    276    116  "GGNGG  3G 1N 0P"
-ligne 2            29  122.5    109  136.5  "Benfica : "
-ligne 2           109    122    244    137  "GPGGN  2G 1N 1P"
+minute            401   17.5    478   29.5  "Match aller"
+carte             225     73    275    123
+titre             241   90.5    259  105.5  "VS"
+visuel dom.        65     43    175    153
+carte              56    102    100    146
+ecusson dom.       60    106     96    142
+equipe dom.      59.5    155  180.5    175  "Real Madrid"
+visuel ext.       325     43    435    153
+carte             400    102    444    146
+ecusson ext.      404    106    440    142
+equipe ext.     341.5    155  418.5    175  "Benfica"
+detail            158  187.5    342  201.5  "Coup d'envoi dans 5 min"
+ligne 1            29  208.5    141  222.5  "Real Madrid : "
+ligne 1           141    208    276    223  "GGNGG  3G 1N 0P"
+ligne 2            29  229.5    109  243.5  "Benfica : "
+ligne 2           109    229    244    244  "GPGGN  2G 1N 1P"
