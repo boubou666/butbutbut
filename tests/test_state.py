@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from butbutbut import espn, i18n, leagues, state, watcher
+from butbutbut import espn, i18n, leagues, souvenir, state, watcher
 
 from helpers import bump, event, goal_detail, opener_for, payload
 
@@ -199,6 +199,24 @@ class TestReporter(unittest.TestCase):
         data = state.read(self.path)
         self.assertEqual(data["goals_today"], 1)
         self.assertEqual(data["matches"][0]["away_score"], 1)
+
+    def test_a_poll_enriches_a_legacy_souvenir(self):
+        stories = Path(self.tmp.name) / "souvenirs.json"
+        reporter = state.Reporter(self.path, stories_path=stories)
+        match = matches_from(event(
+            state="post", home_score=2, away_score=1,
+            home_stats={"totalShots": "10"},
+            away_stats={"totalShots": "21"}))[0]
+        old = souvenir.from_match(match, created_at=100)
+        old.pop("home_stats")
+        old.pop("away_stats")
+        reporter.stories.add(old)
+
+        reporter.update([match])
+
+        saved = souvenir.read(stories)[0]
+        self.assertEqual(saved["home_stats"]["totalShots"], 10.0)
+        self.assertEqual(saved["away_stats"]["totalShots"], 21.0)
 
 
 if __name__ == "__main__":

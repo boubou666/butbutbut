@@ -275,6 +275,9 @@ class Reporter:
         ``visible_events`` est ce qui vient d'etre livre apres retard. Omis,
         il vaut ``events`` et preserve le contrat des anciens appelants.
         """
+        matches = list(matches)
+        if self.stories is not None:
+            self.stories.enrich(matches)
         self.record(events)
         self.remember(events if visible_events is None else visible_events)
         if stream_delay is not None:

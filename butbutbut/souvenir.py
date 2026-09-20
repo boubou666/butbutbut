@@ -117,6 +117,34 @@ class Store:
         self.stories = self.stories[-MAX_STORIES:]
         return write(self.path, self.stories)
 
+    def enrich(self, matches=()) -> bool:
+        """Complete les statistiques absentes avec le releve courant.
+
+        Les souvenirs crees par une ancienne version restent valables, mais
+        ils ne portent pas les chiffres que cette version sait desormais
+        afficher. Tant que le match figure encore au tableau de bord, le
+        daemon peut les recuperer sans reconstruire ni le score ni le fil du
+        match. Une absence de statistiques ne remplace jamais des valeurs deja
+        conservees.
+        """
+        current = {str(match.id): match for match in matches}
+        changed = False
+        for story in self.stories:
+            match = current.get(str(story.get("id")))
+            if match is None:
+                continue
+            for key in ("home_stats", "away_stats"):
+                fresh = dict(getattr(match, key, {}) or {})
+                if not fresh:
+                    continue
+                previous = story.get(key)
+                merged = dict(previous) if isinstance(previous, dict) else {}
+                merged.update(fresh)
+                if previous != merged:
+                    story[key] = merged
+                    changed = True
+        return write(self.path, self.stories) if changed else False
+
     def latest(self, query=""):
         needle = teams.normalize(query)
         for story in reversed(self.stories):
