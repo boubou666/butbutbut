@@ -28,6 +28,11 @@ ressort en clair. On sait donc d'un coup d'oeil qui a marque, ou en est le
 match et dans quel championnat il se joue. Chaque equipe porte son ecusson a
 cote de son nom, quand il est deja en cache.
 
+Deux cartes prennent plus d'air : l'avant-match et le coup d'envoi mettent les
+illustrations territoriales des clubs face a face. Elles entrent depuis les
+bords, se posent autour du VS ou du score, puis revelent la composition
+complete. Un ecusson prend le relais si une illustration manque.
+
 Deux buts coup sur coup ne se marchent pas dessus : chaque carte est une
 fenetre a elle, et `Stack` les empile depuis le coin (la derniere arrivee est
 collee au coin, les precedentes remontent). Quand l'une s'efface, les autres
@@ -99,22 +104,34 @@ RED_NAME_GAP = 9         # espace entre les cartons et le nom de l'equipe
 
 MIN_WIDTH = 420          # largeur de confort : les cartes empilees s'alignent
 MAX_WIDTH = 720
+MATCH_INTRO_MIN_WIDTH = 500
+MOMENT_MIN_WIDTH = 500
 
 FADE_IN = 0.22
 FADE_OUT = 0.40
 FADE_STEPS = 12
 PUMP_MS = 120            # cadence des petites taches de la boucle tkinter
 
-# Un but commence par un bandeau qui traverse la carte, puis laisse place au
-# score et au buteur. Trois temps courts : entree, respiration, sortie.
-CELEBRATION_FRAME_MS = 25
-CELEBRATION_ENTER_FRAMES = 14
-CELEBRATION_HOLD_FRAMES = 18
-CELEBRATION_EXIT_FRAMES = 14
-CELEBRATION_FRAMES = (CELEBRATION_ENTER_FRAMES
-                      + CELEBRATION_HOLD_FRAMES
-                      + CELEBRATION_EXIT_FRAMES)
-CELEBRATION_MS = CELEBRATION_FRAMES * CELEBRATION_FRAME_MS
+# L'avant-match et le coup d'envoi ont leur propre ouverture : les deux
+# illustrations territoriales des clubs entrent face a face et se posent a
+# leur place definitive. L'animation ne remplace jamais la carte : elle n'est
+# qu'un calque identique pose par-dessus, et disparait sans saut au moindre
+# probleme de Canvas.
+DUEL_FRAME_MS = 20
+DUEL_ENTER_FRAMES = 24
+DUEL_HOLD_FRAMES = 22
+DUEL_FRAMES = DUEL_ENTER_FRAMES + DUEL_HOLD_FRAMES
+DUEL_MS = DUEL_FRAMES * DUEL_FRAME_MS
+
+# But et carton rouge partagent le meme gabarit et la meme cadence. Leur geste
+# reste different : un club pousse depuis son camp sur un but, tandis que le
+# carton tombe d'un coup sec au milieu de la composition.
+MOMENT_FRAME_MS = 20
+MOMENT_ENTER_FRAMES = 24
+MOMENT_HOLD_FRAMES = 24
+MOMENT_FRAMES = MOMENT_ENTER_FRAMES + MOMENT_HOLD_FRAMES
+MOMENT_MS = MOMENT_FRAMES * MOMENT_FRAME_MS
+GOAL_CRY_PIXELS_PER_SECOND = 130
 
 MAX_VISIBLE = 5          # au-dela, la plus ancienne carte cede sa place
 
@@ -245,13 +262,15 @@ class Card:
                  "away_score", "side", "parts", "accent", "title_color",
                  "extra", "team_accent", "home_logo", "away_logo",
                  "home_reds", "away_reds", "celebration", "motif",
-                 "motif_path")
+                 "motif_path", "match_intro", "home_motif_path",
+                 "away_motif_path", "moment", "focus_side")
 
     def __init__(self, title, league, minute, home, away, home_score, away_score,
                  side, detail, accent, title_color=None, extra=(),
                  team_accent=None, home_logo=None, away_logo=None,
                  home_reds=0, away_reds=0, celebration="", motif="",
-                 motif_path=None):
+                 motif_path=None, match_intro="", home_motif_path=None,
+                 away_motif_path=None, moment="", focus_side=None):
         self.title = title              # "BUT !", "MI-TEMPS"...
         self.league = league            # "LIGUE 1"
         self.minute = minute            # "35'"
@@ -289,6 +308,14 @@ class Card:
         # integrations et les anciennes cartes construites a la main.
         self.motif = str(motif or "")
         self.motif_path = motif_path
+        # Les deux seules cartes qui racontent l'approche du match ouvrent sur
+        # un face-a-face. Les chemins restent locaux et optionnels : une ligue
+        # sans illustration garde la meme animation avec noms et ecussons.
+        self.match_intro = str(match_intro or "")
+        self.home_motif_path = home_motif_path
+        self.away_motif_path = away_motif_path
+        self.moment = str(moment or "")
+        self.focus_side = focus_side if focus_side in ("home", "away") else None
 
     @property
     def detail(self) -> str:
@@ -310,11 +337,15 @@ class Card:
         themed_id = (event.match.away_id if event.side == "away"
                      else event.match.home_id)
         motif_path = themes.club_asset(themed_id)
+        match_intro = (event.kind if event.kind in ("prematch", "kickoff")
+                       else "")
 
         if event.sober:
             # Temps forts, expulsion, avant-match : rien de tout ca ne doit
             # sauter aux yeux comme un but.
             title_color = MUTED
+            if event.kind == "red_card":
+                title_color = RED_CARD
         elif not event.goal:
             accent = title_color = team_accent = CANCEL_ACCENT   # but annule
         else:
@@ -351,6 +382,13 @@ class Card:
                          if event.goal and event.sport is sports.SOCCER else ""),
             motif=motif,
             motif_path=motif_path,
+            match_intro=match_intro,
+            home_motif_path=(themes.club_asset(event.match.home_id)
+                             if match_intro else None),
+            away_motif_path=(themes.club_asset(event.match.away_id)
+                             if match_intro else None),
+            moment=event.kind,
+            focus_side=event.side,
         )
 
     @classmethod
@@ -392,6 +430,8 @@ class Card:
                          if sport is sports.SOCCER else ""),
             motif=themes.league_motif(league),
             motif_path=themes.club_asset(scoring[1]),
+            moment="goal",
+            focus_side=sample["side"],
         )
 
     @classmethod
@@ -597,6 +637,23 @@ def _rounded(canvas, x0, y0, x1, y1, radius, **options):
     return canvas.create_polygon(points, smooth=True, **options)
 
 
+def _crisp_rounded(canvas, x0, y0, x1, y1, radius, **options):
+    """Petit rectangle arrondi aux segments droits, sans spline Tk."""
+    x0, y0, x1, y1 = map(int, (x0, y0, x1, y1))
+    radius = max(0, min(int(radius), (x1 - x0) // 2, (y1 - y0) // 2))
+    points = []
+    for cx, cy, start in (
+            (x0 + radius, y0 + radius, 180),
+            (x1 - radius, y0 + radius, 270),
+            (x1 - radius, y1 - radius, 0),
+            (x0 + radius, y1 - radius, 90)):
+        for angle in range(start, start + 91, 15):
+            radians = math.radians(angle)
+            points.extend((round(cx + radius * math.cos(radians)),
+                           round(cy + radius * math.sin(radians))))
+    return canvas.create_polygon(tuple(points), smooth=False, **options)
+
+
 def _fit(font, text: str, limit: float) -> str:
     """Raccourcit `text` avec des points de suspension pour tenir en `limit`."""
     if not text or font.measure(text) <= limit:
@@ -646,6 +703,9 @@ def _layout(card: Card, fonts):
     Et il est reserve des qu'UNE des deux equipes en a un, sinon le score se
     decalerait selon les ecussons deja telecharges.
     """
+    if card.match_intro:
+        return _match_intro_layout(card, fonts)
+
     # Le score est decoupe en trois pour pouvoir colorer le seul chiffre qui
     # vient de bouger.
     score_parts = (str(card.home_score), " - ", str(card.away_score))
@@ -679,7 +739,9 @@ def _layout(card: Card, fonts):
                        for text, strong in line) for line in extra] or [0])
 
     content_w = max(middle_w, header_w, detail_w, extra_w)
-    width = int(min(MAX_WIDTH, max(MIN_WIDTH, content_w + margins)))
+    min_width = (MOMENT_MIN_WIDTH
+                 if card.moment in ("goal", "red_card") else MIN_WIDTH)
+    width = int(min(MAX_WIDTH, max(min_width, content_w + margins)))
 
     # Une liste de buteurs n'a pas de longueur maximale : elle est coupee sur
     # la largeur reelle de la carte, comme les noms d'equipes juste apres.
@@ -718,13 +780,23 @@ def _layout(card: Card, fonts):
     extra_y = [bottom + EXTRA_GAP + index * (EXTRA_GAP + extra_h) + extra_h / 2.0
                for index in range(len(extra))]
 
-    height = int(bottom + PAD_Y + len(extra) * (EXTRA_GAP + extra_h))
+    natural_height = int(bottom + PAD_Y + len(extra) * (EXTRA_GAP + extra_h))
+    # But et rouge gardent le meme cadre. Les quelques pixels en plus donnent
+    # au cri une ligne superieure DANS la carte, sans recouvrir le score.
+    body_height = (max(150, natural_height)
+                   if card.moment in ("goal", "red_card")
+                   else natural_height)
+    body_shift = (body_height - natural_height) / 2.0
+    moment_top = 0
+    height = body_height
 
     return {
         "width": width,
         "height": height,
         "extra": extra,
-        "extra_y": extra_y,
+        "extra_y": [y + body_shift for y in extra_y],
+        "moment_top": moment_top,
+        "body_height": body_height,
         "left": BAR_WIDTH + PAD_X,
         "right": width - PAD_X,
         "home": home,
@@ -742,9 +814,84 @@ def _layout(card: Card, fonts):
         "score_parts": score_parts,
         "score_widths": score_widths,
         "score_w": score_w,
-        "header_y": PAD_Y + header_h / 2.0,
-        "score_y": PAD_Y + header_h + LINE_GAP + score_h / 2.0,
-        "detail_y": PAD_Y + header_h + LINE_GAP + score_h + (LINE_GAP - 2) + detail_h / 2.0,
+        "header_y": body_shift + PAD_Y + header_h / 2.0,
+        "score_y": (body_shift + PAD_Y + header_h + LINE_GAP
+                    + score_h / 2.0),
+        "detail_y": (body_shift + PAD_Y + header_h + LINE_GAP + score_h
+                     + (LINE_GAP - 2) + detail_h / 2.0),
+    }
+
+
+def _match_intro_layout(card: Card, fonts):
+    """Composition ample reservee a l'avant-match et au coup d'envoi."""
+    header_h = max(fonts["title"].metrics("linespace"),
+                   fonts["label"].metrics("linespace"))
+    team_h = fonts["team"].metrics("linespace")
+    detail_h = max(fonts["detail"].metrics("linespace"),
+                   fonts["scorer"].metrics("linespace")) if card.parts else 0
+    scene_size = max(92, int(team_h * 5.5))
+    crest_size = max(30, int(team_h * 1.8))
+
+    header_w = (fonts["title"].measure(card.title) + 24
+                + fonts["label"].measure(card.league) + 18
+                + fonts["label"].measure(card.minute))
+    teams_w = 2 * max(fonts["team"].measure(card.home),
+                      fonts["team"].measure(card.away)) + 150
+    width = int(min(MAX_WIDTH, max(MATCH_INTRO_MIN_WIDTH,
+                                   header_w + 2 * PAD_X + BAR_WIDTH,
+                                   teams_w + 2 * PAD_X + BAR_WIDTH)))
+
+    room = max(60.0, width * 0.34)
+    home = _fit(fonts["team"], card.home, room)
+    away = _fit(fonts["team"], card.away, room)
+    extra = [list(line) for line in card.extra[:MAX_EXTRA_LINES] if line]
+    extra = [_fit_parts(fonts, line, width - BAR_WIDTH - 2 * PAD_X)
+             for line in extra]
+    extra = [line for line in extra if line]
+    parts = _fit_parts(fonts, list(card.parts),
+                       width - BAR_WIDTH - 2 * PAD_X)
+    extra_h = max(fonts["detail"].metrics("linespace"),
+                  fonts["scorer"].metrics("linespace")) if extra else 0
+
+    header_y = PAD_Y + header_h / 2.0
+    scene_top = PAD_Y + header_h + LINE_GAP
+    scene_y = scene_top + scene_size / 2.0
+    team_y = scene_top + scene_size + 2 + team_h / 2.0
+    detail_y = team_y + team_h / 2.0 + LINE_GAP + detail_h / 2.0
+    bottom = (detail_y + detail_h / 2.0 if detail_h
+              else team_y + team_h / 2.0)
+    extra_y = [bottom + EXTRA_GAP + index * (EXTRA_GAP + extra_h)
+               + extra_h / 2.0 for index in range(len(extra))]
+    height = int(bottom + PAD_Y + len(extra) * (EXTRA_GAP + extra_h))
+
+    return {
+        "width": width,
+        "height": height,
+        "left": BAR_WIDTH + PAD_X,
+        "right": width - PAD_X,
+        "header_y": header_y,
+        "scene_size": scene_size,
+        "crest_size": crest_size,
+        "fallback_logo": max(crest_size, int(scene_size * 0.62)),
+        "badge_size": max(48, int(scene_size * 0.46)),
+        "scene_y": scene_y,
+        "home_scene_x": width * 0.24,
+        "away_scene_x": width * 0.76,
+        "home_crest_x": round(width * 0.24 - scene_size * 0.38),
+        "away_crest_x": round(width * 0.76 + scene_size * 0.38),
+        "crest_y": round(scene_y + scene_size * 0.24),
+        "center_x": width / 2.0,
+        "team_y": team_y,
+        "home": home,
+        "away": away,
+        "detail_y": detail_y,
+        "parts": parts,
+        "extra": extra,
+        "extra_y": extra_y,
+        # Les ecussons prennent le relais si une illustration manque. Sur ces
+        # deux cartes ils ont droit a une vraie presence, pas au petit format
+        # de la ligne de score ordinaire.
+        "logo": crest_size,
     }
 
 
@@ -781,7 +928,7 @@ def load_motif(tk, card: Card, box, master=None, atlas=None, cache=None) -> dict
     try:
         if card.motif_path:
             source = tk.PhotoImage(file=str(card.motif_path), master=master)
-            target = max(48, int(box["height"] * 0.78))
+            target = max(48, int(box.get("body_height", box["height"]) * 0.78))
             factor = max(1, int(math.ceil(source.height() / float(target))))
             key = ("club", str(card.motif_path), factor)
             sprite = (cache or {}).get(key)
@@ -796,7 +943,7 @@ def load_motif(tk, card: Card, box, master=None, atlas=None, cache=None) -> dict
         x0, y0, x1, y1 = themes.atlas_box(card.motif, width, height)
         # Le motif occupe environ les trois quarts de la hauteur et reste un
         # filigrane, jamais une quatrieme ligne a lire.
-        target = max(48, int(box["height"] * 0.78))
+        target = max(48, int(box.get("body_height", box["height"]) * 0.78))
         factor = max(1, int(math.ceil((y1 - y0) / float(target))))
         key = (card.motif, factor)
         sprite = (cache or {}).get(key)
@@ -814,11 +961,164 @@ def load_motif(tk, card: Card, box, master=None, atlas=None, cache=None) -> dict
         return {}
 
 
-def _draw(canvas, card: Card, fonts, box, background, images=None):
+def load_match_intro(tk, card: Card, box, master=None, cache=None) -> dict:
+    """Charge les deux illustrations du face-a-face, sans aucun reseau.
+
+    Les PNG de club sont volontairement plus grands que leur rendu dans une
+    carte. Tk sait les reduire par facteur entier : c'est moins souple que
+    Pillow, mais instantane, disponible partout et suffisant pour une intro
+    qui ne dure qu'une seconde. Les ecussons deja charges restent le repli.
+    """
+    if not card.match_intro:
+        return {}
+
+    target = int(box.get(
+        "scene_size",
+        max(56, min(box["height"] * 0.82, box["width"] * 0.34))))
+    found = {}
+    for side, path in (("home", card.home_motif_path),
+                       ("away", card.away_motif_path)):
+        if path is None:
+            continue
+        try:
+            source = tk.PhotoImage(file=str(path), master=master)
+            factor = max(1, int(math.ceil(
+                max(source.width(), source.height()) / float(target))))
+            key = ("match-intro", str(path), factor)
+            sprite = (cache or {}).get(key)
+            if sprite is None:
+                sprite = source.subsample(factor, factor) if factor > 1 else source
+                if cache is not None:
+                    cache[key] = sprite
+            found[side + "_scene"] = sprite
+            # Quand le facteur vaut un, le sprite EST la source. La reference
+            # explicite rend aussi ce contrat evident pour les Tk plus anciens.
+            found[side + "_scene_source"] = source
+        except Exception:
+            continue
+    return found
+
+
+def load_match_crests(tk, card: Card, box, scenes=None, master=None) -> dict:
+    """Charge les ecussons en medaillon, ou en grand si le decor manque."""
+    found = {}
+    scenes = scenes or {}
+    for side, path in (("home", card.home_logo), ("away", card.away_logo)):
+        if path is None:
+            continue
+        has_scene = scenes.get(side + "_scene") is not None
+        size = box["crest_size"] if has_scene else box["fallback_logo"]
+        image = crests.photo(tk, path, size, master=master)
+        if image is not None:
+            found[side + "_crest" if has_scene else side] = image
+    return found
+
+
+def _draw_match_badge(canvas, card: Card, fonts, box, tags=None):
+    """Le badge unique partage par l'intro et par la carte revelee."""
+    tagged = {"tags": tags} if tags else {}
+    cx, cy = box["center_x"], box["scene_y"]
+    x0, y0, x1, y1 = _duel_badge_box(cx, cy, box["badge_size"])
+    _crisp_rounded(canvas, x0, y0, x1, y1,
+                   max(7, box["badge_size"] // 6),
+                   fill=CARD_BG, outline=card.accent, **tagged)
+    center_text = ("VS" if card.match_intro == "prematch" else
+                   "{} - {}".format(card.home_score, card.away_score))
+    canvas.create_text(cx, cy, text=center_text, fill=card.accent,
+                       font=fonts["title"], anchor="center", **tagged)
+
+
+def _draw_match_shell(canvas, card: Card, fonts, box, background, tags=None):
+    """Fond, en-tete et badge communs aux deux temps de l'animation."""
+    tagged = {"tags": tags} if tags else {}
     width, height = box["width"], box["height"]
+    canvas.create_rectangle(0, 0, width, height,
+                            fill=background, outline=background, **tagged)
+    _rounded(canvas, 0, 0, width - 1, height - 1, RADIUS,
+             fill=CARD_BG, outline=CARD_EDGE, **tagged)
+
+    # Deux pans obliques donnent une direction au face-a-face sans ajouter une
+    # couleur de club qui pourrait etre confondue avec celle d'un buteur.
+    middle = box["center_x"]
+    canvas.create_polygon(
+        (10, RADIUS, middle - 20, RADIUS, middle - 58, height - RADIUS,
+         10, height - RADIUS), fill="#111722", outline="", **tagged)
+    canvas.create_polygon(
+        (middle + 20, RADIUS, width - 10, RADIUS,
+         width - 10, height - RADIUS, middle + 58, height - RADIUS),
+        fill="#17131d", outline="", **tagged)
+    canvas.create_rectangle(3, RADIUS // 2, 3 + BAR_WIDTH,
+                            height - RADIUS // 2,
+                            fill=card.accent, outline=card.accent, **tagged)
+
+    title = canvas.create_text(
+        box["left"], box["header_y"], text=card.title,
+        fill=TEXT, font=fonts["title"], anchor="w", **tagged)
+    title_end = canvas.bbox(title)[2]
+    canvas.create_text(title_end + 14, box["header_y"], text=card.league,
+                       fill=MUTED, font=fonts["label"], anchor="w", **tagged)
+    if card.minute:
+        canvas.create_text(box["right"], box["header_y"], text=card.minute,
+                           fill=MUTED, font=fonts["label"], anchor="e",
+                           **tagged)
+    _draw_match_badge(canvas, card, fonts, box, tags=tags)
+
+
+def _draw_match_intro_card(canvas, card: Card, fonts, box, background,
+                           images=None):
+    """Affiche finale des deux camps, apres leur entree animee."""
+    _draw_match_shell(canvas, card, fonts, box, background)
+
+    for side in ("home", "away"):
+        scene = (images or {}).get(side + "_scene")
+        image = scene or (images or {}).get(side)
+        if image is not None:
+            canvas.create_image(box[side + "_scene_x"], box["scene_y"],
+                                image=image, anchor="center")
+        crest = (images or {}).get(side + "_crest")
+        if scene is not None and crest is not None:
+            size = box["crest_size"] + 8
+            x0, y0, x1, y1 = _duel_badge_box(
+                box[side + "_crest_x"], box["crest_y"], size)
+            canvas.create_oval(x0, y0, x1, y1,
+                               fill=CARD_BG, outline=card.accent)
+            canvas.create_image(box[side + "_crest_x"], box["crest_y"],
+                                image=crest, anchor="center")
+        canvas.create_text(box[side + "_scene_x"], box["team_y"],
+                           text=box[side], fill=TEXT, font=fonts["team"],
+                           anchor="center")
+
+    detail_width = sum(_detail_font(fonts, strong).measure(text)
+                       for text, strong in box["parts"])
+    x = box["center_x"] - detail_width / 2.0
+    for text, strong in box["parts"]:
+        font = _detail_font(fonts, strong)
+        canvas.create_text(
+            x, box["detail_y"], text=text,
+            fill=(TEXT if strong else card.accent), font=font, anchor="w")
+        x += font.measure(text)
+
+    for line, y in zip(box["extra"], box["extra_y"]):
+        x = box["left"]
+        for text, strong in line:
+            font = _detail_font(fonts, strong)
+            canvas.create_text(x, y, text=text,
+                               fill=TEXT if strong else MUTED,
+                               font=font, anchor="w")
+            x += font.measure(text)
+
+
+def _draw(canvas, card: Card, fonts, box, background, images=None):
+    if card.match_intro:
+        _draw_match_intro_card(canvas, card, fonts, box, background, images)
+        return
+
+    width, height = box["width"], box["height"]
+    top = box.get("moment_top", 0)
 
     canvas.create_rectangle(0, 0, width, height, fill=background, outline=background)
-    _rounded(canvas, 0, 0, width - 1, height - 1, RADIUS, fill=CARD_BG, outline=CARD_EDGE)
+    _rounded(canvas, 0, top, width - 1, height - 1, RADIUS,
+             fill=CARD_BG, outline=CARD_EDGE)
     # Carte postale en filigrane : elle est posee avant tout le texte. Sa
     # palette sombre et or fait partie du PNG ; le score reste donc au-dessus
     # et garde exactement la meme hierarchie dans tous les pays.
@@ -826,7 +1126,8 @@ def _draw(canvas, card: Card, fonts, box, background, images=None):
     if motif is not None:
         canvas.create_image(width - 9, height - 3, image=motif, anchor="se")
     # Filet vertical aux couleurs du championnat, cale dans l'arrondi.
-    canvas.create_rectangle(3, RADIUS // 2, 3 + BAR_WIDTH, height - RADIUS // 2,
+    canvas.create_rectangle(3, top + RADIUS // 2,
+                            3 + BAR_WIDTH, height - RADIUS // 2,
                             fill=card.accent, outline=card.accent)
 
     # --- ligne 1 : BUT ! / championnat / minute
@@ -896,31 +1197,90 @@ def _draw(canvas, card: Card, fonts, box, background, images=None):
 
 # ------------------------------------------------------------------ pile -----
 
-def _celebration_x(frame: int, width: float, text_width: float) -> float:
-    """Abscisse du cri de but a une image donnee, avec acceleration douce.
+def _smoothstep(frame: int, entering: int) -> float:
+    """Progression a vitesse nulle aux deux extremites."""
+    progress = max(0.0, min(float(frame) / float(entering), 1.0))
+    return progress * progress * (3.0 - 2.0 * progress)
 
-    La chaine commence entierement a droite du canvas, freine jusqu'au centre,
-    y respire, puis accelere vers la gauche jusqu'a en sortir entierement.
-    Fonction pure pour que la trajectoire reste testable sans ouvrir tkinter.
-    """
+
+def _moment_x(frame: int, width: float, side: str) -> float:
+    """Fait entrer l'illustration du club jusqu'a son quart de carte."""
+    left = side == "home"
+    outside = -float(width) * 0.18 if left else float(width) * 1.18
+    target = float(width) * (0.22 if left else 0.78)
+    eased = _smoothstep(min(frame, MOMENT_ENTER_FRAMES), MOMENT_ENTER_FRAMES)
+    return outside + (target - outside) * eased
+
+
+def _red_card_y(frame: int, height: float) -> float:
+    """Fait tomber le carton au centre sans rebond ni demi-pixel."""
+    start = -float(height) * 0.28
+    target = float(height) * 0.55
+    eased = _smoothstep(min(frame, MOMENT_ENTER_FRAMES), MOMENT_ENTER_FRAMES)
+    return round(start + (target - start) * eased)
+
+
+def _goal_cry_x(frame: int, width: float, text_width: float,
+                total_frames: int = MOMENT_FRAMES) -> float:
+    """Defilement regulier du cri, du debut a la fin de la carte."""
     start = float(width) + float(text_width) / 2.0 + PAD_X
-    middle = float(width) / 2.0
     end = -float(text_width) / 2.0 - PAD_X
-    frame = max(0, min(int(frame), CELEBRATION_FRAMES))
+    total_frames = max(1, int(total_frames))
+    progress = max(0.0, min(float(frame) / total_frames, 1.0))
+    return start + (end - start) * progress
 
-    if frame <= CELEBRATION_ENTER_FRAMES:
-        progress = frame / float(CELEBRATION_ENTER_FRAMES)
-        eased = 1.0 - (1.0 - progress) ** 3
-        return start + (middle - start) * eased
 
-    if frame <= CELEBRATION_ENTER_FRAMES + CELEBRATION_HOLD_FRAMES:
-        return middle
+def _stretch_goal_cry(text: str, font, target_width: float) -> str:
+    """Allonge la plus longue voyelle repetee jusqu'a la largeur voulue."""
+    text = str(text or "")
+    if not text or font.measure(text) >= target_width:
+        return text
 
-    progress = ((frame - CELEBRATION_ENTER_FRAMES
-                 - CELEBRATION_HOLD_FRAMES)
-                / float(CELEBRATION_EXIT_FRAMES))
-    eased = progress ** 3
-    return middle + (end - middle) * eased
+    best_start = best_end = 0
+    run_start = 0
+    for index in range(1, len(text) + 1):
+        if index < len(text) and text[index] == text[run_start]:
+            continue
+        if index - run_start > best_end - best_start:
+            best_start, best_end = run_start, index
+        run_start = index
+
+    letter = text[best_start:best_start + 1] or "O"
+    letter_width = max(1, font.measure(letter))
+    missing = max(0, int(math.ceil(
+        (float(target_width) - font.measure(text)) / letter_width)))
+    return text[:best_end] + letter * missing + text[best_end:]
+
+
+def _duel_x(frame: int, width: float, side: str) -> float:
+    """Abscisse d'un camp pendant l'ouverture avant-match.
+
+    Les deux camps entrent depuis leur bord et se posent exactement la ou la
+    carte finale les gardera. La symetrie est calculee ici plutot que dans le
+    Canvas afin de rester exacte a toutes les tailles de carte.
+    """
+    frame = max(0, min(int(frame), DUEL_FRAMES))
+    left = side == "home"
+    outside = -float(width) * 0.18 if left else float(width) * 1.18
+    target = float(width) * (0.24 if left else 0.76)
+
+    if frame <= DUEL_ENTER_FRAMES:
+        # Smoothstep part et arrive a vitesse nulle. L'ancien ease-out cubic
+        # avalait 16 % du trajet des la premiere image : ce grand saut, suivi
+        # de pas minuscules, donnait exactement l'impression de saccade.
+        eased = _smoothstep(frame, DUEL_ENTER_FRAMES)
+        return outside + (target - outside) * eased
+
+    return target
+
+
+def _duel_badge_box(center_x: float, center_y: float,
+                    size: float = 48.0) -> tuple:
+    """Boite carree entiere : aucun demi-pixel ne tord son contour."""
+    side = max(4, int(round(size)))
+    x0 = int(round(float(center_x) - side / 2.0))
+    y0 = int(round(float(center_y) - side / 2.0))
+    return x0, y0, x0 + side, y0 + side
 
 
 class _Panel:
@@ -963,13 +1323,22 @@ class _Panel:
 
         # Les images vivent aussi longtemps que la carte : sans cette
         # reference, tkinter les ramasse et les ecussons disparaissent.
-        self.images = load_logos(self.stack.tk, card, self.box,
-                                 master=self.window)
         motif_cache = getattr(self.stack, "_motif_cache", None)
-        decor = load_motif(
-            self.stack.tk, card, self.box, master=self.window,
-            atlas=getattr(self.stack, "_country_atlas", None),
-            cache=motif_cache)
+        if card.match_intro:
+            self.images = load_match_intro(
+                self.stack.tk, card, self.box, master=self.window,
+                cache=motif_cache)
+            self.images.update(load_match_crests(
+                self.stack.tk, card, self.box, scenes=self.images,
+                master=self.window))
+            decor = {}
+        else:
+            self.images = load_logos(self.stack.tk, card, self.box,
+                                     master=self.window)
+            decor = load_motif(
+                self.stack.tk, card, self.box, master=self.window,
+                atlas=getattr(self.stack, "_country_atlas", None),
+                cache=motif_cache)
         if decor.get("motif_atlas") is not None:
             self.stack._country_atlas = decor["motif_atlas"]
         self.images.update(decor)
@@ -1032,62 +1401,325 @@ class _Toast(_Panel):
         self.duration = max(1.0, float(duration))
         self.closing = False
 
-    def _celebration_frame(self, item, frame, text_width, done) -> None:
-        """Fait entrer le cri, le pose un instant, puis le chasse a gauche."""
+    def _moment_frame(self, art, card_shapes, cry, frame, total_frames,
+                      done) -> None:
+        """Anime le club concerne et, pour une expulsion, le carton."""
         if not self.window.winfo_exists():
             return
-        if frame >= CELEBRATION_FRAMES:
+        if frame >= total_frames:
+            # Le cri a fini sa traversee hors champ. Seul ce calque mobile
+            # disparait ; toute la composition posee reste la carte finale.
             try:
-                self.canvas.delete("celebration")
+                self.canvas.delete("goal_cry")
             except Exception:
                 pass
+            # Cette composition EST la carte finale. La retirer ici revelait
+            # brutalement l'ancien dessin place dessous : meme contenu, mais
+            # toute la geometrie sautait d'un coup. On la laisse donc posee
+            # jusqu'au fondu de sortie, exactement comme les camps du duel.
             done()
             return
 
-        x = _celebration_x(frame, self.width, text_width)
+        side = self.card.focus_side or "home"
+        x = _moment_x(frame, self.width, side)
+        top = self.box.get("moment_top", 0)
+        body_height = self.box.get("body_height", self.height - top)
+        art_y = top + body_height * 0.58
         try:
-            self.canvas.coords(item, x, self.height / 2.0)
+            for item, x_offset, y_offset, half in art:
+                item_x, item_y = x + x_offset, art_y + y_offset
+                if half:
+                    self.canvas.coords(
+                        item, item_x - half, item_y - half,
+                        item_x + half, item_y + half)
+                else:
+                    self.canvas.coords(item, item_x, item_y)
+
+            card_y = top + _red_card_y(frame, body_height)
+            card_x = self.width / 2.0
+            for item, x0, y0, x1, y1 in card_shapes:
+                self.canvas.coords(item, card_x + x0, card_y + y0,
+                                   card_x + x1, card_y + y1)
+            if cry is not None:
+                item, text_width = cry
+                self.canvas.coords(
+                    item,
+                    _goal_cry_x(
+                        frame, self.width, text_width, total_frames),
+                    top + body_height * 0.19,
+                )
         except Exception:
-            # Une animation ne doit jamais retenir la vraie carte : si le
-            # canvas refuse un mouvement, on retire le cache et on continue.
             try:
-                self.canvas.delete("celebration")
+                self.canvas.delete("moment_intro")
             except Exception:
                 pass
             done()
             return
         self._after(
-            CELEBRATION_FRAME_MS,
-            lambda: self._celebration_frame(
-                item, frame + 1, text_width, done),
+            MOMENT_FRAME_MS,
+            lambda: self._moment_frame(
+                art, card_shapes, cry, frame + 1, total_frames, done),
         )
 
-    def _celebrate(self, done) -> None:
-        """Pose le bandeau anime par-dessus la carte deja dessinee."""
+    def _moment_shell(self, color) -> None:
+        """Fond commun aux buts et aux rouges : meme taille, meme structure."""
+        width, height = self.width, self.height
+        top = self.box.get("moment_top", 0)
+        body_height = self.box.get("body_height", height - top)
+        # Sur un but, la diagonale commence sous le bandeau du cri. Texte et
+        # fond gardent ainsi le meme contraste pendant toute la traversee ; la
+        # couleur du club ne passe plus sur elle-meme au milieu d'une lettre.
+        panel_top = (top + body_height * 0.31
+                     if self.card.moment == "goal" and self.card.celebration
+                     else top + RADIUS)
+        side = self.card.focus_side or "home"
+        self.canvas.create_rectangle(
+            0, 0, width, height, fill=self.background,
+            outline=self.background, tags="moment_intro")
+        _rounded(self.canvas, 0, top, width - 1, height - 1,
+                 RADIUS, fill=CARD_BG, outline=CARD_EDGE,
+                 tags="moment_intro")
+        if side == "home":
+            panel = (9, panel_top, width * 0.46, panel_top,
+                     width * 0.34, height - RADIUS, 9, height - RADIUS)
+            slash = (width * 0.45, panel_top,
+                     width * 0.48, panel_top,
+                     width * 0.36, height - RADIUS,
+                     width * 0.33, height - RADIUS)
+        else:
+            panel = (width * 0.54, panel_top,
+                     width - 9, panel_top,
+                     width - 9, height - RADIUS,
+                     width * 0.66, height - RADIUS)
+            slash = (width * 0.52, panel_top,
+                     width * 0.55, panel_top,
+                     width * 0.67, height - RADIUS,
+                     width * 0.64, height - RADIUS)
+        self.canvas.create_polygon(panel, fill="#131925", outline="",
+                                   tags="moment_intro")
+        self.canvas.create_polygon(slash, fill=color, outline="",
+                                   tags="moment_intro")
+        self.canvas.create_rectangle(
+            3, top + RADIUS // 2, 3 + BAR_WIDTH, height - RADIUS // 2,
+            fill=self.card.accent, outline=self.card.accent,
+            tags="moment_intro")
+
+    def _moment_art(self) -> list:
+        """Dessine illustration et ecusson au point de depart de leur entree."""
+        side = self.card.focus_side or "home"
+        start_x = _moment_x(0, self.width, side)
+        top = self.box.get("moment_top", 0)
+        body_height = self.box.get("body_height", self.height - top)
+        art_y = top + body_height * 0.58
+        items = []
+        scene = self.images.get("motif")
+        if scene is not None:
+            items.append((self.canvas.create_image(
+                start_x, art_y, image=scene, anchor="center",
+                tags="moment_intro"), 0, 0, 0))
+
+        crest = self.images.get(side)
+        if crest is not None:
+            direction = 1 if side == "home" else -1
+            crest_x = direction * self.width * 0.105
+            crest_y = body_height * 0.17
+            half = (self.box.get("logo", 24) + 10) / 2.0
+            items.append((self.canvas.create_oval(
+                0, 0, 0, 0, fill=CARD_BG, outline=self.card.accent,
+                width=2, tags="moment_intro"), crest_x, crest_y, half))
+            items.append((self.canvas.create_image(
+                0, 0, image=crest, anchor="center", tags="moment_intro"),
+                crest_x, crest_y, 0))
+        return items
+
+    def _moment_intro(self, done, red=False, total_frames=MOMENT_FRAMES) -> None:
+        """Compose l'ouverture visuelle d'un but ou d'un carton rouge."""
         try:
-            _rounded(self.canvas, 0, 0, self.width - 1, self.height - 1,
-                     RADIUS, fill=CARD_BG, outline=CARD_EDGE,
-                     tags="celebration")
-            self.canvas.create_rectangle(
-                3, RADIUS // 2, 3 + BAR_WIDTH, self.height - RADIUS // 2,
-                fill=self.card.accent, outline=self.card.accent,
-                tags="celebration",
-            )
-            font = self.stack.fonts["score"]
-            text_width = font.measure(self.card.celebration)
-            item = self.canvas.create_text(
-                _celebration_x(0, self.width, text_width),
-                self.height / 2.0,
-                text=self.card.celebration,
-                fill=self.card.team_accent,
-                font=font,
-                anchor="center",
-                tags="celebration",
-            )
+            color = RED_CARD if red else self.card.team_accent
+            self._moment_shell(color)
+            side = self.card.focus_side or "home"
+            top = self.box.get("moment_top", 0)
+            body_height = self.box.get("body_height", self.height - top)
+            text_x = self.width * (0.71 if side == "home" else 0.29)
+            text_room = self.width * 0.38
+            cry = None
+            if not red and self.card.celebration:
+                cry_font = self.stack.fonts["score"]
+                seconds = total_frames * MOMENT_FRAME_MS / 1000.0
+                target_width = (self.width
+                                + seconds * GOAL_CRY_PIXELS_PER_SECOND)
+                cry_text = _stretch_goal_cry(
+                    self.card.celebration, cry_font, target_width)
+                cry_width = cry_font.measure(cry_text)
+                cry = (self.canvas.create_text(
+                    _goal_cry_x(
+                        0, self.width, cry_width, total_frames),
+                    top + body_height * 0.19,
+                    text=cry_text, fill=color,
+                    font=cry_font, anchor="center",
+                    tags=("moment_intro", "goal_cry")), cry_width)
+                self.canvas.create_rectangle(
+                    PAD_X, top + body_height * 0.31,
+                    self.width - PAD_X, top + body_height * 0.31 + 1,
+                    fill=CARD_EDGE, outline="", tags="moment_intro")
+                # Le Canvas ne sait pas clipper un texte dans une sous-zone.
+                # Ce cache remet donc la marge gauche au premier plan : le
+                # ruban nait APRES le filet de competition, jamais dessus.
+                band_bottom = top + body_height * 0.31
+                self.canvas.create_rectangle(
+                    0, top + RADIUS, BAR_WIDTH + PAD_X, band_bottom,
+                    fill=CARD_BG, outline="", tags="moment_intro")
+                self.canvas.create_rectangle(
+                    3, top + RADIUS // 2,
+                    3 + BAR_WIDTH, self.height - RADIUS // 2,
+                    fill=self.card.accent, outline=self.card.accent,
+                    tags="moment_intro")
+            title = _fit(self.stack.fonts["title"], self.card.title, text_room)
+            player = "".join(text for text, strong in self.card.parts if strong)
+            player = player or self.card.detail
+            player = _fit(self.stack.fonts["scorer"], player, text_room)
+
+            self.canvas.create_text(
+                text_x, top + body_height * (0.25 if red else 0.40),
+                text=title,
+                fill=color, font=self.stack.fonts["title"], anchor="center",
+                tags="moment_intro")
+            league_y = (top + max(8, body_height * 0.08) if red
+                        else top + body_height * 0.94)
+            self.canvas.create_text(
+                text_x, league_y, text=self.card.league,
+                fill=MUTED, font=self.stack.fonts["label"],
+                anchor="n" if red else "s", tags="moment_intro")
+            if red:
+                team = self.card.home if side == "home" else self.card.away
+                team = _fit(self.stack.fonts["team"], team, text_room)
+                self.canvas.create_text(
+                    text_x, top + body_height * 0.52, text=team,
+                    fill=TEXT, font=self.stack.fonts["team"], anchor="center",
+                    tags="moment_intro")
+            else:
+                self.canvas.create_text(
+                    text_x, top + body_height * 0.62,
+                    text="{} - {}".format(
+                        self.card.home_score, self.card.away_score),
+                    fill=TEXT, font=self.stack.fonts["score"], anchor="center",
+                    tags="moment_intro")
+            if player:
+                self.canvas.create_text(
+                    text_x, top + body_height * 0.82, text=player,
+                    fill=TEXT, font=self.stack.fonts["scorer"], anchor="center",
+                    tags="moment_intro")
+            if self.card.minute:
+                minute_y = (top + PAD_Y if red
+                            else top + body_height * 0.94)
+                self.canvas.create_text(
+                    self.width - PAD_X, minute_y, text=self.card.minute,
+                    fill=MUTED, font=self.stack.fonts["label"],
+                    anchor="ne" if red else "se",
+                    tags="moment_intro")
+
+            art = self._moment_art()
+            card_shapes = []
+            if red:
+                card_h = min(52, max(38, int(body_height * 0.42)))
+                card_w = max(24, int(card_h * RED_ASPECT))
+                half_w, half_h = card_w / 2.0, card_h / 2.0
+                y = top + _red_card_y(0, body_height)
+                card_shapes.append((self.canvas.create_rectangle(
+                    self.width / 2.0 - half_w + 3, y - half_h + 4,
+                    self.width / 2.0 + half_w + 3, y + half_h + 4,
+                    fill="#07090d", outline="", tags="moment_intro"),
+                    -half_w + 3, -half_h + 4, half_w + 3, half_h + 4))
+                card_shapes.append((self.canvas.create_rectangle(
+                    self.width / 2.0 - half_w, y - half_h,
+                    self.width / 2.0 + half_w, y + half_h,
+                    fill=RED_CARD, outline="#ff6b70", width=2,
+                    tags="moment_intro"),
+                    -half_w, -half_h, half_w, half_h))
         except Exception:
             done()
             return
-        self._celebration_frame(item, 0, text_width, done)
+        self._moment_frame(art, card_shapes, cry, 0, total_frames, done)
+
+    def _match_intro_frame(self, items, frame, done) -> None:
+        """Anime les deux territoires en miroir, puis rend la vraie carte."""
+        if not self.window.winfo_exists():
+            return
+        if frame >= DUEL_FRAMES:
+            try:
+                self.canvas.delete("match_intro")
+            except Exception:
+                pass
+            done()
+            return
+
+        y = self.box["scene_y"]
+        try:
+            for side in ("home", "away"):
+                x = _duel_x(frame, self.width, side)
+                for item, x_offset, y_offset, half in items[side]:
+                    item_x, item_y = x + x_offset, y + y_offset
+                    if half:
+                        self.canvas.coords(
+                            item, item_x - half, item_y - half,
+                            item_x + half, item_y + half)
+                    else:
+                        self.canvas.coords(item, item_x, item_y)
+
+        except Exception:
+            try:
+                self.canvas.delete("match_intro")
+            except Exception:
+                pass
+            done()
+            return
+
+        self._after(
+            DUEL_FRAME_MS,
+            lambda: self._match_intro_frame(items, frame + 1, done),
+        )
+
+    def _match_intro(self, done) -> None:
+        """Pose une affiche animee des deux camps par-dessus la carte."""
+        try:
+            _draw_match_shell(
+                self.canvas, self.card, self.stack.fonts, self.box,
+                self.background, tags="match_intro")
+
+            y = self.box["scene_y"]
+            camps = {"home": [], "away": []}
+            for side in ("home", "away"):
+                scene = self.images.get(side + "_scene")
+                image = scene or self.images.get(side)
+                if image is not None:
+                    camps[side].append((self.canvas.create_image(
+                        _duel_x(0, self.width, side), y,
+                        image=image, anchor="center", tags="match_intro"),
+                        0, 0, 0))
+                crest = self.images.get(side + "_crest")
+                if scene is not None and crest is not None:
+                    crest_x = (self.box[side + "_crest_x"]
+                               - self.box[side + "_scene_x"])
+                    crest_y = self.box["crest_y"] - self.box["scene_y"]
+                    half = (self.box["crest_size"] + 8) / 2.0
+                    camps[side].append((self.canvas.create_oval(
+                        0, 0, 0, 0, fill=CARD_BG,
+                        outline=self.card.accent, tags="match_intro"),
+                        crest_x, crest_y, half))
+                    camps[side].append((self.canvas.create_image(
+                        0, 0, image=crest, anchor="center",
+                        tags="match_intro"), crest_x, crest_y, 0))
+                camps[side].append((self.canvas.create_text(
+                    _duel_x(0, self.width, side), self.box["team_y"],
+                    text=self.box[side], fill=TEXT,
+                    font=self.stack.fonts["team"], anchor="center",
+                    tags="match_intro"),
+                    0, self.box["team_y"] - y, 0))
+        except Exception:
+            done()
+            return
+
+        self._match_intro_frame(camps, 0, done)
 
     def start(self) -> None:
         try:
@@ -1097,17 +1729,34 @@ class _Toast(_Panel):
 
         hold_ms = max(200, int((self.duration - FADE_IN - FADE_OUT) * 1000))
         fade_step = max(10, int(FADE_IN * 1000 / FADE_STEPS))
-        if self.card.celebration:
-            # Le fondu ouvre sur le cri en mouvement. Une fois celui-ci sorti,
-            # la carte normale reste lisible pendant sa duree habituelle.
+        if self.card.moment == "goal" or self.card.celebration:
+            # Le fondu ouvre sur le club buteur, son ecusson et le nouveau
+            # score. Le cri est etire pour defiler pendant toute la lecture.
             self._fade(self.stack.opacity, FADE_STEPS, fade_step, lambda: None)
-            self._celebrate(lambda: self._after(hold_ms, self.close))
+            cry_ms = max(MOMENT_MS, int((self.duration - FADE_OUT) * 1000))
+            cry_frames = max(
+                MOMENT_FRAMES,
+                int(math.ceil(cry_ms / float(MOMENT_FRAME_MS))))
+            self._moment_intro(
+                self.close, red=False, total_frames=cry_frames)
+        elif self.card.moment == "red_card":
+            self._fade(self.stack.opacity, FADE_STEPS, fade_step, lambda: None)
+            self._moment_intro(
+                lambda: self._after(hold_ms, self.close), red=True)
+        elif self.card.match_intro:
+            # Meme contrat que la celebration : l'intro s'ajoute au temps de
+            # lecture, elle ne le mange pas. L'annonce imminente reste donc
+            # aussi lisible qu'avant, malgre sa nouvelle mise en scene.
+            self._fade(self.stack.opacity, FADE_STEPS, fade_step, lambda: None)
+            self._match_intro(lambda: self._after(hold_ms, self.close))
         else:
             self._fade(self.stack.opacity, FADE_STEPS, fade_step,
                        lambda: self._after(hold_ms, self.close))
         # Filet de securite : si le gestionnaire de fenetres avale les
         # animations, la carte disparait quand meme.
-        intro_ms = CELEBRATION_MS if self.card.celebration else 0
+        intro_ms = (MOMENT_MS
+                    if self.card.moment == "red_card"
+                    else DUEL_MS if self.card.match_intro else 0)
         self._after(int(self.duration * 1000) + intro_ms + 3000, self.destroy)
 
     def close(self) -> None:

@@ -7,6 +7,27 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.20.0] - 2026-09-20
+
+### Ajoute
+
+- Les cartes d'avant-match et de coup d'envoi deviennent un face-a-face
+  illustre : les cartes postales territoriales des deux clubs entrent en
+  miroir autour d'un `VS` ou du score, respirent, puis revelent une composition
+  plus ample avec le compte a rebours et les informations du match. Les
+  ecussons restent visibles en medaillon sur les illustrations et prennent
+  seuls leur place quand l'image d'un club manque, sans appel reseau.
+
+- Les buts et cartons rouges ont maintenant leur propre ouverture illustree,
+  sur un gabarit commun de 500 px : l'image et l'ecusson du club concerne
+  entrent depuis son camp ; le cri de but traverse simultanement la ligne
+  superieure du cadre sur un fond uniforme, sans croiser la diagonale coloree
+  ni passer devant le filet de competition ou masquer le nouveau score. Sa
+  voyelle est automatiquement allongee pour defiler pendant toute la duree de
+  la carte. Un vrai carton rouge tombe au centre pour une expulsion. Les
+  trajectoires utilisent une acceleration douce et se posent sans saut dans
+  leur composition finale.
+
 ## [1.19.0] - 2026-09-20
 
 ### Ajoute
@@ -2261,7 +2282,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.19.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.20.0...HEAD
+[1.20.0]: https://github.com/boubou666/butbutbut/compare/v1.19.0...v1.20.0
 [1.19.0]: https://github.com/boubou666/butbutbut/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/boubou666/butbutbut/compare/v1.17.1...v1.18.0
 [1.17.1]: https://github.com/boubou666/butbutbut/compare/v1.17.0...v1.17.1
