@@ -410,6 +410,7 @@ MESSAGES = {
     # Les metavariables : ce que --help montre a la place de la valeur.
     "CHEMIN": "RUTA",
     "LISTE": "LISTA",
+    "CLE": "CLAVE",
     "DATE": "FECHA",
     "EQUIPE": "EQUIPO",
     "EQUIPE|JOURS": "EQUIPO|DIAS",
@@ -551,6 +552,12 @@ MESSAGES = {
     "secondes entre deux releves quand il n'y a rien a suivre (defaut {})":
         "segundos entre dos sondeos cuando no hay nada que seguir "
         "(por defecto {})",
+    "piloter a chaud les matchs suivis par le contrat HTTP v1 du site":
+        "controlar en caliente los partidos seguidos mediante el contrato HTTP v1 del sitio",
+    "URL de base du site pour --runtime-config":
+        "URL base del sitio para --runtime-config",
+    "cle X-ButButBut-API-Key pour --runtime-config (jamais journalisee)":
+        "clave X-ButButBut-API-Key para --runtime-config (nunca registrada)",
     "duree d'affichage de la carte (defaut : la duree du son, au moins {})":
         "tiempo que la tarjeta sigue en pantalla (por defecto: lo que dura el "
         "sonido, al menos {})",

@@ -1728,6 +1728,41 @@ porteur d'une cle inconnue ou d'une valeur impossible (`interval = beaucoup`,
 `position = milieu`) est signale sur la sortie d'erreur - la cle fautive est
 ignoree, le reste s'applique.
 
+### Surveillance pilotee par le site
+
+Le daemon reste autonome par defaut. Pour que le site choisisse a chaud les
+matchs suivis, active explicitement le client du contrat HTTP v1 :
+
+```bash
+butbutbut --runtime-config --site-url http://localhost:8000 --site-api-key dev-secret --no-overlay
+```
+
+Il appelle
+`GET /internal/api/v1/daemon/runtime-config` avec l'en-tete
+`X-ButButBut-API-Key`. Une nouvelle revision est appliquee sans redemarrage :
+les ajouts partent tout de suite, les retraits attendent le delai de grace du
+site, et plusieurs utilisateurs sur le meme match ne creent qu'une seule
+surveillance. Les matchs selectionnes gardent la cadence `interval`; le reste
+du catalogue de football n'est releve qu'une fois par heure pour entretenir un
+calendrier leger.
+
+La meme configuration peut vivre dans `butbutbut.conf` :
+
+```ini
+[butbutbut]
+runtime_config = oui
+site_url = http://localhost:8000
+site_api_key = dev-secret
+no_overlay = oui
+```
+
+Si le site ne repond plus, le daemon conserve temporairement la derniere
+selection valide, espace ses tentatives, puis arrete le suivi live a son
+expiration. Il ne retombe jamais sur « toutes les competitions ». Une version
+majeure de schema inconnue est ignoree de la meme facon. La cle n'est jamais
+ecrite dans le journal. Les alertes et `--on-goal` ne changent pas : seuls les
+matchs qui les alimentent sont pilotes par le site.
+
 ### Les cartons rouges
 
 ```bash

@@ -51,10 +51,11 @@ from __future__ import annotations
 
 import time
 
-from . import espn, i18n, sports
+from . import espn, i18n, leagues, sports
 
 DEFAULT_INTERVAL = 25.0        # un match est en cours
 DEFAULT_IDLE_INTERVAL = 300.0  # rien en cours dans ce championnat
+DEFAULT_CATALOG_INTERVAL = 3600.0  # inventaire/calendrier du mode pilote
 KICKOFF_INTERVAL = 60.0        # coup d'envoi imminent
 KICKOFF_WINDOW = 1200.0        # "imminent" = dans moins de 20 min
 MAX_BACKOFF = 300.0            # plafond d'attente apres une erreur reseau
@@ -707,7 +708,8 @@ class Watcher:
                  kickoff_window=KICKOFF_WINDOW, timeout=espn.DEFAULT_TIMEOUT,
                  opener=None, on_log=None, teams=None, clock=None,
                  red_cards=False, before_kickoff=0.0, catch_up=False,
-                 spoiler_free=None, monotonic=None):
+                 spoiler_free=None, monotonic=None, selected_matches=None,
+                 catalog_interval=DEFAULT_CATALOG_INTERVAL):
         self.leagues = list(leagues)
         # Filtre par equipe (teams.Filter) ou None : on continue de suivre tous
         # les matchs, mais on ne signale que ceux qui concernent ces clubs.
@@ -725,6 +727,7 @@ class Watcher:
         self.catch_up = bool(catch_up)
         self.interval = max(5.0, float(interval))
         self.idle_interval = max(self.interval, float(idle_interval))
+        self.catalog_interval = max(self.idle_interval, float(catalog_interval))
         self.kickoff_window = float(kickoff_window)
         self.timeout = float(timeout)
         self.opener = opener
@@ -753,6 +756,13 @@ class Watcher:
         # championnats soient rephotographies : match_id -> (score, cles vues).
         self._missed = None
         self._missed_gap = 0.0     # duree cumulee du (ou des) trou(s) en cours
+        # None = mode autonome historique, ou chaque match des competitions
+        # choisies est suivi. Un dict, meme vide = mode pilote par le site.
+        self._selected = (None if selected_matches is None else
+                          {str(key): str(value)
+                           for key, value in dict(selected_matches).items()})
+        if self._selected is not None:
+            self._ensure_selected_leagues(self._selected, due=0.0)
 
     # ------------------------------------------------------------ cadence ---
 
@@ -799,8 +809,16 @@ class Watcher:
             return 0.0
         return elapsed
 
-    def _cadence(self, matches) -> float:
+    def _cadence(self, league, matches) -> float:
         """Rythme de ce championnat, d'apres ce qu'il a au programme."""
+        if self._selected is not None:
+            # Le tableau de bord d'une competition est l'unite de lecture de
+            # la source. Un ou dix matchs choisis dans la meme competition ne
+            # produisent donc qu'un releve, au rythme live ; zero retombe sur
+            # la collecte legere du catalogue/calendrier.
+            if league.ref in self._selected.values():
+                return self.interval
+            return self.catalog_interval
         if any(match.live for match in matches):
             return self.interval
 
@@ -820,16 +838,72 @@ class Watcher:
         return self.idle_interval
 
     def live_matches(self) -> list:
-        found = []
-        for league in self.leagues:
-            found.extend(m for m in self.matches.get(league.ref, []) if m.live)
-        return found
+        return [match for match in self.all_matches() if match.live]
 
     def all_matches(self) -> list:
         found = []
         for league in self.leagues:
-            found.extend(self.matches.get(league.ref, []))
+            matches = self.matches.get(league.ref, [])
+            if self._selected is not None:
+                matches = [match for match in matches
+                           if self._selected.get(str(match.id)) == league.ref]
+            found.extend(matches)
         return found
+
+    def catalog_matches(self) -> list:
+        """Dernier calendrier lu, y compris les matchs non selectionnes."""
+        return [match for league in self.leagues
+                for match in self.matches.get(league.ref, [])]
+
+    def _ensure_selected_leagues(self, selected, due) -> None:
+        """Ouvre aussi un code ESPN football absent du catalogue embarque."""
+        known = {league.ref for league in self.leagues}
+        for ref in set(selected.values()) - known:
+            try:
+                league = leagues.find(ref)
+            except leagues.SelectionError:
+                league = None
+            if league is None or league.sport is not sports.SOCCER:
+                self.on_log("competition runtime ignoree : {!r}".format(ref))
+                continue
+            self.leagues.append(league)
+            self._due[league.ref] = due
+            self._failures[league.ref] = 0
+            known.add(league.ref)
+
+    def set_selected_matches(self, matches, now=None) -> bool:
+        """Applique a chaud ``id match -> ref competition``.
+
+        Les nouvelles cibles reveillent leur competition immediatement. Quand
+        la derniere cible d'une competition part, son prochain passage devient
+        un passage de catalogue ; les photos retirees sont oubliees pour ne
+        pas rejouer les buts manques si le match est re-selectionne plus tard.
+        """
+        now = self.monotonic() if now is None else float(now)
+        selected = {str(key): str(value)
+                    for key, value in dict(matches or {}).items()}
+        previous = self._selected or {}
+        if self._selected is not None and selected == previous:
+            return False
+
+        added = {match_id for match_id, ref in selected.items()
+                 if previous.get(match_id) != ref}
+        removed = {match_id for match_id, ref in previous.items()
+                   if selected.get(match_id) != ref}
+        old_refs = set(previous.values())
+        new_refs = set(selected.values())
+        self._selected = selected
+        self._ensure_selected_leagues(selected, due=now)
+
+        for match_id in removed:
+            self._snapshots.pop(match_id, None)
+        for ref in {selected[match_id] for match_id in added}:
+            if ref in self._due:
+                self._due[ref] = now
+        for ref in old_refs - new_refs:
+            if ref in self._due:
+                self._due[ref] = now + self.catalog_interval
+        return True
 
     # -------------------------------------------------------------- lecture -
 
@@ -841,7 +915,18 @@ class Watcher:
         except espn.SourceError as exc:
             self._failures[league.ref] = self._failures.get(league.ref, 0) + 1
             failures = self._failures[league.ref]
-            wait = min(MAX_BACKOFF, self.interval * (2 ** min(failures, 4)))
+            catalog_only = (self._selected is not None
+                            and league.ref not in self._selected.values())
+            if catalog_only:
+                # Une panne ne doit pas transformer un releve horaire en
+                # rafale de rattrapage. Le catalogue recule encore, jusqu'a
+                # quatre fois son rythme normal.
+                wait = min(self.catalog_interval * 4,
+                           self.catalog_interval *
+                           (2 ** min(failures - 1, 2)))
+            else:
+                wait = min(MAX_BACKOFF,
+                           self.interval * (2 ** min(failures, 4)))
             self._due[league.ref] = now + wait
             if failures in (1, 5) or failures % 20 == 0:
                 self.on_log("{} injoignable ({}) - nouvel essai dans {:.0f}s"
@@ -853,13 +938,17 @@ class Watcher:
         self._failures[league.ref] = 0
 
         self.matches[league.ref] = matches
-        self._due[league.ref] = now + self._cadence(matches)
+        self._due[league.ref] = now + self._cadence(league, matches)
 
         primed = league.ref in self._primed
         self._primed.add(league.ref)
 
         events = []
-        for match in matches:
+        watched = matches
+        if self._selected is not None:
+            watched = [match for match in matches
+                       if self._selected.get(str(match.id)) == league.ref]
+        for match in watched:
             events.extend(self._diff(match, alert=primed))
         self._forget_old()
         return events
