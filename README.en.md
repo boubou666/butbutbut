@@ -2784,6 +2784,9 @@ butbutbut --story om --story-output ~/om-lyon.html
 
 The file calls no external service. If the source omitted a scorer or action,
 the keepsake leaves it out rather than inventing it.
+The **Save as PNG** button creates a shareable image directly in the browser,
+without sending the card or its data over the Internet. From the companion
+screen, each keepsake can be opened and saved this way.
 
 At the final whistle, the card also gets **closing credits**: both club
 territories return around the final score, then reveal the scorers and the

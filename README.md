@@ -2811,6 +2811,9 @@ butbutbut --story om --story-output ~/om-lyon.html
 
 Le fichier n'appelle aucun service externe. Si la source a omis un buteur ou
 une action, la carte le laisse absent plutot que de l'inventer.
+Le bouton **Enregistrer en PNG** fabrique une image partageable directement
+dans le navigateur, sans envoyer la carte ni ses donnees sur Internet. Depuis
+l'ecran compagnon, chaque souvenir peut etre ouvert puis enregistre ainsi.
 
 Au coup de sifflet final, la carte a aussi son **generique de fin** : les deux
 territoires reviennent en miroir autour du score, puis la composition finale

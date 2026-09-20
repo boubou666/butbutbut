@@ -37,6 +37,9 @@ class TestStory(unittest.TestCase):
         self.assertNotIn("https://", page)
         self.assertIn("data:image/png;base64,", page)
         self.assertIn('class="postcard"', page)
+        self.assertIn("Enregistrer en PNG", page)
+        self.assertIn("canvas.toBlob", page)
+        self.assertIn("01 JANVIER 1970 · FRANCE", page)
 
     def test_a_known_club_replaces_the_country_atlas(self):
         match = self.match()
