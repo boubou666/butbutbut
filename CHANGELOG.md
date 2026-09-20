@@ -7,6 +7,14 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.20.1] - 2026-09-20
+
+### Corrige
+
+- Le pied des cartes de but et de carton rouge reserve maintenant des zones
+  distinctes au buteur, au championnat, a la minute et aux deux equipes. Les
+  textes ne se chevauchent plus, quelles que soient les metriques de police.
+
 ## [1.20.0] - 2026-09-20
 
 ### Ajoute
@@ -2282,7 +2290,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.20.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.20.1...HEAD
+[1.20.1]: https://github.com/boubou666/butbutbut/compare/v1.20.0...v1.20.1
 [1.20.0]: https://github.com/boubou666/butbutbut/compare/v1.19.0...v1.20.0
 [1.19.0]: https://github.com/boubou666/butbutbut/compare/v1.18.0...v1.19.0
 [1.18.0]: https://github.com/boubou666/butbutbut/compare/v1.17.1...v1.18.0

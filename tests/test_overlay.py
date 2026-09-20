@@ -258,7 +258,7 @@ class TestRedCardAndPrematchCards(unittest.TestCase):
         self.assertEqual(goal_box["width"], overlay.MOMENT_MIN_WIDTH)
         self.assertEqual(red_box["width"], overlay.MOMENT_MIN_WIDTH)
         self.assertEqual(goal_box["body_height"], red_box["body_height"])
-        self.assertGreaterEqual(goal_box["body_height"], 150)
+        self.assertGreaterEqual(goal_box["body_height"], 174)
         self.assertEqual(goal_box["moment_top"], 0)
         self.assertEqual(red_box["moment_top"], 0)
 
@@ -723,6 +723,30 @@ class TestMomentMotion(unittest.TestCase):
         self.assertTrue(stretched.startswith("G"))
         self.assertTrue(stretched.endswith("L"))
         self.assertGreater(stretched.count("O"), 4)
+
+    def test_goal_rows_leave_real_space_between_every_font_box(self):
+        fonts = fake_fonts()
+        rows = overlay._goal_text_rows(fonts, 0, 174)
+        title_h = fonts["title"].metrics()
+        score_h = fonts["score"].metrics()
+        player_h = fonts["scorer"].metrics()
+
+        self.assertLess(rows["title"] + title_h / 2,
+                        rows["score"] - score_h / 2)
+        self.assertLess(rows["score"] + score_h / 2,
+                        rows["player"] - player_h / 2)
+        self.assertLess(rows["player"] + player_h / 2,
+                        rows["footer_top"])
+
+    def test_the_footer_names_both_teams_and_stays_in_its_room(self):
+        card = overlay.Card.demo(LIGUE1)
+        font = fake_fonts()["team"]
+        full = overlay._moment_team_line(card, font, 1000)
+        self.assertIn(card.home, full)
+        self.assertIn(card.away, full)
+
+        fitted = overlay._moment_team_line(card, font, 120)
+        self.assertLessEqual(font.measure(fitted), 120)
 
 
 class TestMatchIntroMotion(unittest.TestCase):
