@@ -2773,8 +2773,8 @@ and must not be exposed to the Internet.
 ## The match keepsake
 
 Each followed full-time match is added to `souvenirs.json`, with its score,
-teams and the timeline published by the source. The latest fifty are kept.
-The companion displays them; the command creates an autonomous HTML page:
+teams, timeline and statistics published by the source. The latest fifty are
+kept. The companion displays them; the command creates an autonomous HTML page:
 
 ```bash
 butbutbut --story

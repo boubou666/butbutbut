@@ -266,12 +266,13 @@ class TestTeamStatistics(unittest.TestCase):
     def parse(self, **kwargs):
         return espn.parse(payload(event(**kwargs)), LIGUE1)[0]
 
-    def test_only_the_two_retained_names_survive(self):
-        # Le tableau de bord en publie neuf par camp ; ce qui n'ira jamais sur
-        # une carte n'a pas a traverser le programme.
+    def test_only_the_four_retained_names_survive(self):
+        # La carte de fin en montre deux ; le souvenir plus ample garde aussi
+        # les tirs et les corners. Les totaux ambigus restent ecartes.
         match = self.parse(home_stats=self.FULL)
         self.assertEqual(match.home_stats,
-                         {"possessionPct": 60.1, "shotsOnTarget": 7.0})
+                         {"possessionPct": 60.1, "shotsOnTarget": 7.0,
+                          "totalShots": 20.0, "wonCorners": 7.0})
 
     def test_the_two_camps_are_read_apart(self):
         match = self.parse(home_stats={"possessionPct": "60.1"},
