@@ -76,6 +76,24 @@ class TestStory(unittest.TestCase):
             self.assertEqual(len(souvenir.read(path)), 1)
             self.assertEqual(store.latest("angers")["home_score"], 3)
 
+    def test_the_store_enriches_a_legacy_story_from_the_current_board(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "stories.json"
+            match = self.match()
+            story = souvenir.from_match(match, created_at=100)
+            story["home_stats"] = {"wonCorners": 5.0}
+            story.pop("away_stats")
+            match.home_stats = {"totalShots": 14.0}
+            store = souvenir.Store(path)
+            store.add(story)
+
+            self.assertTrue(store.enrich([match]))
+            saved = souvenir.read(path)[0]
+            self.assertEqual(saved["home_stats"]["totalShots"], 14.0)
+            self.assertEqual(saved["home_stats"]["wonCorners"], 5.0)
+            self.assertEqual(saved["away_stats"]["wonCorners"], 2.0)
+            self.assertFalse(store.enrich([match]))
+
 
 class TestContexts(unittest.TestCase):
     def test_score_contexts_do_not_guess_the_future(self):
