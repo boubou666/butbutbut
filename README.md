@@ -2799,9 +2799,9 @@ defaut et ne doit pas etre exposee a Internet.
 ## La carte souvenir du match
 
 Chaque fin de match suivie rejoint `souvenirs.json`, avec le score, les
-equipes et la chronologie que la source publie. Les cinquante dernieres sont
-gardees. L'ecran compagnon les montre ; la commande en fabrique une page HTML
-autonome, facile a conserver ou partager :
+equipes, la chronologie et les statistiques que la source publie. Les
+cinquante dernieres sont gardees. L'ecran compagnon les montre ; la commande
+en fabrique une page HTML autonome, facile a conserver ou partager :
 
 ```bash
 butbutbut --story                 # le dernier match termine

@@ -17,6 +17,14 @@ class TestStory(unittest.TestCase):
                                         home_score=2, away_score=1,
                                         state="post", detail="FT",
                                         details=details,
+                                        home_stats={"possessionPct": "54.5",
+                                                    "totalShots": "14",
+                                                    "shotsOnTarget": "6",
+                                                    "wonCorners": "5"},
+                                        away_stats={"possessionPct": "45.5",
+                                                    "totalShots": "9",
+                                                    "shotsOnTarget": "3",
+                                                    "wonCorners": "2"},
                                         venue_country="France")),
                           leagues.BY_SLUG["fra.1"])[0]
 
@@ -28,6 +36,8 @@ class TestStory(unittest.TestCase):
                           for g in story["goals"]], [(1, 0), (1, 1), (2, 1)])
         self.assertEqual(story["venue_country"], "France")
         self.assertEqual(story["motif"], "france")
+        self.assertEqual(story["home_stats"]["totalShots"], 14.0)
+        self.assertEqual(story["away_stats"]["wonCorners"], 2.0)
 
     def test_the_html_is_autonomous_and_escaped(self):
         story = souvenir.from_match(self.match(), created_at=100)
@@ -40,6 +50,12 @@ class TestStory(unittest.TestCase):
         self.assertIn("Enregistrer en PNG", page)
         self.assertIn("canvas.toBlob", page)
         self.assertIn("01 JANVIER 1970 · FRANCE", page)
+        self.assertIn("mask-image:radial-gradient", page)
+        self.assertIn(".home .scorer", page)
+        self.assertIn(".away .scorer", page)
+        self.assertIn("Possession", page)
+        self.assertIn("Tirs cadrés", page)
+        self.assertIn("Corners", page)
 
     def test_a_known_club_replaces_the_country_atlas(self):
         match = self.match()

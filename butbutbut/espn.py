@@ -853,9 +853,9 @@ def team_stats(competitor, sport=None) -> dict:
     """Les statistiques de match d'un camp, en nombres, ou un dictionnaire vide.
 
     Seuls les noms que le sport declare sont retenus (`Sport.team_stats`) : le
-    football en publie neuf par camp, la carte en affiche deux, et ce qui
-    n'arrivera jamais a l'ecran n'a pas a traverser le programme. Un sport qui
-    ne declare rien - le hockey, le rugby - ne lit meme pas le champ.
+    football en publie neuf par camp ; les quatre valeurs utiles aux cartes
+    sont conservees. Un sport qui ne declare rien - le hockey, le rugby - ne
+    lit meme pas le champ.
 
     Une valeur illisible fait tomber SA statistique et elle seule : l'autre
     reste, et la carte sort. Le tri des paires, lui, se fait sur la carte, la

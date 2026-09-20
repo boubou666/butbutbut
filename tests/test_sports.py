@@ -676,7 +676,8 @@ class TestTheStatisticsOfTheOtherSports(unittest.TestCase):
 
     def test_only_football_declares_any(self):
         self.assertEqual(sports.SOCCER.team_stats,
-                         ("possessionPct", "shotsOnTarget"))
+                         ("possessionPct", "totalShots", "shotsOnTarget",
+                          "wonCorners"))
         self.assertEqual(sports.HOCKEY.team_stats, ())
         self.assertEqual(sports.RUGBY.team_stats, ())
 

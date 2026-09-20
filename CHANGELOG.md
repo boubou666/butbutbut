@@ -7,6 +7,20 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.23.0] - 2026-09-20
+
+### Ajoute
+
+- La carte souvenir compare maintenant la possession, les tirs, les tirs
+  cadres et les corners quand la source publie ces valeurs pour les deux camps.
+
+### Corrige
+
+- La chronologie place les buts du club recevant a gauche, ceux du visiteur a
+  droite et garde le score intermediaire au centre.
+- Les encoches laterales du billet sont de vraies zones transparentes : elles
+  ne gardent plus la couleur du fond de la page dans l'image exportee.
+
 ## [1.22.0] - 2026-09-20
 
 ### Ajoute
@@ -2323,7 +2337,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.22.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.23.0...HEAD
+[1.23.0]: https://github.com/boubou666/butbutbut/compare/v1.22.0...v1.23.0
 [1.22.0]: https://github.com/boubou666/butbutbut/compare/v1.21.0...v1.22.0
 [1.21.0]: https://github.com/boubou666/butbutbut/compare/v1.20.1...v1.21.0
 [1.20.1]: https://github.com/boubou666/butbutbut/compare/v1.20.0...v1.20.1

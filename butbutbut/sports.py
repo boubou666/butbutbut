@@ -172,17 +172,12 @@ TABLE_RUGBY = (
     ("table_points", ("points",)),
 )
 
-# Les statistiques d'equipe posees sur la carte de fin de match, dans l'ordre
-# ou elles s'y lisent. Le tableau de bord en publie neuf par camp au football,
-# dans la meme reponse que le score ; sept sont ecartees, et pas au jugement -
-# le releve est dans docs/api-espn.md, section 3.
+# Les statistiques d'equipe conservees pour les cartes de fin de match et les
+# souvenirs. Le tableau de bord en publie neuf par camp au football, dans la
+# meme reponse que le score. Le releve est dans docs/api-espn.md, section 3.
 #
-#   - `wonCorners` n'explique rien : sur 1 764 matchs termines sans match nul,
-#     le vainqueur avait plus de corners que le perdant 45% du temps,
-#     c'est-a-dire moins souvent qu'a pile ou face ;
-#   - `totalShots` explique un peu (57%), `shotsOnTarget` explique mieux (69%)
-#     et coute le meme nombre de signes. Empiler les deux ferait trois paires
-#     de chiffres sur une ligne qu'on lit en huit secondes ;
+#   - `wonCorners` et `totalShots` ne tiennent pas sur la ligne fugace de la
+#     carte de fin, mais completent le souvenir que l'on consulte a son rythme ;
 #   - `totalGoals` repete le score deja ecrit au-dessus, et le contredit 13
 #     fois sur 4 788 camps ;
 #   - `appearances` vaut "0" sur les 2 762 camps releves, sans exception ;
@@ -191,12 +186,9 @@ TABLE_RUGBY = (
 #     personne ne saurait dire ce qu'il compte, et on n'affiche pas un nombre
 #     qu'on ne sait pas nommer.
 #
-# Reste la possession, qui ne designe le vainqueur que 50% du temps - a pile ou
-# face, exactement. C'est ce qui la garde : elle ne dit pas qui a gagne, elle
-# dit COMMENT, et un 2-1 gagne avec 39% de ballon raconte quelque chose que le
-# score seul ne raconte pas. Seule elle mentirait par sous-entendu ; a cote des
-# tirs cadres, elle dit si la domination est devenue du danger.
-STATS_SOCCER = ("possessionPct", "shotsOnTarget")
+# La carte de fin continue de choisir possession et tirs cadres dans
+# watcher.STATS ; le souvenir, plus ample, peut lire les quatre valeurs.
+STATS_SOCCER = ("possessionPct", "totalShots", "shotsOnTarget", "wonCorners")
 
 # Le hockey et le rugby ne declarent rien, et ce n'est pas parce que la source
 # se tait - c'est meme le contraire, et c'est la surprise du releve. Le hockey
