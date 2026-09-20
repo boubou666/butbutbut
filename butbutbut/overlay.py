@@ -690,6 +690,27 @@ def _fit_parts(fonts, parts, limit: float) -> list:
     return fitted
 
 
+def _goal_band_height(fonts) -> int:
+    """Hauteur du ruban de cri, adaptee a la police et non a la carte."""
+    return max(44, fonts["score"].metrics("linespace") + 14)
+
+
+def _moment_footer_height(fonts) -> int:
+    """Hauteur necessaire aux noms d'equipes dans le pied de carte."""
+    content_h = max(fonts["team"].metrics("linespace"),
+                    fonts["label"].metrics("linespace"))
+    return max(28, content_h + 10)
+
+
+def _moment_min_height(fonts) -> int:
+    """Gabarit qui garantit des boites de texte disjointes a toute echelle."""
+    rows = (fonts["title"].metrics("linespace")
+            + fonts["score"].metrics("linespace")
+            + fonts["scorer"].metrics("linespace"))
+    return (_goal_band_height(fonts) + rows + 4 * 10
+            + _moment_footer_height(fonts))
+
+
 def _layout(card: Card, fonts):
     """Mesure la carte : largeur, hauteur et abscisse de chaque morceau.
 
@@ -783,7 +804,7 @@ def _layout(card: Card, fonts):
     natural_height = int(bottom + PAD_Y + len(extra) * (EXTRA_GAP + extra_h))
     # But et rouge gardent le meme cadre. Les quelques pixels en plus donnent
     # au cri une ligne superieure DANS la carte, sans recouvrir le score.
-    body_height = (max(150, natural_height)
+    body_height = (max(174, natural_height, _moment_min_height(fonts))
                    if card.moment in ("goal", "red_card")
                    else natural_height)
     body_shift = (body_height - natural_height) / 2.0
@@ -804,6 +825,9 @@ def _layout(card: Card, fonts):
         "home_x": home_x,                            # ancre "e"
         "away_x": away_x,                            # ancre "w"
         "logo": logo,                                # cote de l'ecusson, 0 = aucun
+        "moment_logo": (max(36, int(
+            fonts["team"].metrics("linespace") * 2.0))
+            if card.moment in ("goal", "red_card") and logo else logo),
         "home_logo_x": home_x - fonts["team"].measure(home) - LOGO_GAP,
         "away_logo_x": away_x + fonts["team"].measure(away) + LOGO_GAP,
         "red_w": red_w,                              # 0 = aucune expulsion
@@ -903,12 +927,13 @@ def load_logos(tk, card: Card, box, master=None) -> dict:
     cartes empilees, chacune tient donc les siennes.
     """
     found = {}
-    if not box.get("logo"):
+    size = box.get("moment_logo", box.get("logo", 0))
+    if not size:
         return found
     for key, path in (("home", card.home_logo), ("away", card.away_logo)):
         if path is None:
             continue
-        image = crests.photo(tk, path, box["logo"], master=master)
+        image = crests.photo(tk, path, size, master=master)
         if image is not None:
             found[key] = image
     return found
@@ -1252,6 +1277,42 @@ def _stretch_goal_cry(text: str, font, target_width: float) -> str:
     return text[:best_end] + letter * missing + text[best_end:]
 
 
+def _moment_footer_box(fonts, top: float, body_height: float) -> tuple:
+    """Bandeau inferieur commun : haut, centre et hauteur."""
+    height = _moment_footer_height(fonts)
+    footer_top = top + body_height - height
+    return footer_top, footer_top + height / 2.0, height
+
+
+def _moment_team_line(card: Card, font, limit: float) -> str:
+    """Les deux equipes sur une ligne, raccourcies ensemble si necessaire."""
+    return _fit(font, "{}  ·  {}".format(card.home, card.away), limit)
+
+
+def _goal_text_rows(fonts, top: float, body_height: float) -> dict:
+    """Place les quatre lignes du but sans jamais laisser leurs boites se croiser."""
+    title_h = fonts["title"].metrics("linespace")
+    score_h = fonts["score"].metrics("linespace")
+    player_h = fonts["scorer"].metrics("linespace")
+    footer_top, _footer_y, _footer_h = _moment_footer_box(
+        fonts, top, body_height)
+    gap = 10
+    player_y = footer_top - gap - player_h / 2.0
+    score_y = (player_y - player_h / 2.0 - gap
+               - score_h / 2.0)
+
+    title_floor = top + _goal_band_height(fonts) + gap + title_h / 2.0
+    title_ceiling = score_y - score_h / 2.0 - gap - title_h / 2.0
+    title_y = max(title_floor,
+                  min(top + body_height * 0.40, title_ceiling))
+    return {
+        "title": title_y,
+        "score": score_y,
+        "player": player_y,
+        "footer_top": footer_top,
+    }
+
+
 def _duel_x(frame: int, width: float, side: str) -> float:
     """Abscisse d'un camp pendant l'ouverture avant-match.
 
@@ -1424,7 +1485,12 @@ class _Toast(_Panel):
         x = _moment_x(frame, self.width, side)
         top = self.box.get("moment_top", 0)
         body_height = self.box.get("body_height", self.height - top)
-        art_y = top + body_height * 0.58
+        footer_top, _footer_y, _footer_h = _moment_footer_box(
+            self.stack.fonts, top, body_height)
+        content_top = (top + _goal_band_height(self.stack.fonts)
+                       if self.card.moment == "goal" and self.card.celebration
+                       else top + RADIUS)
+        art_y = (content_top + footer_top) / 2.0
         try:
             for item, x_offset, y_offset, half in art:
                 item_x, item_y = x + x_offset, art_y + y_offset
@@ -1446,7 +1512,7 @@ class _Toast(_Panel):
                     item,
                     _goal_cry_x(
                         frame, self.width, text_width, total_frames),
-                    top + body_height * 0.19,
+                    top + _goal_band_height(self.stack.fonts) / 2.0,
                 )
         except Exception:
             try:
@@ -1469,7 +1535,7 @@ class _Toast(_Panel):
         # Sur un but, la diagonale commence sous le bandeau du cri. Texte et
         # fond gardent ainsi le meme contraste pendant toute la traversee ; la
         # couleur du club ne passe plus sur elle-meme au milieu d'une lettre.
-        panel_top = (top + body_height * 0.31
+        panel_top = (top + _goal_band_height(self.stack.fonts)
                      if self.card.moment == "goal" and self.card.celebration
                      else top + RADIUS)
         side = self.card.focus_side or "home"
@@ -1510,7 +1576,12 @@ class _Toast(_Panel):
         start_x = _moment_x(0, self.width, side)
         top = self.box.get("moment_top", 0)
         body_height = self.box.get("body_height", self.height - top)
-        art_y = top + body_height * 0.58
+        footer_top, _footer_y, _footer_h = _moment_footer_box(
+            self.stack.fonts, top, body_height)
+        content_top = (top + _goal_band_height(self.stack.fonts)
+                       if self.card.moment == "goal" and self.card.celebration
+                       else top + RADIUS)
+        art_y = (content_top + footer_top) / 2.0
         items = []
         scene = self.images.get("motif")
         if scene is not None:
@@ -1522,15 +1593,68 @@ class _Toast(_Panel):
         if crest is not None:
             direction = 1 if side == "home" else -1
             crest_x = direction * self.width * 0.105
-            crest_y = body_height * 0.17
-            half = (self.box.get("logo", 24) + 10) / 2.0
+            half = (self.box.get("moment_logo",
+                                 self.box.get("logo", 24)) + 12) / 2.0
+            crest_center = min(
+                art_y + (footer_top - content_top) * 0.14,
+                footer_top - half - 6)
+            crest_y = crest_center - art_y
             items.append((self.canvas.create_oval(
                 0, 0, 0, 0, fill=CARD_BG, outline=self.card.accent,
-                width=2, tags="moment_intro"), crest_x, crest_y, half))
+                width=3, tags="moment_intro"), crest_x, crest_y, half))
             items.append((self.canvas.create_image(
                 0, 0, image=crest, anchor="center", tags="moment_intro"),
                 crest_x, crest_y, 0))
         return items
+
+    def _moment_footer(self) -> None:
+        """Pose competition, deux equipes et minute sur un pied opaque."""
+        top = self.box.get("moment_top", 0)
+        body_height = self.box.get("body_height", self.height - top)
+        footer_top, footer_y, _footer_h = _moment_footer_box(
+            self.stack.fonts, top, body_height)
+
+        # Deux rectangles epousent le bas arrondi sans demander de clipping :
+        # toute la largeur au-dessus des coins, puis seulement leur tangente.
+        self.canvas.create_rectangle(
+            0, footer_top, self.width, self.height - RADIUS,
+            fill=CARD_BG, outline="", tags="moment_intro")
+        self.canvas.create_rectangle(
+            RADIUS, self.height - RADIUS,
+            self.width - RADIUS, self.height,
+            fill=CARD_BG, outline="", tags="moment_intro")
+        self.canvas.create_rectangle(
+            PAD_X, footer_top, self.width - PAD_X, footer_top + 1,
+            fill=CARD_EDGE, outline="", tags="moment_intro")
+
+        label = self.stack.fonts["label"]
+        team = self.stack.fonts["team"]
+        league_w = label.measure(self.card.league)
+        minute_w = label.measure(self.card.minute)
+        left_edge = BAR_WIDTH + PAD_X
+        names_left = left_edge + league_w + 14
+        names_right = self.width - PAD_X - minute_w - 14
+        names_room = max(50.0, names_right - names_left)
+        names = _moment_team_line(self.card, team, names_room)
+
+        self.canvas.create_text(
+            left_edge, footer_y, text=self.card.league,
+            fill=MUTED, font=label, anchor="w", tags="moment_intro")
+        self.canvas.create_text(
+            (names_left + names_right) / 2.0, footer_y, text=names,
+            fill=TEXT, font=team, anchor="center", tags="moment_intro")
+        if self.card.minute:
+            self.canvas.create_text(
+                self.width - PAD_X, footer_y, text=self.card.minute,
+                fill=MUTED, font=label, anchor="e", tags="moment_intro")
+
+        # Le pied opaque masque aussi l'illustration ; le filet, lui, doit
+        # rester continu jusqu'au dernier pixel de la carte.
+        self.canvas.create_rectangle(
+            3, top + RADIUS // 2,
+            3 + BAR_WIDTH, self.height - RADIUS // 2,
+            fill=self.card.accent, outline=self.card.accent,
+            tags="moment_intro")
 
     def _moment_intro(self, done, red=False, total_frames=MOMENT_FRAMES) -> None:
         """Compose l'ouverture visuelle d'un but ou d'un carton rouge."""
@@ -1554,18 +1678,19 @@ class _Toast(_Panel):
                 cry = (self.canvas.create_text(
                     _goal_cry_x(
                         0, self.width, cry_width, total_frames),
-                    top + body_height * 0.19,
+                    top + _goal_band_height(self.stack.fonts) / 2.0,
                     text=cry_text, fill=color,
                     font=cry_font, anchor="center",
                     tags=("moment_intro", "goal_cry")), cry_width)
                 self.canvas.create_rectangle(
-                    PAD_X, top + body_height * 0.31,
-                    self.width - PAD_X, top + body_height * 0.31 + 1,
+                    PAD_X, top + _goal_band_height(self.stack.fonts),
+                    self.width - PAD_X,
+                    top + _goal_band_height(self.stack.fonts) + 1,
                     fill=CARD_EDGE, outline="", tags="moment_intro")
                 # Le Canvas ne sait pas clipper un texte dans une sous-zone.
                 # Ce cache remet donc la marge gauche au premier plan : le
                 # ruban nait APRES le filet de competition, jamais dessus.
-                band_bottom = top + body_height * 0.31
+                band_bottom = top + _goal_band_height(self.stack.fonts)
                 self.canvas.create_rectangle(
                     0, top + RADIUS, BAR_WIDTH + PAD_X, band_bottom,
                     fill=CARD_BG, outline="", tags="moment_intro")
@@ -1578,44 +1703,34 @@ class _Toast(_Panel):
             player = "".join(text for text, strong in self.card.parts if strong)
             player = player or self.card.detail
             player = _fit(self.stack.fonts["scorer"], player, text_room)
+            goal_rows = (None if red else _goal_text_rows(
+                self.stack.fonts, top, body_height))
 
             self.canvas.create_text(
-                text_x, top + body_height * (0.25 if red else 0.40),
+                text_x, (top + body_height * 0.25 if red
+                         else goal_rows["title"]),
                 text=title,
                 fill=color, font=self.stack.fonts["title"], anchor="center",
                 tags="moment_intro")
-            league_y = (top + max(8, body_height * 0.08) if red
-                        else top + body_height * 0.94)
-            self.canvas.create_text(
-                text_x, league_y, text=self.card.league,
-                fill=MUTED, font=self.stack.fonts["label"],
-                anchor="n" if red else "s", tags="moment_intro")
             if red:
                 team = self.card.home if side == "home" else self.card.away
                 team = _fit(self.stack.fonts["team"], team, text_room)
                 self.canvas.create_text(
-                    text_x, top + body_height * 0.52, text=team,
+                    text_x, top + body_height * 0.48, text=team,
                     fill=TEXT, font=self.stack.fonts["team"], anchor="center",
                     tags="moment_intro")
             else:
                 self.canvas.create_text(
-                    text_x, top + body_height * 0.62,
+                    text_x, goal_rows["score"],
                     text="{} - {}".format(
                         self.card.home_score, self.card.away_score),
                     fill=TEXT, font=self.stack.fonts["score"], anchor="center",
                     tags="moment_intro")
             if player:
                 self.canvas.create_text(
-                    text_x, top + body_height * 0.82, text=player,
+                    text_x, (top + body_height * 0.68 if red
+                             else goal_rows["player"]), text=player,
                     fill=TEXT, font=self.stack.fonts["scorer"], anchor="center",
-                    tags="moment_intro")
-            if self.card.minute:
-                minute_y = (top + PAD_Y if red
-                            else top + body_height * 0.94)
-                self.canvas.create_text(
-                    self.width - PAD_X, minute_y, text=self.card.minute,
-                    fill=MUTED, font=self.stack.fonts["label"],
-                    anchor="ne" if red else "se",
                     tags="moment_intro")
 
             art = self._moment_art()
@@ -1636,6 +1751,7 @@ class _Toast(_Panel):
                     fill=RED_CARD, outline="#ff6b70", width=2,
                     tags="moment_intro"),
                     -half_w, -half_h, half_w, half_h))
+            self._moment_footer()
         except Exception:
             done()
             return
