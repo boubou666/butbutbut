@@ -94,6 +94,8 @@ butbutbut --gui               # open the graphical control centre
 butbutbut --sync-stream       # run when kick-off appears on your stream
 butbutbut --serve             # companion screen on http://127.0.0.1:8765
 butbutbut --story om          # an HTML keepsake of OM's latest match
+butbutbut --night             # tell the latest evening as standalone HTML
+butbutbut --constellation     # one point per goal on the season map
 butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
@@ -2783,6 +2785,43 @@ butbutbut --story om --story-output ~/om-lyon.html
 The file calls no external service. If the source omitted a scorer or action,
 the keepsake leaves it out rather than inventing it.
 
+At the final whistle, the card also gets **closing credits**: both club
+territories return around the final score, then reveal the scorers and the
+statistics the source actually published. It mirrors the pre-match ritual; a
+match without artwork keeps the names and crests.
+
+## The Night of Goals
+
+```bash
+butbutbut --night
+butbutbut --night 2026-09-19
+butbutbut --night --chronicle-output night.html
+```
+
+The standalone HTML page gathers every match in which a goal was reported,
+with its timeline, scorers, lead changes and goals arriving in the same
+two-minute burst. VAR is replayed before the story is built, so a disallowed
+goal remains in neither the total nor the timeline.
+
+An evening runs from **6 am to 6 am**. A 00:12 goal therefore belongs to the
+same Saturday as a 23:50 goal, just as it does in `--stats`. No daemon or
+network access is needed: everything comes from the local log.
+
+## The season constellation
+
+```bash
+butbutbut --constellation
+butbutbut --constellation --month
+butbutbut --constellation --since 2026-08-01 --teams om
+butbutbut --constellation --chronicle-output season.html
+```
+
+Every confirmed goal becomes a star, arranged by evening and match minute.
+Competitions keep a stable colour; hovering a point reveals the score, scorer
+and competition. Unreadable minutes remain visible at the start of the line
+instead of being invented. The result is a standalone SVG HTML page with no
+remote font, script or resource.
+
 ## Knowing whether the watch is really running
 
 A daemon that is alive but stuck looks just like a daemon that works: the pid
@@ -3407,7 +3446,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall.ps1    # or -Purge
 PYTHONPATH=".:tests" python -m unittest discover -s tests
 ```
 
-**1708 tests**, with no network and no screen: the source is simulated by an
+**1732 tests**, with no network and no screen: the source is simulated by an
 `opener`, the crest cache by a `fetcher`, the clock by a `FakeClock`, and the
 geometry of the cards (stacking, overflow, truncation, the room left for
 crests) is checked with a dummy font, hence without tkinter. Colour selection,

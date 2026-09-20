@@ -18,10 +18,10 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import (__version__, companion, config, crests, espn, fullscreen, hook,
-               i18n, journal, leagues, pinned, presenting, replay, screens,
-               silence, sound, souvenir, speech, state, streaming, teams,
-               watcher)
+from . import (__version__, chronicle, companion, config, crests, espn,
+               fullscreen, hook, i18n, journal, leagues, pinned, presenting,
+               replay, screens, silence, sound, souvenir, speech, state,
+               streaming, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -891,6 +891,68 @@ def do_story(args) -> int:
         return 1
     print("butbutbut : carte souvenir -> {}".format(target))
     return 0
+
+
+def _write_chronicle(target, page, label) -> int:
+    """Ecrit un recit HTML sans laisser les deux commandes diverger."""
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(page, encoding="utf-8")
+    except OSError as exc:
+        print("butbutbut : {} impossible : {}".format(label, exc),
+              file=sys.stderr)
+        return 1
+    print("butbutbut : {} -> {}".format(label, target))
+    return 0
+
+
+def do_night(args) -> int:
+    """Raconte une soiree de buts dans une page HTML autonome."""
+    requested = (args.night or "").strip()
+    if requested:
+        try:
+            datetime.strptime(requested, "%Y-%m-%d")
+        except ValueError:
+            print("butbutbut : date illisible : {!r}. Format attendu : "
+                  "AAAA-MM-JJ.".format(requested), file=sys.stderr)
+            return 2
+    entries = journal.goals_between(paths()["log"])
+    chosen = team_filter(args)
+    if chosen is not None:
+        entries = [entry for entry in entries if chosen.matches(entry)]
+    available = chronicle.evenings(entries)
+    selected = requested or (available[0] if available else "")
+    if not selected or selected not in available:
+        suffix = " pour la soiree du {}".format(requested) if requested else ""
+        print("butbutbut : aucun but{} dans le journal.".format(suffix),
+              file=sys.stderr)
+        return 1
+    target = (Path(args.chronicle_output).expanduser()
+              if args.chronicle_output else
+              paths()["souvenir_dir"] / "nuit-des-buts-{}.html".format(selected))
+    return _write_chronicle(
+        target, chronicle.render_night(entries, selected), "Nuit des buts")
+
+
+def do_constellation(args) -> int:
+    """Pose une periode du journal sur une carte HTML autonome."""
+    try:
+        window = window_of(args, whole_by_default=True)
+    except ValueError as exc:
+        print(tr("butbutbut : {}", exc), file=sys.stderr)
+        return 2
+    entries = _window_goals(args, window)
+    kept, _orphans = journal.settle(entries)
+    if not kept:
+        print("butbutbut : aucun but confirme {} : rien a cartographier."
+              .format(window.describe()), file=sys.stderr)
+        return 1
+    target = (Path(args.chronicle_output).expanduser()
+              if args.chronicle_output else
+              paths()["souvenir_dir"] / "constellation.html")
+    return _write_chronicle(
+        target, chronicle.render_constellation(entries, window.describe()),
+        "constellation de la saison")
 
 
 def do_daemon(args) -> int:
@@ -3406,6 +3468,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--story-output", default=None, dest="story_output",
                         metavar=tr("FICHIER"),
                         help=tr("chemin HTML de --story"))
+    parser.add_argument("--night", nargs="?", const="", default=None,
+                        metavar=tr("DATE"),
+                        help=tr("cree la Nuit des buts en HTML autonome. Sans "
+                                "date : derniere soiree du journal ; sinon "
+                                "AAAA-MM-JJ"))
+    parser.add_argument("--constellation", action="store_true",
+                        help=tr("cree une carte HTML de la saison, un point par "
+                                "but. Accepte --week, --month et --since"))
+    parser.add_argument("--chronicle-output", default=None,
+                        dest="chronicle_output", metavar=tr("FICHIER"),
+                        help=tr("chemin HTML de --night ou --constellation"))
 
     parser.add_argument("--test", nargs="?", type=int, const=1, default=0,
                         metavar=tr("N"),
@@ -3746,6 +3819,14 @@ def main(argv=None) -> int:
         print("butbutbut : --story-output ne sert qu'avec --story.",
               file=sys.stderr)
         return 2
+    if args.chronicle_output and args.night is None and not args.constellation:
+        print("butbutbut : --chronicle-output ne sert qu'avec --night ou "
+              "--constellation.", file=sys.stderr)
+        return 2
+    if args.night is not None and args.constellation:
+        print("butbutbut : --night et --constellation produisent deux recits "
+              "differents ; lance-les separement.", file=sys.stderr)
+        return 2
     # `--volume 0`, c'est le mode muet dit autrement. Le ramener a --no-sound
     # ici evite d'aller choisir un son, d'en mesurer la duree et de le tendre a
     # un lecteur pour qu'il ne le joue pas : la carte reste a l'ecran le temps
@@ -3851,6 +3932,10 @@ def main(argv=None) -> int:
         return do_serve(args)
     if args.story is not None:
         return do_story(args)
+    if args.night is not None:
+        return do_night(args)
+    if args.constellation:
+        return do_constellation(args)
     if args.check_update:
         return do_check_update(args)
     if args.update:

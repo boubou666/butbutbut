@@ -36,6 +36,12 @@ MESSAGES = {
     "exporte la derniere carte souvenir, ou la derniere qui concerne cette equipe":
         "exporta el ultimo recuerdo del partido o el ultimo de este equipo",
     "chemin HTML de --story": "ruta HTML de --story",
+    "cree la Nuit des buts en HTML autonome. Sans date : derniere soiree du journal ; sinon AAAA-MM-JJ":
+        "crea la Noche de goles como HTML autonomo. Sin fecha: ultima noche del registro; si no AAAA-MM-DD",
+    "cree une carte HTML de la saison, un point par but. Accepte --week, --month et --since":
+        "crea un mapa HTML de la temporada, un punto por gol. Acepta --week, --month y --since",
+    "chemin HTML de --night ou --constellation":
+        "ruta HTML de --night o --constellation",
     "retarde cartes, son, voix et crochet pour les aligner sur un streaming":
         "retrasa tarjetas, sonido, voz y hook para alinearlos con un streaming",
     "tirs au but": "tanda de penaltis",

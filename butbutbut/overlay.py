@@ -308,8 +308,8 @@ class Card:
         # integrations et les anciennes cartes construites a la main.
         self.motif = str(motif or "")
         self.motif_path = motif_path
-        # Les deux seules cartes qui racontent l'approche du match ouvrent sur
-        # un face-a-face. Les chemins restent locaux et optionnels : une ligue
+        # Le rituel d'avant-match et le generique final ouvrent sur un
+        # face-a-face. Les chemins restent locaux et optionnels : une ligue
         # sans illustration garde la meme animation avec noms et ecussons.
         self.match_intro = str(match_intro or "")
         self.home_motif_path = home_motif_path
@@ -337,7 +337,8 @@ class Card:
         themed_id = (event.match.away_id if event.side == "away"
                      else event.match.home_id)
         motif_path = themes.club_asset(themed_id)
-        match_intro = (event.kind if event.kind in ("prematch", "kickoff")
+        match_intro = (event.kind if event.kind in ("prematch", "kickoff",
+                                                     "fulltime")
                        else "")
 
         if event.sober:
@@ -847,7 +848,7 @@ def _layout(card: Card, fonts):
 
 
 def _match_intro_layout(card: Card, fonts):
-    """Composition ample reservee a l'avant-match et au coup d'envoi."""
+    """Composition ample du rituel d'avant-match et du generique final."""
     header_h = max(fonts["title"].metrics("linespace"),
                    fonts["label"].metrics("linespace"))
     team_h = fonts["team"].metrics("linespace")
@@ -1861,8 +1862,8 @@ class _Toast(_Panel):
                 lambda: self._after(hold_ms, self.close), red=True)
         elif self.card.match_intro:
             # Meme contrat que la celebration : l'intro s'ajoute au temps de
-            # lecture, elle ne le mange pas. L'annonce imminente reste donc
-            # aussi lisible qu'avant, malgre sa nouvelle mise en scene.
+            # lecture, elle ne le mange pas. Le compte a rebours comme les
+            # buteurs du generique restent donc aussi lisibles qu'avant.
             self._fade(self.stack.opacity, FADE_STEPS, fade_step, lambda: None)
             self._match_intro(lambda: self._after(hold_ms, self.close))
         else:
