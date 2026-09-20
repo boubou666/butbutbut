@@ -399,6 +399,7 @@ MESSAGES = {
     # Les metavariables de l'aide. CODE et MINUTES s'ecrivent pareil.
     "CHEMIN": "PATH",
     "LISTE": "LIST",
+    "CLE": "KEY",
     "EQUIPE": "TEAM",
     "EQUIPE|JOURS": "TEAM|DAYS",
     "competitions suivies, separees par des virgules (defaut : les 5 grands "
@@ -532,6 +533,12 @@ MESSAGES = {
     "secondes entre deux releves quand il n'y a rien a suivre (defaut {})":
         "seconds between two polls when there is nothing to follow "
         "(default {})",
+    "piloter a chaud les matchs suivis par le contrat HTTP v1 du site":
+        "control watched matches live through the site's HTTP v1 contract",
+    "URL de base du site pour --runtime-config":
+        "site base URL for --runtime-config",
+    "cle X-ButButBut-API-Key pour --runtime-config (jamais journalisee)":
+        "X-ButButBut-API-Key for --runtime-config (never logged)",
     "duree d'affichage de la carte (defaut : la duree du son, au moins {})":
         "how long the card stays up (default: the length of the sound, at "
         "least {})",

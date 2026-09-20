@@ -364,6 +364,13 @@ MESSAGES = {
     "secondes entre deux releves quand il n'y a rien a suivre (defaut {})":
         ('Sekunden zwischen zwei Abfragen, wenn es nichts zu verfolgen gibt '
          '(Standard {})'),
+    'piloter a chaud les matchs suivis par le contrat HTTP v1 du site':
+        'verfolgte Spiele live ueber den HTTP-v1-Vertrag der Site steuern',
+    'URL de base du site pour --runtime-config':
+        'Basis-URL der Site fuer --runtime-config',
+    'cle X-ButButBut-API-Key pour --runtime-config (jamais journalisee)':
+        'X-ButButBut-API-Key fuer --runtime-config (nie protokolliert)',
+    'CLE': 'SCHLUESSEL',
     "duree d'affichage de la carte (defaut : la duree du son, au moins {})":
         ('Anzeigedauer der Karte (Standard : die Dauer des Tons, mindestens '
          '{})'),

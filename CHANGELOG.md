@@ -7,6 +7,25 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.25.0] - 2026-09-21
+
+### Ajoute
+
+- Le daemon peut maintenant consommer a chaud le contrat HTTP v1
+  `/internal/api/v1/daemon/runtime-config` du site : seuls les matchs
+  selectionnes sont suivis au rythme live, sans doublon entre utilisateurs.
+- Les ajouts sont immediats, les retraits respectent le delai de grace publie
+  par le site et une configuration indisponible reste valable pendant une
+  duree bornee avec backoff, sans repli vers la surveillance generale.
+- Tout le football conserve un releve horaire de catalogue et de calendrier,
+  transmis au `site-feed`, tandis que les hooks de but existants continuent de
+  partir pour les matchs selectionnes.
+
+### Securite
+
+- La cle `X-ButButBut-API-Key` n'est jamais ecrite dans les journaux et une
+  version majeure de schema inconnue est ignoree proprement.
+
 ## [1.24.0] - 2026-09-20
 
 ### Ajoute
@@ -2361,7 +2380,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.24.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.25.0...HEAD
+[1.25.0]: https://github.com/boubou666/butbutbut/compare/v1.24.0...v1.25.0
 [1.24.0]: https://github.com/boubou666/butbutbut/compare/v1.23.1...v1.24.0
 [1.23.1]: https://github.com/boubou666/butbutbut/compare/v1.23.0...v1.23.1
 [1.23.0]: https://github.com/boubou666/butbutbut/compare/v1.22.0...v1.23.0

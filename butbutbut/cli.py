@@ -20,8 +20,8 @@ from pathlib import Path
 
 from . import (__version__, chronicle, companion, config, crests, espn,
                fullscreen, hook, i18n, journal, leagues, pinned, presenting,
-               replay, screens, silence, sound, souvenir, speech, state,
-               streaming, site_feed, teams, watcher)
+               replay, runtime_config as site_config, screens, silence, sound,
+               souvenir, speech, state, streaming, site_feed, teams, watcher)
 # La prose de la ligne de commande : le francais est la cle, voir lang/.
 from .i18n import tr
 
@@ -1015,6 +1015,14 @@ def do_constellation(args) -> int:
 def do_daemon(args) -> int:
     from . import overlay
 
+    if args.runtime_config and not (args.site_url or "").strip():
+        log("--runtime-config requiert --site-url.", quiet=args.quiet)
+        return 2
+    if args.runtime_config and not (args.site_api_key or "").strip():
+        # La valeur n'est volontairement jamais interpolee dans un message.
+        log("--runtime-config requiert --site-api-key.", quiet=args.quiet)
+        return 2
+
     # L'environnement d'un processus ne change plus une fois qu'il tourne :
     # demarre avant que la session ne publie DISPLAY, le daemon ne le verrait
     # jamais apparaitre et echouerait sur chaque but jusqu'a la deconnexion.
@@ -1026,7 +1034,11 @@ def do_daemon(args) -> int:
             quiet=args.quiet)
         return 5
 
-    selection = leagues.resolve(args.leagues, args.exclude)
+    # En mode pilote, le catalogue est tout le football connu. Ce choix ne
+    # change pas le mode autonome : sans l'option, --leagues et ses cinq
+    # grands par defaut gardent exactement leur sens historique.
+    selection = (list(leagues.FOOTBALL) if args.runtime_config else
+                 leagues.resolve(args.leagues, args.exclude))
 
     if not claim_pid_file():
         log("une instance tourne deja (pid {}), sortie.".format(running_pid()),
@@ -1060,6 +1072,17 @@ def do_daemon(args) -> int:
             release_pid_file()
             return 2
 
+    runtime = None
+    if args.runtime_config:
+        runtime = site_config.Client(
+            args.site_url,
+            args.site_api_key,
+            on_log=lambda message: log(message, quiet=args.quiet),
+        )
+        initial = runtime.refresh(force=True)
+        if initial is None:
+            initial = runtime.active_matches
+
     guard = watcher.Watcher(
         selection,
         interval=args.interval,
@@ -1071,6 +1094,7 @@ def do_daemon(args) -> int:
         red_cards=args.red_cards,
         before_kickoff=args.before_kickoff * 60.0,
         catch_up=args.catch_up,
+        selected_matches=(initial if runtime is not None else None),
     )
 
     if recorder is not None:
@@ -1080,9 +1104,16 @@ def do_daemon(args) -> int:
     # qui vient d'arriver, elle montre ou en est un match. Inactive sans --pin.
     pin = pinned.Pin(args.pin, on_log=lambda message: log(message, quiet=args.quiet))
 
-    log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s au repos"
-        .format(os.getpid(), leagues.describe(selection), args.interval,
-                args.idle_interval), quiet=args.quiet)
+    if runtime is None:
+        log("demarrage (pid {}) - {} - releve toutes les {}s en direct, {}s "
+            "au repos".format(os.getpid(), leagues.describe(selection),
+                               args.interval, args.idle_interval),
+            quiet=args.quiet)
+    else:
+        log("demarrage (pid {}) - configuration runtime du site - {} "
+            "competition(s) au catalogue, {} match(s) suivi(s)"
+            .format(os.getpid(), len(selection), len(runtime.active_matches)),
+            quiet=args.quiet)
     if chosen_teams is not None:
         log(chosen_teams.describe(), quiet=args.quiet)
     if quiet_teams is not None:
@@ -1142,6 +1173,7 @@ def do_daemon(args) -> int:
     feed_writer = site_feed.AsyncWriter(
         paths()["site_feed"], leagues=selection,
         on_log=lambda message: log(message, quiet=args.quiet))
+    feed_update = _site_feed_submitter(feed_writer, guard, runtime)
 
     # L'etat est publie des le premier releve : sinon un --status lance dans la
     # foulee du demarrage annoncerait un daemon sans aucune activite.
@@ -1150,7 +1182,7 @@ def do_daemon(args) -> int:
                               idle_interval=args.idle_interval, pin=args.pin,
                               stories_path=paths()["stories"],
                               stream_delay=delay.seconds,
-                              on_update=feed_writer.submit)
+                              on_update=feed_update)
     # Un match deja en cours au demarrage est epingle tout de suite : attendre
     # le coup d'envoi suivant priverait de carte celui qui lance le daemon a la
     # mi-temps, c'est-a-dire justement quand il en a envie.
@@ -1189,11 +1221,11 @@ def do_daemon(args) -> int:
         if stack is None:
             _watch_headless(guard, args, stopping, reporter, pin,
                             on_goal=on_goal, hush=hush, voice=voice,
-                            printer=printer, delay=delay)
+                            printer=printer, delay=delay, runtime=runtime)
         else:
             _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                               crest, on_goal=on_goal, hush=hush, voice=voice,
-                              delay=delay)
+                              delay=delay, runtime=runtime)
     except KeyboardInterrupt:
         log("arret demande.", quiet=args.quiet)
     finally:
@@ -1257,9 +1289,35 @@ def show_in_terminal(printer, args, event) -> None:
         log("echec de la carte de terminal : {}".format(exc), quiet=args.quiet)
 
 
+def _refresh_runtime(runtime, guard) -> None:
+    """Applique une revision distante, une fin de grace ou une expiration."""
+    if runtime is None:
+        return
+    selected = runtime.refresh()
+    if selected is not None:
+        guard.set_selected_matches(selected)
+
+
+def _site_feed_submitter(writer, guard, runtime):
+    """Separe le statut live du catalogue de decouverte du site."""
+    if runtime is None:
+        return writer.submit
+
+    def submit_catalog(_selected):
+        writer.submit(guard.catalog_matches())
+
+    return submit_catalog
+
+
+def _runtime_wait(runtime, wait: float) -> float:
+    if runtime is None:
+        return wait
+    return min(wait, runtime.next_delay())
+
+
 def _watch_headless(guard, args, stopping, reporter, pin,
                     on_goal=None, hush=None, voice=None, printer=None,
-                    delay=None) -> None:
+                    delay=None, runtime=None) -> None:
     """Sans fenetre : un seul fil, le son, le journal, et le terminal.
 
     L'epinglage est quand meme suivi, faute d'ecran ou il s'afficherait :
@@ -1272,6 +1330,7 @@ def _watch_headless(guard, args, stopping, reporter, pin,
     hush = hush if hush is not None else silence.Silence()
     delay = delay if delay is not None else streaming.Delay()
     while not stopping.is_set():
+        _refresh_runtime(runtime, guard)
         detected = guard.tick()
         for event in detected:
             log(event.log_line(), quiet=args.quiet)
@@ -1315,12 +1374,16 @@ def _watch_headless(guard, args, stopping, reporter, pin,
 
         # plan_wait() et pas next_delay() : le watcher retient ce qu'on s'est
         # engage a attendre, et voit ainsi au tick suivant qu'on a dormi.
-        stopping.wait(delay.next_wait(guard.plan_wait()))
+        if runtime is None:
+            stopping.wait(delay.next_wait(guard.plan_wait()))
+        else:
+            wait = _runtime_wait(runtime, guard.plan_wait())
+            stopping.wait(delay.next_wait(wait))
 
 
 def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                       crest=None, on_goal=None, hush=None, voice=None,
-                      delay=None) -> None:
+                      delay=None, runtime=None) -> None:
     """Avec cartes : tkinter garde le fil principal, la surveillance a le sien.
 
     tkinter n'aime pas etre touche depuis un autre fil : le fil de surveillance
@@ -1341,6 +1404,7 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
     def poll():
         while not stopping.is_set():
             try:
+                _refresh_runtime(runtime, guard)
                 detected = guard.tick()
                 for event in detected:
                     log(event.log_line(), quiet=args.quiet)
@@ -1381,7 +1445,11 @@ def _watch_with_cards(guard, args, stopping, stack, reporter, pin,
                     pending.put(event)
             except Exception as exc:
                 log("erreur de surveillance : {}".format(exc), quiet=args.quiet)
-            stopping.wait(delay.next_wait(guard.plan_wait()))
+            if runtime is None:
+                stopping.wait(delay.next_wait(guard.plan_wait()))
+            else:
+                wait = _runtime_wait(runtime, guard.plan_wait())
+                stopping.wait(delay.next_wait(wait))
 
     thread = threading.Thread(target=poll, name="butbutbut-watch", daemon=True)
     thread.start()
@@ -3694,6 +3762,17 @@ def build_parser() -> argparse.ArgumentParser:
                         dest="idle_interval",
                         help=tr("secondes entre deux releves quand il n'y a rien a "
                              "suivre (defaut {})", DEFAULT_IDLE_INTERVAL))
+    parser.add_argument("--runtime-config", action="store_true",
+                        dest="runtime_config",
+                        help=tr("piloter a chaud les matchs suivis par le contrat "
+                                "HTTP v1 du site"))
+    parser.add_argument("--site-url", default=None, metavar="URL",
+                        dest="site_url",
+                        help=tr("URL de base du site pour --runtime-config"))
+    parser.add_argument("--site-api-key", default=None, metavar=tr("CLE"),
+                        dest="site_api_key",
+                        help=tr("cle X-ButButBut-API-Key pour --runtime-config "
+                                "(jamais journalisee)"))
 
     parser.add_argument("--duration", type=float, default=None,
                         help=tr("duree d'affichage de la carte (defaut : la duree "
@@ -3863,6 +3942,9 @@ def main(argv=None) -> int:
               "--site-feed-backfill.", file=sys.stderr)
         return 2
 
+    args.site_url = (args.site_url or "").strip()
+    args.site_api_key = (args.site_api_key or "").strip()
+
     if args.gui:
         # Importe tkinter uniquement sur demande : un serveur sans ecran garde
         # un demarrage aussi leger et aussi robuste qu'avant.
@@ -4008,7 +4090,9 @@ def main(argv=None) -> int:
         # --export n'ecrit que des donnees sur la sortie standard : la
         # confirmation des noms d'equipe est de la prose, elle part a cote
         # avec le reste, sans quoi le fichier produit commencerait par elle.
-        failed = check_teams(args, leagues.resolve(args.leagues, args.exclude),
+        team_leagues = (list(leagues.FOOTBALL) if args.runtime_config else
+                        leagues.resolve(args.leagues, args.exclude))
+        failed = check_teams(args, team_leagues,
                              stream=sys.stderr if args.export else None)
         if failed:
             return failed

@@ -166,6 +166,17 @@ OPTIONS = (
     Option("idle_interval", _integer,
            "Secondes entre deux releves quand il n'y a rien a suivre.",
            "300"),
+    Option("runtime_config", _flag,
+           "Piloter a chaud les matchs suivis par le contrat HTTP v1 du site. "
+           "Non conserve le fonctionnement autonome historique.",
+           "non"),
+    Option("site_url", _text,
+           "URL de base du site qui publie la configuration runtime.",
+           "http://localhost:8000", fallback="aucune"),
+    Option("site_api_key", _text,
+           "Cle envoyee dans X-ButButBut-API-Key. Elle n'est jamais ecrite "
+           "dans le journal.",
+           "change-me", fallback="aucune"),
     Option("duration", _number,
            "Secondes d'affichage d'une carte.",
            "8", fallback="la duree du son"),
