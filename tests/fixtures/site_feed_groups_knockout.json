@@ -1,0 +1,118 @@
+{
+  "scoreboard": {
+    "season": {"year": 2026},
+    "events": [
+      {
+        "id": "group-1",
+        "date": "2026-06-01T18:00Z",
+        "season": {"year": 2026, "type": 9001, "slug": "group-stage"},
+        "competitions": [{
+          "id": "group-1",
+          "date": "2026-06-01T18:00Z",
+          "altGameNote": "Test Cup, Group A",
+          "status": {"displayClock": "90'", "type": {"state": "post", "name": "STATUS_FULL_TIME", "shortDetail": "FT"}},
+          "competitors": [
+            {"homeAway": "home", "score": "1", "winner": false, "team": {"id": "alpha", "displayName": "Alpha", "shortDisplayName": "Alpha"}, "statistics": []},
+            {"homeAway": "away", "score": "1", "winner": false, "team": {"id": "beta", "displayName": "Beta", "shortDisplayName": "Beta"}, "statistics": []}
+          ],
+          "details": [],
+          "notes": []
+        }]
+      },
+      {
+        "id": "r16-1",
+        "date": "2026-06-10T18:00Z",
+        "season": {"year": 2026, "type": 9002, "slug": "round-of-16"},
+        "competitions": [{
+          "id": "r16-1",
+          "date": "2026-06-10T18:00Z",
+          "altGameNote": "Test Cup, Round of 16",
+          "status": {"displayClock": "120'", "type": {"state": "post", "name": "STATUS_FINAL_PEN", "shortDetail": "FT-Pens"}},
+          "competitors": [
+            {"homeAway": "home", "score": "2", "shootoutScore": "4", "winner": true, "team": {"id": "alpha", "displayName": "Alpha", "shortDisplayName": "Alpha"}, "statistics": []},
+            {"homeAway": "away", "score": "2", "shootoutScore": "3", "winner": false, "team": {"id": "gamma", "displayName": "Gamma", "shortDisplayName": "Gamma"}, "statistics": []}
+          ],
+          "details": [],
+          "notes": []
+        }]
+      },
+      {
+        "id": "qf-1",
+        "date": "2026-06-15T18:00Z",
+        "season": {"year": 2026, "type": 9003, "slug": "quarterfinals"},
+        "competitions": [{
+          "id": "qf-1",
+          "date": "2026-06-15T18:00Z",
+          "altGameNote": "Test Cup, Quarterfinals",
+          "status": {"displayClock": "", "type": {"state": "pre", "name": "STATUS_SCHEDULED", "shortDetail": "15 Jun"}},
+          "competitors": [
+            {"homeAway": "home", "score": "0", "winner": false, "team": {"id": "alpha", "displayName": "Alpha", "shortDisplayName": "Alpha"}, "statistics": []},
+            {"homeAway": "away", "score": "0", "winner": false, "team": {"id": "delta", "displayName": "Delta", "shortDisplayName": "Delta"}, "statistics": []}
+          ],
+          "details": [],
+          "notes": []
+        }]
+      }
+    ]
+  },
+  "season": {
+    "year": 2026,
+    "displayName": "2026 Test Cup",
+    "types": {"items": [
+      {"id": "1", "type": 9001, "name": "Group Stage", "slug": "group-stage", "hasGroups": true, "hasStandings": true},
+      {"id": "2", "type": 9002, "name": "Round of 16", "slug": "round-of-16", "hasGroups": false, "hasStandings": false},
+      {"id": "3", "type": 9003, "name": "Quarterfinals", "slug": "quarterfinals", "hasGroups": false, "hasStandings": false}
+    ]},
+    "tournament": {"$ref": "https://sports.example.test/tournaments/test/seasons/2026"}
+  },
+  "tournament": {
+    "groups": [
+      {"id": "round-r16", "displayName": "Round of 16", "matchups": [
+        {"id": "tie-1", "roundNumber": 1, "bracketLocation": 2, "winnerAdvancesTo": "3", "events": [{"$ref": "https://sports.example.test/events/r16-1"}]}
+      ]},
+      {"id": "round-qf", "displayName": "Quarterfinals", "matchups": [
+        {"id": "tie-2", "roundNumber": 2, "bracketLocation": 1, "events": [{"$ref": "https://sports.example.test/events/qf-1"}]}
+      ]}
+    ]
+  },
+  "core_events": {
+    "r16-1": {"id": "r16-1", "competitions": [{"matchNumber": 2}]},
+    "qf-1": {"id": "qf-1", "competitions": [{"matchNumber": 3}]}
+  },
+  "standings": {
+    "season": {"year": 2026, "displayName": "2026 Test Cup"},
+    "children": [{
+      "id": "group-a",
+      "name": "Group A",
+      "standings": {
+        "seasonType": 1,
+        "seasonDisplayName": "2026 Test Cup",
+        "entries": [
+          {"team": {"id": "alpha", "displayName": "Alpha"}, "stats": [
+            {"type": "gamesplayed", "name": "gamesPlayed", "value": 3, "displayValue": "3"},
+            {"type": "wins", "name": "wins", "value": 2, "displayValue": "2"},
+            {"type": "ties", "name": "ties", "value": 1, "displayValue": "1"},
+            {"type": "losses", "name": "losses", "value": 0, "displayValue": "0"},
+            {"type": "pointsfor", "name": "pointsFor", "value": 5, "displayValue": "5"},
+            {"type": "pointsagainst", "name": "pointsAgainst", "value": 2, "displayValue": "2"},
+            {"type": "pointdifferential", "name": "pointDifferential", "value": 3, "displayValue": "+3"},
+            {"type": "points", "name": "points", "value": 6, "displayValue": "6"},
+            {"type": "rank", "name": "rank", "value": 1, "displayValue": "1"},
+            {"type": "deductions", "name": "deductions", "value": 1, "displayValue": "1"}
+          ]},
+          {"team": {"id": "beta", "displayName": "Beta"}, "stats": [
+            {"type": "gamesplayed", "name": "gamesPlayed", "value": 3, "displayValue": "3"},
+            {"type": "wins", "name": "wins", "value": 1, "displayValue": "1"},
+            {"type": "ties", "name": "ties", "value": 1, "displayValue": "1"},
+            {"type": "losses", "name": "losses", "value": 1, "displayValue": "1"},
+            {"type": "pointsfor", "name": "pointsFor", "value": 3, "displayValue": "3"},
+            {"type": "pointsagainst", "name": "pointsAgainst", "value": 3, "displayValue": "3"},
+            {"type": "pointdifferential", "name": "pointDifferential", "value": 0, "displayValue": "0"},
+            {"type": "points", "name": "points", "value": 4, "displayValue": "4"},
+            {"type": "rank", "name": "rank", "value": 2, "displayValue": "2"}
+          ]}
+        ]
+      }
+    }]
+  }
+}

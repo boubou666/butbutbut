@@ -27,6 +27,7 @@ La reponse est du JSON UTF-8. Elle contient toujours :
   "generated_at": "2026-09-20T20:00:00Z",
   "competitions": [],
   "matches": [],
+  "standings": [],
   "next_cursor": null,
   "state": {
     "available": true,
@@ -55,11 +56,14 @@ cle et non un decalage : elle ne charge pas tout l'historique en memoire. Un
 curseur est lie a ses filtres `from` et `to` ; le reutiliser avec d'autres
 bornes rend HTTP 400. A la derniere page, `next_cursor` vaut `null`.
 
-Les identifiants de competition, de match et d'equipe sont ceux recus d'ESPN.
-Un evenement sans identifiant ESPN propre recoit une cle stable dans son match,
-faite des champs ESPN qui le decrivent. Les dates de match sont en UTC et les
-statuts sont limites a `scheduled`, `live`, `finished`, `postponed` et
-`cancelled`.
+Les champs historiques `external_id` des competitions, matchs et equipes sont
+conserves sans changement. Les nouveaux identifiants de structure sont des
+chaines opaques : un consommateur ne doit dependre ni de leur forme, ni d'une
+URL, ni d'un nom de table du fournisseur. Ils restent stables dans leur edition
+et la jointure se fait toujours par egalite stricte. Un evenement sans
+identifiant propre recoit une cle stable dans son match, faite des champs source
+qui le decrivent. Les dates de match sont en UTC et les statuts sont limites a
+`scheduled`, `live`, `finished`, `postponed` et `cancelled`.
 
 `competition.logo_url` et `team.crest_url` viennent uniquement des metadonnees
 effectivement recues. Aucune URL de logo n'est construite a partir d'un
@@ -67,14 +71,71 @@ identifiant suppose ; la valeur reste `null` quand la source ne publie rien.
 La meme representation normalisee de la competition est incluse dans chaque
 match.
 
+### Structure officielle des competitions
+
+Chaque objet de `matches` conserve tous ses champs precedents et ajoute les
+champs suivants. Une donnee que les ressources officielles ne publient pas vaut
+`null` ; le feed ne deduit jamais un tour d'une date ou d'un texte libre.
+
+- edition : `edition_external_id`, `edition_name` ;
+- phase : `phase_kind` (`league`, `group` ou `knockout`),
+  `phase_external_id`, `phase_name`, `phase_order` ;
+- groupe : `group_external_id`, `group_name`, `group_order` ;
+- tour : `round_external_id`, `round_name`, `round_order` ;
+- tableau : `tie_external_id`, `leg_number`, `bracket_slot`,
+  `next_match_external_id` ;
+- resultat : `winner_team_external_id` et `decided_by` (`regular_time`,
+  `extra_time` ou `penalties`).
+
+`phase_order`, `group_order` et `round_order` sont des rangs commences a 1 dans
+l'ordre officiel recu. `next_match_external_id` designe bien un match du feed,
+pas un numero de case du tableau. `winner_team_external_id` reprend l'identifiant
+de l'une des deux equipes du match.
+
+`standings` contient un objet par groupe officiellement classe :
+
+```json
+{
+  "competition_external_id": "fifa.world",
+  "edition_external_id": "2022",
+  "edition_name": "2022 FIFA World Cup",
+  "phase_external_id": "10953",
+  "phase_name": "Group Stage",
+  "phase_order": 1,
+  "group_external_id": "1",
+  "group_name": "Group A",
+  "group_order": 1,
+  "rows": [{
+    "team_external_id": "449",
+    "team_name": "Netherlands",
+    "played": 3,
+    "won": 2,
+    "drawn": 1,
+    "lost": 0,
+    "goals_for": 5,
+    "goals_against": 1,
+    "goal_difference": 4,
+    "points": 7,
+    "rank": 1,
+    "penalties": 0
+  }]
+}
+```
+
+Toutes les valeurs d'une ligne, rang et penalites compris, proviennent du
+classement officiel. Elles valent `null` si la colonne manque ; aucun total,
+rang ni departage n'est recalcule localement. Cet ajout est retrocompatible et
+ne change pas `schema_version: 1` ni le chemin `/api/v1/site-feed`.
+
 ## Backfill explicite et reprenable
 
 Le daemon ne lance jamais un backfill massif au demarrage. La commande dediee
 travaille mois par mois, limite les requetes, reessaie les erreurs transitoires,
-met les reponses brutes compressees en cache et valide chaque lot dans SQLite.
-Les reponses brutes et les objets normalises restent dans deux stockages
-separes. Relancer exactement la meme commande saute les lots termines et relit
-le cache si un lot doit etre repris.
+met chaque reponse brute compressee en cache (scoreboard, edition, tournoi,
+evenements de tableau et classement) puis valide les objets normalises dans
+SQLite. Les reponses brutes et les objets normalises restent dans deux
+stockages separes. Relancer exactement la meme commande saute les lots termines
+et relit le cache si un lot doit etre repris.
 
 Verifier le plan sans reseau ni ecriture :
 

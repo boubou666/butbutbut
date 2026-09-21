@@ -7,6 +7,23 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.26.0] - 2026-09-21
+
+### Ajoute
+
+- Le contrat retrocompatible `GET /api/v1/site-feed` publie maintenant les
+  editions, phases, groupes, tours et liens de tableau officiels disponibles,
+  ainsi que le vainqueur et la maniere dont un match s'est decide.
+- Les classements officiels par groupe rejoignent le flux avec leurs lignes
+  completes et leurs eventuelles deductions de points, sans calcul local des
+  donnees absentes.
+
+### Corrige
+
+- Un releve live ne peut plus effacer une structure de competition acquise par
+  backfill, et les anciens lots termines sont renormalises une fois avec le
+  nouveau lecteur tout en reutilisant leurs reponses brutes separees.
+
 ## [1.25.0] - 2026-09-21
 
 ### Ajoute
@@ -2380,7 +2397,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.25.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.26.0...HEAD
+[1.26.0]: https://github.com/boubou666/butbutbut/compare/v1.25.0...v1.26.0
 [1.25.0]: https://github.com/boubou666/butbutbut/compare/v1.24.0...v1.25.0
 [1.24.0]: https://github.com/boubou666/butbutbut/compare/v1.23.1...v1.24.0
 [1.23.1]: https://github.com/boubou666/butbutbut/compare/v1.23.0...v1.23.1
