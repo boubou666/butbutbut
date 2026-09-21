@@ -31,6 +31,13 @@ DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 DEFAULT_REQUEST_DELAY = 1.5
 MAX_RETRIES = 3
+BACKFILL_NORMALIZER_VERSION = 2
+STRUCTURE_FIELDS = (
+    "edition_external_id", "edition_name", "phase_kind", "phase_external_id",
+    "phase_name", "phase_order", "group_external_id", "group_name",
+    "group_order", "round_external_id", "round_name", "round_order",
+    "tie_external_id", "leg_number", "bracket_slot", "next_match_external_id",
+)
 
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MINUTE = re.compile(r"^(\d+)(?:\+(\d+))?")
@@ -162,6 +169,18 @@ def normalize_match(match) -> dict:
             timespec="seconds").replace("+00:00", "Z")
     plays = list(match.plays) + list(match.red_cards) + list(match.shootout)
     plays.sort(key=lambda play: (getattr(play, "sequence", 0), str(play.key)))
+    status_probe = "{} {}".format(match.status_name, match.detail).upper()
+    decided_by = None
+    if match.state == espn.POST:
+        if match.on_penalties:
+            decided_by = "penalties"
+        elif "EXTRA_TIME" in status_probe or "FINAL_AET" in status_probe:
+            decided_by = "extra_time"
+        elif any(word in status_probe for word in ("FULL_TIME", "STATUS_FINAL", "FT")):
+            decided_by = "regular_time"
+    winner_side = str(getattr(match, "winner", "") or "")
+    winner_id = (getattr(match, winner_side + "_id", None)
+                 if winner_side in ("home", "away") else None)
     return {
         "external_id": str(match.id),
         "competition": normalize_competition(match.league),
@@ -171,6 +190,30 @@ def normalize_match(match) -> dict:
         "status": normalize_status(match),
         "clock": str(match.clock or match.detail or "") or None,
         "season": str(getattr(match, "season", "") or "") or None,
+        "edition_external_id": str(getattr(
+            match, "edition_external_id", "") or "") or None,
+        "edition_name": str(getattr(match, "edition_name", "") or "") or None,
+        "phase_kind": str(getattr(match, "phase_kind", "") or "") or None,
+        "phase_external_id": str(getattr(
+            match, "phase_external_id", "") or "") or None,
+        "phase_name": str(getattr(match, "phase_name", "") or "") or None,
+        "phase_order": getattr(match, "phase_order", None),
+        "group_external_id": str(getattr(
+            match, "group_external_id", "") or "") or None,
+        "group_name": str(getattr(match, "group_name", "") or "") or None,
+        "group_order": getattr(match, "group_order", None),
+        "round_external_id": str(getattr(
+            match, "round_external_id", "") or "") or None,
+        "round_name": str(getattr(match, "round_name", "") or "") or None,
+        "round_order": getattr(match, "round_order", None),
+        "tie_external_id": str(getattr(
+            match, "tie_external_id", "") or "") or None,
+        "leg_number": getattr(match, "leg_number", None),
+        "bracket_slot": getattr(match, "bracket_slot", None),
+        "next_match_external_id": str(getattr(
+            match, "next_match_external_id", "") or "") or None,
+        "winner_team_external_id": str(winner_id) if winner_id else None,
+        "decided_by": decided_by,
         "home_score": int(match.home_score),
         "away_score": int(match.away_score),
         "venue": str(getattr(match, "venue", "") or "") or None,
@@ -179,6 +222,55 @@ def normalize_match(match) -> dict:
         "home_statistics": dict(match.home_stats),
         "away_statistics": dict(match.away_stats),
     }
+
+
+def _standing_value(row, *keys):
+    for key in keys:
+        if key in row.values:
+            return row.values[key]
+    return None
+
+
+def normalize_standings(table) -> list:
+    """Classements officiels par groupe, sans colonne calculee localement."""
+    result = []
+    soccer = getattr(table, "sport", sports.DEFAULT) is sports.SOCCER
+    for group in table.groups:
+        rows = []
+        for row in group.rows:
+            rows.append({
+                "team_external_id": row.team_id or None,
+                "team_name": row.team,
+                "played": _standing_value(row, "gamesplayed"),
+                "won": _standing_value(row, "wins", "gameswon"),
+                "drawn": _standing_value(row, "ties", "gamesdrawn"),
+                "lost": _standing_value(row, "losses", "gameslost"),
+                "goals_for": (_standing_value(row, "pointsfor")
+                              if soccer else None),
+                "goals_against": (_standing_value(row, "pointsagainst")
+                                  if soccer else None),
+                "goal_difference": (_standing_value(
+                    row, "pointdifferential", "pointsdifference")
+                    if soccer else None),
+                "points": _standing_value(row, "points"),
+                # Le rang de repli utilise par l'affichage terminal n'entre pas
+                # dans l'API : seul le rang effectivement publie est expose.
+                "rank": row.official_rank,
+                "penalties": _standing_value(row, "deductions", "penalties"),
+            })
+        result.append({
+            "competition_external_id": str(table.league.slug),
+            "edition_external_id": table.edition_external_id or None,
+            "edition_name": table.edition_name or None,
+            "phase_external_id": group.phase_external_id or None,
+            "phase_name": group.phase_name or None,
+            "phase_order": group.phase_order,
+            "group_external_id": group.external_id or None,
+            "group_name": group.name or None,
+            "group_order": group.order,
+            "rows": rows,
+        })
+    return result
 
 
 def _parse_bound(value, upper=False):
@@ -204,6 +296,17 @@ def _parse_bound(value, upper=False):
 def _fingerprint(first, last):
     return hashlib.sha256(json.dumps([first, last], separators=(",", ":"))
                           .encode("utf-8")).hexdigest()[:20]
+
+
+def _standing_storage_key(row):
+    """Cle SQLite interne ; elle n'est jamais publiee comme identifiant."""
+    identity = [row.get("competition_external_id"),
+                row.get("edition_external_id"), row.get("phase_external_id"),
+                row.get("group_external_id"), row.get("group_name"),
+                row.get("group_order")]
+    return hashlib.sha256(json.dumps(identity, ensure_ascii=False,
+                                     separators=(",", ":"))
+                          .encode("utf-8")).hexdigest()
 
 
 def _cursor_encode(first, last, starts_at, external_id):
@@ -289,19 +392,40 @@ class Store:
             );
             CREATE INDEX IF NOT EXISTS matches_order
                 ON matches(starts_at, external_id);
+            CREATE TABLE IF NOT EXISTS official_standings (
+                storage_key TEXT PRIMARY KEY,
+                competition_id TEXT NOT NULL,
+                edition_id TEXT NOT NULL DEFAULT '',
+                payload TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS backfill_periods (
                 competition_id TEXT NOT NULL,
                 period TEXT NOT NULL,
                 status TEXT NOT NULL,
                 message TEXT,
                 updated_at TEXT NOT NULL,
+                normalizer_version INTEGER NOT NULL DEFAULT 1,
                 PRIMARY KEY(competition_id, period)
             );
         """)
+        columns = {row[1] for row in db.execute(
+            "PRAGMA table_info(backfill_periods)")}
+        if "normalizer_version" not in columns:
+            db.execute(
+                "ALTER TABLE backfill_periods ADD COLUMN "
+                "normalizer_version INTEGER NOT NULL DEFAULT 1")
+        standings_columns = {row[1] for row in db.execute(
+            "PRAGMA table_info(official_standings)")}
+        if "edition_id" not in standings_columns:
+            db.execute(
+                "ALTER TABLE official_standings ADD COLUMN "
+                "edition_id TEXT NOT NULL DEFAULT ''")
         return db
 
-    def upsert(self, leagues=(), matches=()):
+    def upsert(self, leagues=(), matches=(), tables=()):
         stamp = utc_now()
+        tables = list(tables)
         competitions = {item.slug: normalize_competition(item) for item in leagues}
         normalized = []
         for match in matches:
@@ -310,6 +434,8 @@ class Store:
                 continue
             competitions[row["competition"]["external_id"]] = row["competition"]
             normalized.append(row)
+        standings = [item for table in tables
+                     for item in normalize_standings(table)]
         with closing(self._connect()) as db, db:
             for key, value in competitions.items():
                 if value.get("logo_url") is not None:
@@ -323,6 +449,20 @@ class Store:
                     except (TypeError, ValueError):
                         pass
             for row in normalized:
+                previous = db.execute(
+                    "SELECT payload FROM matches WHERE external_id=?",
+                    (row["external_id"],)).fetchone()
+                if previous:
+                    try:
+                        old_match = json.loads(previous[0])
+                    except (TypeError, ValueError):
+                        old_match = {}
+                    # Un releve live ne consulte pas les ressources de tournoi.
+                    # Il actualise score/statut sans effacer une structure deja
+                    # acquise par le backfill.
+                    for field in STRUCTURE_FIELDS:
+                        if row.get(field) is None and old_match.get(field) is not None:
+                            row[field] = old_match[field]
                 row["competition"] = competitions[
                     row["competition"]["external_id"]]
             db.executemany(
@@ -340,22 +480,43 @@ class Store:
                   row["starts_at"],
                   json.dumps(row, ensure_ascii=False, separators=(",", ":")), stamp)
                  for row in normalized])
+            for table in tables:
+                db.execute(
+                    "DELETE FROM official_standings WHERE competition_id=? "
+                    "AND edition_id=?",
+                    (str(table.league.slug), table.edition_external_id))
+            db.executemany(
+                "INSERT INTO official_standings "
+                "(storage_key, competition_id, edition_id, payload, updated_at) "
+                "VALUES (?, ?, ?, ?, ?) "
+                "ON CONFLICT(storage_key) DO UPDATE SET payload=excluded.payload, "
+                "updated_at=excluded.updated_at",
+                [(_standing_storage_key(row), row["competition_external_id"],
+                  row.get("edition_external_id") or "",
+                  json.dumps(row, ensure_ascii=False, separators=(",", ":")), stamp)
+                 for row in standings])
 
     def mark_period(self, competition_id, period, status, message=""):
         with closing(self._connect()) as db, db:
             db.execute(
-                "INSERT INTO backfill_periods VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO backfill_periods "
+                "(competition_id, period, status, message, updated_at, "
+                "normalizer_version) VALUES (?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(competition_id, period) DO UPDATE SET "
                 "status=excluded.status, message=excluded.message, "
-                "updated_at=excluded.updated_at",
-                (competition_id, period, status, str(message or ""), utc_now()))
+                "updated_at=excluded.updated_at, "
+                "normalizer_version=excluded.normalizer_version",
+                (competition_id, period, status, str(message or ""), utc_now(),
+                 BACKFILL_NORMALIZER_VERSION))
 
     def period_done(self, competition_id, period):
         with closing(self._connect()) as db, db:
             row = db.execute(
-                "SELECT status FROM backfill_periods WHERE competition_id=? AND period=?",
+                "SELECT status, normalizer_version FROM backfill_periods "
+                "WHERE competition_id=? AND period=?",
                 (competition_id, period)).fetchone()
-        return bool(row and row[0] == "ok")
+        return bool(row and row[0] == "ok"
+                    and row[1] >= BACKFILL_NORMALIZER_VERSION)
 
     def feed(self, params=None, followed=(), current_state=None):
         query = Query(params)
@@ -384,6 +545,9 @@ class Store:
             rows = db.execute(sql, values).fetchall()
             stored_competitions = [json.loads(row[0]) for row in db.execute(
                 "SELECT payload FROM competitions ORDER BY external_id")]
+            stored_standings = [(row[0], json.loads(row[1])) for row in db.execute(
+                "SELECT competition_id, payload FROM official_standings "
+                "ORDER BY competition_id, storage_key")]
             errors = [{"competition_external_id": row[0], "period": row[1],
                        "message": _safe_error_message(row[2]),
                        "observed_at": row[3]}
@@ -409,6 +573,8 @@ class Store:
                 current["logo_url"] = old.get("logo_url")
             by_id[current["external_id"]] = current
         competitions = [by_id[key] for key in sorted(by_id)]
+        standings = [item for competition_id, item in stored_standings
+                     if not followed_ids or competition_id in set(followed_ids)]
         for match in matches:
             competition_id = match.get("competition", {}).get("external_id")
             if competition_id in by_id:
@@ -433,6 +599,7 @@ class Store:
             "generated_at": utc_now(),
             "competitions": competitions,
             "matches": matches,
+            "standings": standings,
             "next_cursor": next_cursor,
             "state": public_state,
             "errors": errors,
@@ -569,13 +736,10 @@ class Backfill:
         self.sleeper = sleeper
         self.on_progress = on_progress or (lambda _message: None)
 
-    def _fetch(self, league, period):
-        cached = self.cache.read(league, period)
+    def _fetch_url(self, league, cache_key, url):
+        cached = self.cache.read(league, cache_key)
         if cached is not None:
             return cached, True
-        sport = getattr(league, "sport", None) or sports.DEFAULT
-        url = espn.SCOREBOARD_URL.format(sport=sport.code, slug=league.slug)
-        url += "?" + urllib.parse.urlencode({"dates": period, "limit": 1000})
         last = None
         for attempt in range(MAX_RETRIES):
             try:
@@ -588,7 +752,7 @@ class Backfill:
                 payload = json.loads(raw) if isinstance(raw, str) else raw
                 if not isinstance(payload, dict):
                     raise espn.SourceError("reponse inattendue pour " + league.ref)
-                self.cache.write(league, period, payload)
+                self.cache.write(league, cache_key, payload)
                 return payload, False
             except Exception as exc:
                 last = exc
@@ -597,6 +761,103 @@ class Backfill:
         if isinstance(last, espn.SourceError):
             raise last
         raise espn.SourceError(type(last).__name__)
+
+    def _fetch(self, league, period):
+        sport = getattr(league, "sport", None) or sports.DEFAULT
+        url = espn.SCOREBOARD_URL.format(sport=sport.code, slug=league.slug)
+        url += "?" + urllib.parse.urlencode({"dates": period, "limit": 1000})
+        return self._fetch_url(league, period, url)
+
+    def _metadata_fetch(self, league, cache_key, url):
+        cached = self.cache.read(league, cache_key)
+        if cached is not None:
+            return cached
+        if self.request_delay:
+            self.sleeper(self.request_delay)
+        return self._fetch_url(league, cache_key, url)[0]
+
+    @staticmethod
+    def _structure_year(payload):
+        """Edition officielle nommee par au moins un match du lot."""
+        for event in payload.get("events") or ():
+            if not isinstance(event, dict):
+                continue
+            season = event.get("season") or {}
+            if not isinstance(season, dict):
+                continue
+            if season.get("type") is not None or season.get("slug"):
+                year = str(season.get("year") or "").strip()
+                return year or None
+        return None
+
+    def _metadata(self, league, scoreboard):
+        """Structure et classement du tournoi, sans rendre le score indisponible."""
+        year = self._structure_year(scoreboard)
+        if year is None:
+            return {}, None, None
+        sport = getattr(league, "sport", None) or sports.DEFAULT
+        try:
+            season_url = espn.SEASON_URL.format(
+                sport=sport.code, slug=league.slug, year=year)
+            season = self._metadata_fetch(
+                league, "structure-" + year, season_url)
+            raw_types = season.get("types") or {}
+            if not isinstance(raw_types, dict) or not isinstance(
+                    raw_types.get("items"), list):
+                return {}, None, None
+
+            tournament = {}
+            tournament_ref = (season.get("tournament") or {}).get("$ref")
+            if tournament_ref:
+                tournament_url = str(tournament_ref).replace("http://", "https://", 1)
+                tournament = self._metadata_fetch(
+                    league, "tournament-" + year, tournament_url)
+
+            event_payloads = []
+            if any(isinstance(matchup, dict) and matchup.get("winnerAdvancesTo")
+                   for group in tournament.get("groups") or ()
+                   if isinstance(group, dict)
+                   for matchup in group.get("matchups") or ()):
+                refs = []
+                for group in tournament.get("groups") or ():
+                    if not isinstance(group, dict):
+                        continue
+                    for matchup in group.get("matchups") or ():
+                        if not isinstance(matchup, dict):
+                            continue
+                        refs.extend(event.get("$ref") for event in
+                                    matchup.get("events") or ()
+                                    if isinstance(event, dict) and event.get("$ref"))
+                for ref in dict.fromkeys(refs):
+                    event_id = re.search(r"/events/([^/?]+)", str(ref))
+                    if event_id is None:
+                        continue
+                    url = str(ref).replace("http://", "https://", 1)
+                    event_payloads.append(self._metadata_fetch(
+                        league, "event-{}-{}".format(year, event_id.group(1)), url))
+
+            standings = {}
+            if any(item.get("hasStandings") for item in raw_types["items"]
+                   if isinstance(item, dict)):
+                standings_url = espn.STANDINGS_URL.format(
+                    sport=sport.code, slug=league.slug)
+                standings_url += "?" + urllib.parse.urlencode({"season": year})
+                standings = self._metadata_fetch(
+                    league, "standings-" + year, standings_url)
+
+            structure = espn.parse_competition_structure(
+                season, tournament, event_payloads, standings)
+            table = (espn.parse_standings(standings, league, structure)
+                     if standings else None)
+            return structure, table, None
+        except Exception as exc:
+            # Les scores restent utilisables si l'une des ressources
+            # structurelles optionnelles est momentanement indisponible.
+            message = "structure indisponible ({})".format(
+                _safe_error_message(exc if isinstance(exc, espn.SourceError)
+                                    else type(exc).__name__))
+            self.on_progress("{} {} : {}".format(league.ref, year, message))
+            return {}, None, message
 
     def run(self, leagues, first, last, dry_run=False):
         first, last = first if isinstance(first, date) else date.fromisoformat(first), \
@@ -625,13 +886,23 @@ class Backfill:
                 try:
                     payload, cached = self._fetch(league, period)
                     network_request = network_request or not cached
-                    parsed = espn.parse(payload, league)
+                    structure, table, metadata_error = self._metadata(
+                        league, payload)
+                    parsed = espn.parse(payload, league, structure=structure)
                     parsed = [match for match in parsed
                               if match.start is not None
                               and first <= match.start.date() <= last]
-                    self.store.upsert([league], parsed)
-                    self.store.mark_period(league.slug, checkpoint, "ok")
-                    result["completed"] += 1
+                    self.store.upsert([league], parsed,
+                                      tables=[table] if table is not None else [])
+                    if metadata_error:
+                        self.store.mark_period(
+                            league.slug, checkpoint, "error", metadata_error)
+                        result["errors"].append({
+                            "competition_external_id": league.slug,
+                            "period": checkpoint, "message": metadata_error})
+                    else:
+                        self.store.mark_period(league.slug, checkpoint, "ok")
+                        result["completed"] += 1
                     result["cached"] += int(cached)
                     self.on_progress("{} {} : {} match(s){}".format(
                         league.ref, period, len(parsed), " (cache)" if cached else ""))

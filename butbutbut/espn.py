@@ -63,6 +63,8 @@ TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/teams"
 # 200 avec un objet vide `{}`, ce qui ressemblerait a une intersaison alors que
 # c'est juste la mauvaise adresse. Une faute qu'on n'a pas envie de refaire.
 STANDINGS_URL = "https://site.api.espn.com/apis/v2/sports/{sport}/{slug}/standings"
+SEASON_URL = ("https://sports.core.api.espn.com/v2/sports/{sport}/leagues/"
+              "{slug}/seasons/{year}")
 # Le resume d'un match, et la seule adresse de ce fichier qu'on n'appelle pas a
 # chaque tour : elle rend 450 ko. Voir summary() pour ce qui l'autorise.
 SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{slug}/summary"
@@ -307,7 +309,12 @@ class Match:
                  "away_form", "home_record", "away_record", "note",
                  "home_stats", "away_stats", "venue_country", "venue",
                  "season", "home_short", "away_short", "home_slug",
-                 "away_slug")
+                 "away_slug", "edition_external_id", "edition_name",
+                 "phase_kind", "phase_external_id", "phase_name",
+                 "phase_order", "group_external_id", "group_name",
+                 "group_order", "round_external_id", "round_name",
+                 "round_order", "tie_external_id", "leg_number",
+                 "bracket_slot", "next_match_external_id")
 
     def __init__(self, id, league, home, away, home_id, away_id, home_score,
                  away_score, state, detail, clock, start, plays,
@@ -318,7 +325,12 @@ class Match:
                  home_record="", away_record="", note="",
                  home_stats=None, away_stats=None, venue_country="", venue="",
                  season="", home_short="", away_short="", home_slug="",
-                 away_slug=""):
+                  away_slug="", edition_external_id="", edition_name="",
+                  phase_kind="", phase_external_id="", phase_name="",
+                  phase_order=None, group_external_id="", group_name="",
+                  group_order=None, round_external_id="", round_name="",
+                  round_order=None, tie_external_id="", leg_number=None,
+                  bracket_slot=None, next_match_external_id=""):
         self.id = id
         self.league = league
         self.home = home
@@ -394,6 +406,25 @@ class Match:
         self.away_short = str(away_short or away).strip()
         self.home_slug = str(home_slug or "").strip()
         self.away_slug = str(away_slug or "").strip()
+        # Structure officielle de la competition. Ces champs restent vides
+        # quand la source ne les publie pas : aucun libelle ni identifiant de
+        # tour n'est reconstruit depuis une date ou une note en prose.
+        self.edition_external_id = str(edition_external_id or "").strip()
+        self.edition_name = str(edition_name or "").strip()
+        self.phase_kind = str(phase_kind or "").strip()
+        self.phase_external_id = str(phase_external_id or "").strip()
+        self.phase_name = str(phase_name or "").strip()
+        self.phase_order = phase_order
+        self.group_external_id = str(group_external_id or "").strip()
+        self.group_name = str(group_name or "").strip()
+        self.group_order = group_order
+        self.round_external_id = str(round_external_id or "").strip()
+        self.round_name = str(round_name or "").strip()
+        self.round_order = round_order
+        self.tie_external_id = str(tie_external_id or "").strip()
+        self.leg_number = leg_number
+        self.bracket_slot = bracket_slot
+        self.next_match_external_id = str(next_match_external_id or "").strip()
 
     @property
     def sport(self):
@@ -1153,7 +1184,229 @@ def _shootout_tally(competitor, kicks, team_id) -> int:
     return sum(1 for kick in kicks if kick.team_id == team_id)
 
 
-def parse(payload: dict, league) -> list:
+def _source_id(value) -> str:
+    """Identifiant opaque publie par la source, jamais fabrique localement."""
+    if isinstance(value, dict):
+        value = (value.get("external_id") or value.get("externalId")
+                 or value.get("id") or value.get("uid"))
+    return str(value or "").strip()
+
+
+def _positive_int(value):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _event_id_from_ref(value) -> str:
+    if isinstance(value, dict):
+        value = value.get("$ref") or value.get("href") or value.get("id")
+    text = str(value or "").strip()
+    found = re.search(r"/events/([^/?]+)", text)
+    return found.group(1) if found else (text if "/" not in text else "")
+
+
+def _phase_kind(item) -> str:
+    """Categorie publique bornee du type de saison officiel."""
+    if not isinstance(item, dict):
+        return ""
+    if item.get("hasGroups"):
+        return "group"
+    if item.get("hasStandings"):
+        return "league"
+    slug = str(item.get("slug") or "").lower()
+    name = str(item.get("name") or "").lower()
+    if "group" in slug or "group" in name:
+        return "group"
+    if any(word in (slug + " " + name) for word in (
+            "round", "final", "playoff", "knockout", "cup")):
+        return "knockout"
+    return ""
+
+
+def parse_competition_structure(season_payload, tournament_payload=None,
+                                event_payloads=(), standings_payload=None) -> dict:
+    """Normalise les liens officiels edition/phase/groupe/tableau.
+
+    La sortie est volontairement independante des URL et des noms de champs
+    ESPN. Elle peut etre jointe a un scoreboard sans jamais exposer les
+    references hypermedia brutes dans le contrat public.
+    """
+    season_payload = season_payload if isinstance(season_payload, dict) else {}
+    tournament_payload = (tournament_payload
+                          if isinstance(tournament_payload, dict) else {})
+    edition = {
+        "external_id": _source_id(season_payload.get("year")),
+        "name": str(season_payload.get("displayName") or "").strip(),
+    }
+    phases = {}
+    raw_types = season_payload.get("types") or {}
+    items = raw_types.get("items") if isinstance(raw_types, dict) else raw_types
+    for order, item in enumerate(items or (), start=1):
+        if not isinstance(item, dict):
+            continue
+        external_id = _source_id(item.get("type") or item.get("id"))
+        if not external_id:
+            continue
+        normalized = {
+            "external_id": external_id,
+            "name": str(item.get("name") or item.get("displayName") or "").strip(),
+            "order": order,
+            "kind": _phase_kind(item),
+            "source_id": _source_id(item.get("id")),
+            "slug": str(item.get("slug") or "").strip(),
+        }
+        phases[external_id] = normalized
+        if normalized["source_id"]:
+            phases.setdefault(normalized["source_id"], normalized)
+
+    groups = []
+    standings_payload = (standings_payload
+                         if isinstance(standings_payload, dict) else {})
+    raw_groups = (standings_payload.get("children")
+                  or season_payload.get("groups") or ())
+    for order, group in enumerate(raw_groups, start=1):
+        if not isinstance(group, dict):
+            continue
+        groups.append({
+            "external_id": _source_id(group),
+            "name": str(group.get("name") or group.get("displayName") or "").strip(),
+            "order": order,
+        })
+
+    match_numbers = {}
+    for event in event_payloads or ():
+        if not isinstance(event, dict):
+            continue
+        event_id = _source_id(event.get("id"))
+        competitions = event.get("competitions") or ()
+        competition = competitions[0] if competitions and isinstance(
+            competitions[0], dict) else {}
+        number = _source_id(competition.get("matchNumber"))
+        if event_id and number:
+            match_numbers[number] = event_id
+
+    tournament_groups = tournament_payload.get("groups") or ()
+    all_event_ids = set()
+    for group in tournament_groups:
+        if not isinstance(group, dict):
+            continue
+        for matchup in group.get("matchups") or ():
+            if not isinstance(matchup, dict):
+                continue
+            for event in matchup.get("events") or ():
+                event_id = _event_id_from_ref(event)
+                if event_id:
+                    all_event_ids.add(event_id)
+
+    events = {}
+    for round_order, group in enumerate(tournament_groups, start=1):
+        if not isinstance(group, dict):
+            continue
+        round_id = _source_id(group)
+        round_name = str(group.get("displayName") or group.get("name") or "").strip()
+        for matchup in group.get("matchups") or ():
+            if not isinstance(matchup, dict):
+                continue
+            event_ids = [_event_id_from_ref(event)
+                         for event in matchup.get("events") or ()]
+            event_ids = [event_id for event_id in event_ids if event_id]
+            advances = _source_id(matchup.get("winnerAdvancesTo"))
+            next_match = match_numbers.get(advances)
+            if next_match is None and advances in all_event_ids:
+                next_match = advances
+            for leg_number, event_id in enumerate(event_ids, start=1):
+                events[event_id] = {
+                    "round_external_id": round_id,
+                    "round_name": round_name,
+                    "round_order": round_order,
+                    "tie_external_id": _source_id(matchup),
+                    "leg_number": leg_number,
+                    "bracket_slot": _positive_int(matchup.get("bracketLocation")),
+                    "next_match_external_id": next_match or "",
+                }
+    return {"edition": edition, "phases": phases, "groups": groups,
+            "events": events}
+
+
+def _direct_hierarchy(event, competition) -> dict:
+    season = event.get("season") or {}
+    season = season if isinstance(season, dict) else {}
+    phase = event.get("phase") or competition.get("phase") or {}
+    phase = phase if isinstance(phase, dict) else {}
+    phase_id = _source_id(phase) or _source_id(season.get("type"))
+    phase_slug = str(phase.get("slug") or season.get("slug") or "").strip()
+    phase_probe = dict(phase)
+    if phase_slug:
+        phase_probe.setdefault("slug", phase_slug)
+    group = competition.get("group") or event.get("group") or {}
+    group = group if isinstance(group, dict) else {}
+    round_of = competition.get("round") or event.get("round") or {}
+    round_of = round_of if isinstance(round_of, dict) else {}
+    tie = competition.get("tie") or event.get("tie") or {}
+    tie = tie if isinstance(tie, dict) else {}
+    return {
+        "edition_external_id": _source_id(season.get("year") or season.get("id")),
+        "edition_name": str(season.get("displayName") or "").strip(),
+        "phase_kind": _phase_kind(phase_probe),
+        "phase_external_id": phase_id,
+        "phase_name": str(phase.get("name") or phase.get("displayName") or "").strip(),
+        "phase_order": _positive_int(phase.get("order")),
+        "group_external_id": _source_id(group),
+        "group_name": str(group.get("name") or group.get("displayName") or "").strip(),
+        "group_order": _positive_int(group.get("order")),
+        "round_external_id": _source_id(round_of),
+        "round_name": str(round_of.get("name") or round_of.get("displayName") or "").strip(),
+        "round_order": _positive_int(round_of.get("order")),
+        "tie_external_id": _source_id(tie),
+        "leg_number": _positive_int(competition.get("legNumber")
+                                    or tie.get("legNumber")),
+        "bracket_slot": _positive_int(competition.get("bracketSlot")
+                                      or tie.get("bracketSlot")),
+        "next_match_external_id": _source_id(
+            competition.get("nextMatch") or tie.get("nextMatch")),
+    }
+
+
+def _event_hierarchy(event, competition, structure) -> dict:
+    found = _direct_hierarchy(event, competition)
+    structure = structure if isinstance(structure, dict) else {}
+    edition = structure.get("edition") or {}
+    found["edition_external_id"] = (found["edition_external_id"]
+                                     or _source_id(edition))
+    found["edition_name"] = found["edition_name"] or str(
+        edition.get("name") or "").strip()
+    phase = (structure.get("phases") or {}).get(found["phase_external_id"], {})
+    if phase:
+        found["phase_external_id"] = _source_id(phase)
+        found["phase_name"] = found["phase_name"] or phase.get("name", "")
+        found["phase_order"] = found["phase_order"] or phase.get("order")
+        found["phase_kind"] = found["phase_kind"] or phase.get("kind", "")
+
+    # Le scoreboard publie un altGameNote officiel ("..., Group A"). On ne le
+    # parse pas librement : il ne sert qu'a joindre un nom de groupe exact deja
+    # publie par la ressource de classement.
+    if not found["group_external_id"] and found["phase_kind"] == "group":
+        note = str(competition.get("altGameNote") or "").strip()
+        candidates = [group for group in structure.get("groups") or ()
+                      if group.get("name") and (note == group["name"]
+                                                or note.endswith(", " + group["name"]))]
+        if len(candidates) == 1:
+            group = candidates[0]
+            found["group_external_id"] = _source_id(group)
+            found["group_name"] = group.get("name", "")
+            found["group_order"] = group.get("order")
+
+    for key, value in (structure.get("events") or {}).get(
+            _source_id(event.get("id") or competition.get("id")), {}).items():
+        if found.get(key) in (None, ""):
+            found[key] = value
+    return found
+
+
+def parse(payload: dict, league, structure=None) -> list:
     """Transforme un tableau de bord ESPN en liste de Match.
 
     Tout evenement mal forme est ignore plutot que de faire echouer le lot.
@@ -1245,6 +1498,7 @@ def parse(payload: dict, league) -> list:
 
         home_team = home.get("team") or {}
         away_team = away.get("team") or {}
+        hierarchy = _event_hierarchy(event, competition, structure)
 
         home_id = str((home.get("team") or {}).get("id") or "H")
         away_id = str((away.get("team") or {}).get("id") or "A")
@@ -1301,6 +1555,7 @@ def parse(payload: dict, league) -> list:
                         or away_team.get("abbreviation") or ""),
             home_slug=home_team.get("slug") or "",
             away_slug=away_team.get("slug") or "",
+            **hierarchy
         ))
     return matches
 
@@ -1531,13 +1786,18 @@ class Row:
     il sera temps.
     """
 
-    __slots__ = ("rank", "team", "names", "stats")
+    __slots__ = ("rank", "official_rank", "team", "team_id", "names",
+                 "stats", "values")
 
-    def __init__(self, rank, team, names=(), stats=None):
+    def __init__(self, rank, team, names=(), stats=None, team_id="",
+                 official_rank=None, values=None):
         self.rank = rank              # le rang affiche, 1 pour le premier
+        self.official_rank = official_rank
         self.team = team              # nom lisible
+        self.team_id = str(team_id or "").strip()
         self.names = tuple(names) or (team,)   # toutes les ecritures connues
         self.stats = dict(stats or {})
+        self.values = dict(values or {})
 
     def cell(self, keys) -> str:
         """La valeur de la premiere de ces cles, ou un tiret.
@@ -1559,11 +1819,18 @@ class Row:
 class Group:
     """Un bloc de classement : un championnat, une poule, une conference."""
 
-    __slots__ = ("name", "rows")
+    __slots__ = ("name", "rows", "external_id", "order",
+                 "phase_external_id", "phase_name", "phase_order")
 
-    def __init__(self, name, rows=()):
+    def __init__(self, name, rows=(), external_id="", order=None,
+                 phase_external_id="", phase_name="", phase_order=None):
         self.name = name
         self.rows = list(rows)
+        self.external_id = str(external_id or "").strip()
+        self.order = order
+        self.phase_external_id = str(phase_external_id or "").strip()
+        self.phase_name = str(phase_name or "").strip()
+        self.phase_order = phase_order
 
     def __repr__(self):
         return "<Group {} ({})>".format(self.name, len(self.rows))
@@ -1572,12 +1839,16 @@ class Group:
 class Table:
     """Le classement d'une competition, tel que la source le publie."""
 
-    __slots__ = ("league", "season", "groups")
+    __slots__ = ("league", "season", "groups", "edition_external_id",
+                 "edition_name")
 
-    def __init__(self, league, season="", groups=()):
+    def __init__(self, league, season="", groups=(), edition_external_id="",
+                 edition_name=""):
         self.league = league
         self.season = season          # "2026-27", ou vide
         self.groups = list(groups)
+        self.edition_external_id = str(edition_external_id or "").strip()
+        self.edition_name = str(edition_name or "").strip()
 
     @property
     def sport(self):
@@ -1626,6 +1897,31 @@ def _stats_of(entry) -> dict:
     return found
 
 
+def _numeric_stats_of(entry) -> dict:
+    """Valeurs officielles brutes, y compris une deduction egale a zero."""
+    found = {}
+    for stat in entry.get("stats") or []:
+        if not isinstance(stat, dict):
+            continue
+        value = stat.get("value")
+        if value is None:
+            text = str(stat.get("displayValue") or "").strip()
+            try:
+                value = float(text)
+            except ValueError:
+                continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        number = int(number) if number.is_integer() else number
+        for key in (stat.get("type"), stat.get("name")):
+            key = str(key or "").strip().lower()
+            if key and key not in found:
+                found[key] = number
+    return found
+
+
 def _rank_of(stats) -> int | None:
     """Le rang publie par la source, ou None quand elle n'en publie pas."""
     for key in RANK_KEYS:
@@ -1635,7 +1931,7 @@ def _rank_of(stats) -> int | None:
     return None
 
 
-def _parse_group(child) -> Group:
+def _parse_group(child, order=None, structure=None) -> Group:
     """Un bloc de `children` : son nom et ses lignes, rangees par leur rang.
 
     On affiche le rang que la source publie, et on ne le calcule jamais : le
@@ -1664,23 +1960,42 @@ def _parse_group(child) -> Group:
             continue
         wrapper = {"team": team}
         stats = _stats_of(entry)
-        rank = _rank_of(stats)
-        if rank is None:
+        values = _numeric_stats_of(entry)
+        official_rank = _rank_of(stats)
+        if official_rank is None:
+            official_rank = _positive_int(
+                values.get("rank") or values.get("playoffseed"))
+        rank = official_rank
+        if official_rank is None:
             ranked = False
             rank = position
         rows.append(Row(
             rank=rank,
+            official_rank=official_rank,
             team=_team_name(wrapper),
+            team_id=_source_id(team),
             names=team_names(wrapper),
             stats=stats,
+            values=values,
         ))
 
     if ranked:
         rows.sort(key=lambda row: row.rank)
-    return Group(name, rows)
+    group_id = _source_id(child)
+    phase_id = _source_id(standings_of.get("seasonType"))
+    phase_name = ""
+    phase_order = None
+    phase = ((structure or {}).get("phases") or {}).get(phase_id, {})
+    if phase:
+        phase_id = _source_id(phase)
+        phase_name = phase.get("name", "")
+        phase_order = phase.get("order")
+    return Group(name, rows, external_id=group_id, order=order,
+                 phase_external_id=phase_id, phase_name=phase_name,
+                 phase_order=phase_order)
 
 
-def parse_standings(payload: dict, league) -> Table:
+def parse_standings(payload: dict, league, structure=None) -> Table:
     """Transforme la reponse du classement en Table. Ne leve jamais.
 
     Une competition ouverte a la volee prend ici le nom que la source annonce,
@@ -1695,10 +2010,10 @@ def parse_standings(payload: dict, league) -> Table:
 
     season = ""
     groups = []
-    for child in children:
+    for order, child in enumerate(children, start=1):
         if not isinstance(child, dict):
             continue
-        groups.append(_parse_group(child))
+        groups.append(_parse_group(child, order=order, structure=structure))
         if not season:
             season = season_label(
                 (child.get("standings") or {}).get("seasonDisplayName"))
@@ -1709,7 +2024,15 @@ def parse_standings(payload: dict, league) -> Table:
         # celui de la saison passee - d'ou l'ordre : le classement d'abord,
         # l'en-tete seulement s'il n'a rien dit.
         season = season_label((payload.get("season") or {}).get("displayName"))
-    return Table(league, season=season, groups=groups)
+    raw_season = payload.get("season") or {}
+    raw_season = raw_season if isinstance(raw_season, dict) else {}
+    edition = (structure or {}).get("edition") or {}
+    edition_id = (_source_id(edition)
+                  or _source_id(raw_season.get("year") or raw_season.get("id")))
+    edition_name = (str(edition.get("name") or "").strip()
+                    or str(raw_season.get("displayName") or "").strip())
+    return Table(league, season=season, groups=groups,
+                 edition_external_id=edition_id, edition_name=edition_name)
 
 
 def standings(league, timeout: float = DEFAULT_TIMEOUT, opener=None) -> Table:

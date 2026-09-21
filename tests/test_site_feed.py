@@ -1,15 +1,20 @@
 import json
 import shutil
+import sqlite3
 import threading
 import unittest
 import urllib.error
 import urllib.request
 import uuid
+from contextlib import closing
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from butbutbut import companion, espn, leagues, site_feed, state
 from helpers import event, goal_detail, payload
+
+
+FIXTURES = Path(__file__).with_name("fixtures")
 
 
 def source(*events, logo=None):
@@ -88,6 +93,144 @@ class TestContract(SiteFeedCase):
         self.assertEqual(row["events"][0]["external_id"], "espn-event-9")
         self.assertEqual(row["home_statistics"]["totalShots"], 12.0)
 
+    def test_absent_structure_is_null_not_invented(self):
+        row = site_feed.normalize_match(self.matches(event())[0])
+        for key in ("edition_external_id", "edition_name", "phase_kind",
+                    "phase_external_id", "phase_name", "phase_order",
+                    "group_external_id", "group_name", "group_order",
+                    "round_external_id", "round_name", "round_order",
+                    "tie_external_id", "leg_number", "bracket_slot",
+                    "next_match_external_id", "winner_team_external_id",
+                    "decided_by"):
+            self.assertIsNone(row[key], key)
+
+    def test_decision_method_uses_only_explicit_final_statuses(self):
+        regular = site_feed.normalize_match(self.matches(event(
+            state="post", status_name="STATUS_FULL_TIME", detail="FT"))[0])
+        extra = site_feed.normalize_match(self.matches(event(
+            state="post", status_name="STATUS_FINAL_AET", detail="AET"))[0])
+        self.assertEqual(regular["decided_by"], "regular_time")
+        self.assertEqual(extra["decided_by"], "extra_time")
+
+    def test_a_regular_season_is_a_league_phase(self):
+        raw = event()
+        raw["season"] = {"year": 2026, "type": 8001,
+                         "slug": "regular-season"}
+        structure = espn.parse_competition_structure({
+            "year": 2026,
+            "displayName": "2026-27 Ligue 1",
+            "types": {"items": [{
+                "id": "1", "type": 8001, "name": "Regular Season",
+                "slug": "regular-season", "hasStandings": True,
+            }]},
+        })
+        match = espn.parse(source(raw), self.league, structure=structure)[0]
+        row = site_feed.normalize_match(match)
+        self.assertEqual(row["phase_kind"], "league")
+        self.assertEqual(row["phase_name"], "Regular Season")
+
+
+class TestOfficialCompetitionStructure(SiteFeedCase):
+    def setUp(self):
+        super().setUp()
+        with (FIXTURES / "site_feed_groups_knockout.json").open(
+                encoding="utf-8") as handle:
+            self.fixture = json.load(handle)
+        self.league = leagues.League(
+            "test.cup", "Test Cup", "TEST CUP", "#fff")
+
+    def normalized_feed(self):
+        structure = espn.parse_competition_structure(
+            self.fixture["season"], self.fixture["tournament"],
+            self.fixture["core_events"].values(), self.fixture["standings"])
+        matches = espn.parse(self.fixture["scoreboard"], self.league,
+                             structure=structure)
+        table = espn.parse_standings(
+            self.fixture["standings"], self.league, structure=structure)
+        self.store.upsert([self.league], matches, [table])
+        return self.store.feed(followed=[self.league])
+
+    def test_groups_then_knockout_are_joined_without_parsing_free_text(self):
+        feed = self.normalized_feed()
+        group, round_of_16, quarterfinal = feed["matches"]
+        self.assertEqual(
+            (group["edition_external_id"], group["edition_name"]),
+            ("2026", "2026 Test Cup"))
+        self.assertEqual(
+            (group["phase_kind"], group["phase_external_id"],
+             group["phase_name"], group["phase_order"]),
+            ("group", "9001", "Group Stage", 1))
+        self.assertEqual(
+            (group["group_external_id"], group["group_name"],
+             group["group_order"]),
+            ("group-a", "Group A", 1))
+        self.assertEqual(group["decided_by"], "regular_time")
+        self.assertEqual(
+            (round_of_16["phase_kind"], round_of_16["round_external_id"],
+             round_of_16["round_name"], round_of_16["round_order"]),
+            ("knockout", "round-r16", "Round of 16", 1))
+        self.assertEqual(
+            (round_of_16["tie_external_id"], round_of_16["leg_number"],
+             round_of_16["bracket_slot"],
+             round_of_16["next_match_external_id"]),
+            ("tie-1", 1, 2, "qf-1"))
+        self.assertEqual(round_of_16["winner_team_external_id"], "alpha")
+        self.assertEqual(round_of_16["decided_by"], "penalties")
+        self.assertIsNone(quarterfinal["winner_team_external_id"])
+        self.assertIsNone(quarterfinal["decided_by"])
+
+    def test_official_group_table_exposes_only_published_values(self):
+        table = self.normalized_feed()["standings"][0]
+        self.assertEqual(
+            (table["edition_external_id"], table["phase_external_id"],
+             table["group_external_id"], table["group_order"]),
+            ("2026", "9001", "group-a", 1))
+        alpha, beta = table["rows"]
+        self.assertEqual(alpha, {
+            "team_external_id": "alpha", "team_name": "Alpha",
+            "played": 3, "won": 2, "drawn": 1, "lost": 0,
+            "goals_for": 5, "goals_against": 2, "goal_difference": 3,
+            "points": 6, "rank": 1, "penalties": 1,
+        })
+        self.assertIsNone(beta["penalties"])
+
+    def test_a_live_score_update_does_not_erase_backfilled_structure(self):
+        self.normalized_feed()
+        live = espn.parse(self.fixture["scoreboard"], self.league)
+        live[1].home_score = 3
+        self.store.upsert([self.league], live)
+        round_of_16 = self.store.feed(followed=[self.league])["matches"][1]
+        self.assertEqual(round_of_16["home_score"], 3)
+        self.assertEqual(round_of_16["round_external_id"], "round-r16")
+        self.assertEqual(round_of_16["next_match_external_id"], "qf-1")
+
+    def test_backfill_keeps_each_raw_response_outside_normalized_storage(self):
+        def opener(url, _timeout):
+            if "scoreboard" in url:
+                answer = self.fixture["scoreboard"]
+            elif "/standings" in url:
+                answer = self.fixture["standings"]
+            elif "/tournaments/" in url:
+                answer = self.fixture["tournament"]
+            elif "/events/" in url:
+                event_id = url.split("/events/", 1)[1].split("?", 1)[0]
+                answer = self.fixture["core_events"][event_id]
+            else:
+                answer = self.fixture["season"]
+            return json.dumps(answer).encode("utf-8")
+
+        worker = site_feed.Backfill(
+            self.root / "feed.sqlite3", self.root / "raw", opener=opener,
+            request_delay=0, sleeper=lambda _seconds: None)
+        result = worker.run([self.league], "2026-06-01", "2026-06-30")
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(len(self.store.feed()["standings"]), 1)
+        raw = worker.cache.path_for(self.league, "202606")
+        structure = worker.cache.path_for(self.league, "structure-2026")
+        self.assertTrue(raw.exists())
+        self.assertTrue(structure.exists())
+        self.assertNotEqual(raw, structure)
+
 
 class TestPagination(SiteFeedCase):
     def setUp(self):
@@ -127,6 +270,20 @@ class TestPagination(SiteFeedCase):
 
 
 class TestBackfill(SiteFeedCase):
+    def test_an_old_completed_period_is_renormalized_once(self):
+        path = self.root / "legacy.sqlite3"
+        with closing(sqlite3.connect(str(path))) as db, db:
+            db.execute("CREATE TABLE backfill_periods ("
+                       "competition_id TEXT NOT NULL, period TEXT NOT NULL, "
+                       "status TEXT NOT NULL, message TEXT, updated_at TEXT NOT NULL, "
+                       "PRIMARY KEY(competition_id, period))")
+            db.execute("INSERT INTO backfill_periods VALUES "
+                       "('fra.1', '202609', 'ok', '', '2026-09-30T00:00:00Z')")
+        legacy = site_feed.Store(path)
+        self.assertFalse(legacy.period_done("fra.1", "202609"))
+        legacy.mark_period("fra.1", "202609", "ok")
+        self.assertTrue(legacy.period_done("fra.1", "202609"))
+
     def test_one_league_error_does_not_erase_the_other(self):
         other = leagues.League("eng.1", "Premier League", "PREMIER", "#fff")
 
