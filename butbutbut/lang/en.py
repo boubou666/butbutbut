@@ -662,4 +662,16 @@ MESSAGES = {
         'nothing left to watch after the exclusions.',
     'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
         'butbutbut: cannot check the teams (source unreachable), carrying on without checking.',
+    "exporte les prochains matchs en calendrier iCalendar. Sans rien : les {} prochains jours ; '--calendar om' cible une equipe":
+        "export upcoming matches as an iCalendar file. With no value: the next {} days; '--calendar om' targets one team",
+    'chemin .ics de --calendar (defaut : butbutbut.ics dans le dossier courant)':
+        'output .ics path for --calendar (default: butbutbut.ics in the current directory)',
+    "butbutbut : aucune competition n'a repondu : calendrier impossible.":
+        'butbutbut: no competition responded: calendar unavailable.',
+    'butbutbut : calendrier impossible : {}':
+        'butbutbut: calendar unavailable: {}',
+    'butbutbut : calendrier -> {} ({} match(s), {} jour(s))':
+        'butbutbut: calendar -> {} ({} match(es), {} day(s))',
+    '  (le calendrier est incomplet ; les autres competitions ont repondu)':
+        '  (the calendar is incomplete; the other competitions responded)',
 }

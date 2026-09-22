@@ -100,6 +100,7 @@ butbutbut --test              # one demo card
 butbutbut --test 3            # three cards, to see them stack
 butbutbut --scores            # today's fixtures in the terminal
 butbutbut --next              # the fixtures to come, grouped by day
+butbutbut --calendar om,30    # OM's upcoming fixtures in an .ics file
 butbutbut --table             # the table of the competitions you follow
 butbutbut --table om          # ... Marseille's, with their row highlighted
 butbutbut --list              # the competitions you can watch
@@ -867,6 +868,25 @@ is missing spelled out.
 
 When none of them answers, the command says so and exits with an error rather
 than letting you believe in a weekend without football.
+
+#### Add the fixtures to your calendar
+
+The same schedule can be exported as iCalendar, understood by Apple Calendar,
+Google Calendar, Outlook and most calendar applications:
+
+```bash
+butbutbut --calendar                         # 30 days -> butbutbut.ics
+butbutbut --calendar om                      # this team only
+butbutbut --calendar om,60                   # this team over 60 days
+butbutbut --calendar om,60 --calendar-output om-calendar.ics
+```
+
+`--leagues`, `--exclude`, `--teams` and `--exclude-teams` work exactly as
+with `--next`. The horizon is capped at 90 days. Every fixture keeps a stable
+identifier, so calendar clients that reconcile UIDs can update an imported
+event instead of duplicating it. Times are stored as UTC and displayed in the
+calendar's own time zone. Venue and round are included whenever the source
+publishes them.
 
 > The terminal output itself is in French, like `--scores` and `--status`: only
 > the cards follow the machine's language.
@@ -2765,10 +2785,26 @@ matches, alerts actually delivered and recent keepsakes, refreshing without a
 reload. It is autonomous: no remote font, JavaScript library or image is
 loaded.
 
+A live match or keepsake opens its **Match Center**, bringing together score,
+status, official phase or round, event timeline and comparative statistics.
+The competition name opens an **explorer** with edition selection, official
+group tables and fixtures arranged by phase, group or round. Every row links
+back to its Match Center.
+
+A team name opens its **club page** with its win-draw-loss record, goals for
+and against, five-match form, competitions, upcoming fixtures and twenty most
+recent results. Opponents, competitions and scores link back into the other
+companion views.
+
+Each Match Center also opens the two teams' **head-to-head** record: wins,
+draws, goals and their twelve latest meetings. A penalty shootout follows the
+official winner even when the displayed score remains level.
+
 With a stream delay, raw live scores are hidden and only alerts that have left
-the delayed queue are shown. The synchronisation button measures the delay at
-kick-off. There is no account or password, so LAN binding is never the default
-and must not be exposed to the Internet.
+the delayed queue are shown, including inside all three detailed views. The
+synchronisation button measures the delay at kick-off. There is no account or
+password, so LAN binding is never the default and must not be exposed to the
+Internet.
 
 ## The match keepsake
 

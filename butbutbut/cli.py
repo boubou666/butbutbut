@@ -18,7 +18,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import (__version__, chronicle, companion, config, crests, espn,
+from . import (__version__, chronicle, companion, config, crests, espn, ical,
                fullscreen, hook, i18n, journal, leagues, pinned, presenting,
                replay, runtime_config as site_config, screens, silence, sound,
                souvenir, speech, state, streaming, site_feed, teams, watcher)
@@ -67,6 +67,11 @@ DEFAULT_NEXT_DAYS = 7
 # sont publies qu'a quelques semaines. Cette borne evite surtout de demander
 # une annee entiere par megarde.
 MAX_NEXT_DAYS = 30
+# Un calendrier importe sert a planifier plus loin qu'une lecture ponctuelle
+# du terminal. Trois mois restent dans l'horizon effectivement publie par la
+# source sans transformer une commande en aspiration d'archives.
+DEFAULT_CALENDAR_DAYS = 30
+MAX_CALENDAR_DAYS = 90
 # Meme espacement que Watcher.prime() : avec --leagues all ce sont 36 requetes,
 # et une rafale finit par se faire jeter par la source.
 NEXT_PAUSE = 0.2
@@ -1934,25 +1939,35 @@ def _kickoff_text(match, now) -> str:
 
 # ------------------------------------------------------- prochains matchs ----
 
-def _next_request(value) -> tuple:
-    """Ce que --next a recu : (jours, equipes).
+def _schedule_request(value, default_days, maximum_days) -> tuple:
+    """Ce qu'une lecture du calendrier a recu : (jours, equipes).
 
     Une valeur faite de chiffres est une fenetre, tout le reste est un nom
     d'equipe. Aucun club ne s'appelle "7" et personne n'ecrit une duree en
-    lettres : l'ambiguite ne se produit pas. La liste est acceptee pour pouvoir
-    tout dire d'un coup - `--next om,psg,3`.
+    lettres : l'ambiguite ne se produit pas. La liste est acceptee pour tout
+    dire d'un coup - `--next om,psg,3` ou `--calendar om,30`.
     """
-    days = DEFAULT_NEXT_DAYS
+    days = default_days
     wanted = []
     for token in str(value or "").replace(";", ",").split(","):
         token = token.strip()
         if not token:
             continue
         if token.isdigit():
-            days = max(1, min(MAX_NEXT_DAYS, int(token)))
+            days = max(1, min(maximum_days, int(token)))
         else:
             wanted.append(token)
     return days, ",".join(wanted)
+
+
+def _next_request(value) -> tuple:
+    """Ce que --next a recu : (jours, equipes)."""
+    return _schedule_request(value, DEFAULT_NEXT_DAYS, MAX_NEXT_DAYS)
+
+
+def _calendar_request(value) -> tuple:
+    """Ce que --calendar a recu, avec son horizon plus large."""
+    return _schedule_request(value, DEFAULT_CALENDAR_DAYS, MAX_CALENDAR_DAYS)
 
 
 def _next_filter(args, wanted):
@@ -2064,10 +2079,10 @@ def _nothing_text(days, chosen, selection) -> str:
         days, where)
 
 
-def do_next(args) -> int:
-    """Les prochains matchs, groupes par jour puis par competition."""
+def _collect_upcoming(args, value, request_reader=_next_request) -> tuple:
+    """Interroge une fois la source pour --next comme pour --calendar."""
     selection = leagues.resolve(args.leagues, args.exclude)
-    days, wanted = _next_request(args.next)
+    days, wanted = request_reader(value)
     chosen = _next_filter(args, wanted)
 
     now = datetime.now(timezone.utc)
@@ -2098,6 +2113,15 @@ def do_next(args) -> int:
             time.sleep(NEXT_PAUSE)
 
     found.sort(key=lambda match: (match.start, match.league.name, match.home))
+    return selection, days, chosen, now, found, unreachable
+
+
+def do_next(args) -> int:
+    """Les prochains matchs, groupes par jour puis par competition."""
+    selection, days, chosen, now, found, unreachable = _collect_upcoming(
+        args, args.next)
+    total = len(selection)
+    today = datetime.now().date()
     grouped = group_by_day(found)
 
     print(tr("butbutbut : prochains matchs - {}, {} jour(s)",
@@ -2128,6 +2152,39 @@ def do_next(args) -> int:
         print(tr("  (le calendrier ci-dessus est donc incomplet ; les autres "
                  "competitions ont repondu)"))
     return 1 if unreachable and len(unreachable) == total else 0
+
+
+def do_calendar(args) -> int:
+    """Exporte les prochains matchs dans un fichier iCalendar autonome."""
+    selection, days, chosen, _now, found, unreachable = _collect_upcoming(
+        args, args.calendar, request_reader=_calendar_request)
+    total = len(selection)
+    if unreachable and len(unreachable) == total:
+        print(tr("butbutbut : aucune competition n'a repondu : calendrier "
+                 "impossible."), file=sys.stderr)
+        return 1
+
+    title = "butbutbut – {}".format(leagues.describe(selection))
+    if chosen is not None:
+        title += " – " + chosen.describe()
+    target = (Path(args.calendar_output).expanduser()
+              if args.calendar_output else Path.cwd() / "butbutbut.ics")
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(ical.render(found, name=title))
+    except OSError as exc:
+        print(tr("butbutbut : calendrier impossible : {}", exc), file=sys.stderr)
+        return 1
+
+    print(tr("butbutbut : calendrier -> {} ({} match(s), {} jour(s))",
+             target, len(found), days))
+    for league, exc in unreachable:
+        print(tr("  ({} injoignable : {})", league.name, exc))
+    if unreachable:
+        print(tr("  (le calendrier est incomplet ; les autres competitions "
+                 "ont repondu)"))
+    return 0
 
 
 # ------------------------------------------------------------- classement ----
@@ -3643,6 +3700,16 @@ def build_parser() -> argparse.ArgumentParser:
                                 "suivies. '--next om' cible une equipe, "
                                 "'--next 14' allonge la fenetre ({} au plus)",
                                 DEFAULT_NEXT_DAYS, MAX_NEXT_DAYS))
+    parser.add_argument("--calendar", nargs="?", const="", default=None,
+                        metavar=tr("EQUIPE|JOURS"),
+                        help=tr("exporte les prochains matchs en calendrier "
+                                "iCalendar. Sans rien : les {} prochains jours ; "
+                                "'--calendar om' cible une equipe",
+                                DEFAULT_CALENDAR_DAYS))
+    parser.add_argument("--calendar-output", default=None,
+                        dest="calendar_output", metavar=tr("FICHIER"),
+                        help=tr("chemin .ics de --calendar (defaut : "
+                                "butbutbut.ics dans le dossier courant)"))
     # Meme const vide que --next, et pour la meme raison : '--table' tout court
     # doit se distinguer de '--table' absent.
     parser.add_argument("--table", nargs="?", const="", default=None,
@@ -3992,6 +4059,10 @@ def main(argv=None) -> int:
         print("butbutbut : --story-output ne sert qu'avec --story.",
               file=sys.stderr)
         return 2
+    if args.calendar_output and args.calendar is None:
+        print("butbutbut : --calendar-output ne sert qu'avec --calendar.",
+              file=sys.stderr)
+        return 2
     if args.chronicle_output and args.night is None and not args.constellation:
         print("butbutbut : --chronicle-output ne sert qu'avec --night ou "
               "--constellation.", file=sys.stderr)
@@ -4136,6 +4207,8 @@ def main(argv=None) -> int:
         return do_scores(args)
     if args.test_hook:
         return do_test_hook(args)
+    if args.calendar is not None:
+        return do_calendar(args)
     if args.next is not None:
         return do_next(args)
     if args.table is not None:

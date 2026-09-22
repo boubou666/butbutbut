@@ -2724,6 +2724,12 @@ class TestNextRequest(unittest.TestCase):
         self.assertEqual(cli._next_request("0"), (1, ""))
         self.assertEqual(cli._next_request("999"), (cli.MAX_NEXT_DAYS, ""))
 
+    def test_calendar_uses_a_longer_but_still_bounded_window(self):
+        self.assertEqual(cli._calendar_request(""),
+                         (cli.DEFAULT_CALENDAR_DAYS, ""))
+        self.assertEqual(cli._calendar_request("om,999"),
+                         (cli.MAX_CALENDAR_DAYS, "om"))
+
 
 class TestNextWindow(unittest.TestCase):
     """La fenetre de jours, et ce qui n'est pas un prochain match."""
@@ -2939,6 +2945,42 @@ class TestNextCommand(unittest.TestCase):
         self.assertEqual(sleeping.call_count, 2)
         for call in sleeping.call_args_list:
             self.assertEqual(call[0][0], cli.NEXT_PAUSE)
+
+
+class TestCalendarCommand(unittest.TestCase):
+    """--calendar reutilise exactement la recherche de --next."""
+
+    def setUp(self):
+        isolate_data_dir(self)
+
+    def test_it_writes_an_importable_filtered_calendar(self):
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "mes-matchs.ics"
+            code, printed = run_next(
+                ["--calendar", "om,30", "--calendar-output", str(target),
+                 "--leagues", "l1"],
+                {"fra.1": fixtures(
+                    ("1", "Marseille", "Paris FC", at_local_hour(1, 21)),
+                    ("2", "Lyon", "Nice", at_local_hour(2, 17)))})
+            data = target.read_bytes()
+        self.assertEqual(code, 0)
+        self.assertIn("calendrier ->", printed)
+        self.assertIn(b"BEGIN:VCALENDAR\r\n", data)
+        self.assertIn("Marseille".encode(), data)
+        self.assertNotIn(b"Lyon", data)
+
+    def test_everything_unreachable_does_not_leave_a_file(self):
+        with TemporaryDirectory() as tmp:
+            target = Path(tmp) / "absent.ics"
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                code, _printed = run_next(
+                    ["--calendar", "--calendar-output", str(target),
+                     "--leagues", "l1"],
+                    {"fra.1": espn.SourceError("pas de reseau")})
+            self.assertFalse(target.exists())
+        self.assertEqual(code, 1)
+        self.assertIn("calendrier impossible", errors.getvalue())
 
 
 class Cp1252(io.TextIOWrapper):

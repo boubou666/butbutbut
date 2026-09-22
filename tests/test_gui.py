@@ -29,6 +29,12 @@ class TestGuiModel(unittest.TestCase):
             gui.action_arguments(gui.ACTION_BY_NAME["next"], {"query": ""}),
             ["--next"])
 
+    def test_calendar_combines_filter_and_output_file(self):
+        self.assertEqual(
+            gui.action_arguments(gui.ACTION_BY_NAME["calendar"], {
+                "query": "om,60", "calendar_output": "matchs.ics"}),
+            ["--calendar", "om,60", "--calendar-output", "matchs.ics"])
+
     def test_export_combines_format_and_period(self):
         values = {
             "format": "csv",

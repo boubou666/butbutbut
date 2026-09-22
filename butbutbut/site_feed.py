@@ -58,6 +58,10 @@ class InvalidQuery(ValueError):
     """Parametres du contrat invalides."""
 
 
+class NotFound(LookupError):
+    """Objet normalise absent du stockage local."""
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
         "+00:00", "Z")
@@ -224,6 +228,22 @@ def normalize_match(match) -> dict:
     }
 
 
+def _team_result(match, team_id):
+    """Resultat et score vus du camp demande pour un match termine."""
+    key = str(team_id)
+    home = str(match.get("home_team", {}).get("external_id")) == key
+    scored = int(match.get("home_score" if home else "away_score") or 0)
+    conceded = int(match.get("away_score" if home else "home_score") or 0)
+    winner = match.get("winner_team_external_id")
+    if winner:
+        result = "W" if str(winner) == key else "L"
+    elif scored == conceded:
+        result = "D"
+    else:
+        result = "W" if scored > conceded else "L"
+    return result, scored, conceded
+
+
 def _standing_value(row, *keys):
     for key in keys:
         if key in row.values:
@@ -388,7 +408,10 @@ class Store:
                 competition_id TEXT NOT NULL,
                 starts_at TEXT NOT NULL,
                 payload TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                edition_id TEXT NOT NULL DEFAULT '',
+                home_team_id TEXT NOT NULL DEFAULT '',
+                away_team_id TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS matches_order
                 ON matches(starts_at, external_id);
@@ -421,6 +444,56 @@ class Store:
             db.execute(
                 "ALTER TABLE official_standings ADD COLUMN "
                 "edition_id TEXT NOT NULL DEFAULT ''")
+        match_columns = {row[1] for row in db.execute(
+            "PRAGMA table_info(matches)")}
+        if "edition_id" not in match_columns:
+            db.execute(
+                "ALTER TABLE matches ADD COLUMN "
+                "edition_id TEXT NOT NULL DEFAULT ''")
+            migrated = []
+            for external_id, payload in db.execute(
+                    "SELECT external_id, payload FROM matches"):
+                try:
+                    stored = json.loads(payload)
+                except (TypeError, ValueError):
+                    continue
+                edition_id = (stored.get("edition_external_id")
+                              or stored.get("season") or "")
+                migrated.append((str(edition_id), external_id))
+            db.executemany(
+                "UPDATE matches SET edition_id=? WHERE external_id=?",
+                migrated)
+        missing_team_columns = [column for column in (
+            "home_team_id", "away_team_id") if column not in match_columns]
+        for column in missing_team_columns:
+            db.execute(
+                "ALTER TABLE matches ADD COLUMN {} TEXT NOT NULL DEFAULT ''".format(
+                    column))
+        if missing_team_columns:
+            migrated = []
+            for external_id, payload in db.execute(
+                    "SELECT external_id, payload FROM matches"):
+                try:
+                    stored = json.loads(payload)
+                except (TypeError, ValueError):
+                    continue
+                migrated.append((
+                    str(stored.get("home_team", {}).get("external_id") or ""),
+                    str(stored.get("away_team", {}).get("external_id") or ""),
+                    external_id,
+                ))
+            db.executemany(
+                "UPDATE matches SET home_team_id=?, away_team_id=? "
+                "WHERE external_id=?", migrated)
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS matches_competition_edition "
+            "ON matches(competition_id, edition_id, starts_at, external_id)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS matches_home_team "
+            "ON matches(home_team_id, starts_at, external_id)")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS matches_away_team "
+            "ON matches(away_team_id, starts_at, external_id)")
         return db
 
     def upsert(self, leagues=(), matches=(), tables=()):
@@ -472,13 +545,22 @@ class Store:
                 [(key, json.dumps(value, ensure_ascii=False, separators=(",", ":")), stamp)
                  for key, value in competitions.items()])
             db.executemany(
-                "INSERT INTO matches VALUES (?, ?, ?, ?, ?) "
+                "INSERT INTO matches "
+                "(external_id, competition_id, starts_at, payload, updated_at, "
+                "edition_id, home_team_id, away_team_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(external_id) DO UPDATE SET "
                 "competition_id=excluded.competition_id, starts_at=excluded.starts_at, "
-                "payload=excluded.payload, updated_at=excluded.updated_at",
+                "payload=excluded.payload, updated_at=excluded.updated_at, "
+                "edition_id=excluded.edition_id, "
+                "home_team_id=excluded.home_team_id, "
+                "away_team_id=excluded.away_team_id",
                 [(row["external_id"], row["competition"]["external_id"],
                   row["starts_at"],
-                  json.dumps(row, ensure_ascii=False, separators=(",", ":")), stamp)
+                  json.dumps(row, ensure_ascii=False, separators=(",", ":")), stamp,
+                  str(row.get("edition_external_id") or row.get("season") or ""),
+                  str(row["home_team"].get("external_id") or ""),
+                  str(row["away_team"].get("external_id") or ""))
                  for row in normalized])
             for table in tables:
                 db.execute(
@@ -517,6 +599,207 @@ class Store:
                 (competition_id, period)).fetchone()
         return bool(row and row[0] == "ok"
                     and row[1] >= BACKFILL_NORMALIZER_VERSION)
+
+    def get_match(self, external_id):
+        """Renvoie un match normalise par identifiant, ou ``None``.
+
+        La competition est relue depuis sa table dediee, comme pour ``feed`` :
+        un logo ou un libelle acquis apres le dernier releve du match ne doit
+        pas rester fige dans sa copie embarquee.
+        """
+        key = str(external_id or "").strip()
+        if not key:
+            return None
+        with closing(self._connect()) as db, db:
+            row = db.execute(
+                "SELECT competition_id, payload FROM matches "
+                "WHERE external_id=?", (key,)).fetchone()
+            if row is None:
+                return None
+            match = json.loads(row[1])
+            competition = db.execute(
+                "SELECT payload FROM competitions WHERE external_id=?",
+                (row[0],)).fetchone()
+        if competition is not None:
+            match["competition"] = json.loads(competition[0])
+        return match
+
+    def competition_detail(self, external_id, edition_id=None):
+        """Une edition navigable : matchs et classements officiels associes."""
+        key = str(external_id or "").strip()
+        if not key:
+            return None
+        with closing(self._connect()) as db, db:
+            stored_competition = db.execute(
+                "SELECT payload FROM competitions WHERE external_id=?",
+                (key,)).fetchone()
+            rows = db.execute(
+                "SELECT edition_id, starts_at, payload FROM matches "
+                "WHERE competition_id=? "
+                "ORDER BY starts_at DESC, external_id DESC", (key,)).fetchall()
+            if stored_competition is None and not rows:
+                return None
+
+            competition = (json.loads(stored_competition[0])
+                           if stored_competition is not None
+                           else json.loads(rows[0][2]).get("competition", {}))
+            editions = []
+            by_edition = {}
+            for stored_id, starts_at, payload in rows:
+                match = json.loads(payload)
+                match["competition"] = competition
+                edition_key = str(stored_id or "")
+                if edition_key not in by_edition:
+                    edition = {
+                        "external_id": edition_key,
+                        "name": (match.get("edition_name")
+                                 or match.get("season")
+                                 or edition_key or "Edition non renseignee"),
+                        "starts_at": starts_at,
+                        "match_count": 0,
+                    }
+                    editions.append(edition)
+                    by_edition[edition_key] = {"edition": edition, "matches": []}
+                by_edition[edition_key]["edition"]["match_count"] += 1
+                by_edition[edition_key]["matches"].append(match)
+
+            requested = (None if edition_id is None
+                         else str(edition_id).strip())
+            selected = requested if requested is not None else (
+                editions[0]["external_id"] if editions else "")
+            if requested is not None and requested not in by_edition:
+                raise NotFound("edition introuvable")
+            selected_matches = list(reversed(
+                by_edition.get(selected, {}).get("matches", [])))
+            stored_standings = [json.loads(row[0]) for row in db.execute(
+                "SELECT payload FROM official_standings "
+                "WHERE competition_id=? AND edition_id=? "
+                "ORDER BY storage_key", (key, selected))]
+
+        return {
+            "competition": competition,
+            "edition": (by_edition[selected]["edition"]
+                        if selected in by_edition else None),
+            "editions": editions,
+            "matches": selected_matches,
+            "standings": stored_standings,
+        }
+
+    def team_detail(self, external_id):
+        """Historique navigable d'une equipe, toutes competitions confondues."""
+        key = str(external_id or "").strip()
+        if not key:
+            return None
+        with closing(self._connect()) as db, db:
+            rows = db.execute(
+                "SELECT competition_id, payload FROM matches "
+                "WHERE home_team_id=? OR away_team_id=? "
+                "ORDER BY starts_at, external_id", (key, key)).fetchall()
+            if not rows:
+                return None
+            competition_ids = sorted({row[0] for row in rows})
+            placeholders = ",".join("?" for _item in competition_ids)
+            stored_competitions = {
+                row[0]: json.loads(row[1]) for row in db.execute(
+                    "SELECT external_id, payload FROM competitions "
+                    "WHERE external_id IN ({})".format(placeholders),
+                    competition_ids)
+            }
+
+        matches = []
+        team = None
+        competitions = {}
+        for competition_id, payload in rows:
+            match = json.loads(payload)
+            if competition_id in stored_competitions:
+                match["competition"] = stored_competitions[competition_id]
+            competition = match.get("competition", {})
+            if competition.get("external_id"):
+                competitions[competition["external_id"]] = competition
+            side = ("home_team" if str(match.get(
+                "home_team", {}).get("external_id")) == key else "away_team")
+            team = match.get(side) or team
+            matches.append(match)
+
+        record = {"played": 0, "won": 0, "drawn": 0, "lost": 0,
+                  "goals_for": 0, "goals_against": 0}
+        form = []
+        for match in matches:
+            if match.get("status") != "finished":
+                continue
+            result, scored, conceded = _team_result(match, key)
+            record["played"] += 1
+            record[{"W": "won", "D": "drawn", "L": "lost"}[result]] += 1
+            record["goals_for"] += scored
+            record["goals_against"] += conceded
+            form.append(result)
+
+        return {
+            "team": team,
+            "competitions": [competitions[key] for key in sorted(competitions)],
+            "record": record,
+            "form": form[-5:],
+            "matches": matches,
+        }
+
+    def head_to_head(self, first_id, second_id):
+        """Confrontations directes de deux equipes, dans l'ordre chronologique."""
+        first, second = (str(first_id or "").strip(),
+                         str(second_id or "").strip())
+        if not first or not second or first == second:
+            return None
+        with closing(self._connect()) as db, db:
+            rows = db.execute(
+                "SELECT competition_id, payload FROM matches WHERE "
+                "(home_team_id=? AND away_team_id=?) OR "
+                "(home_team_id=? AND away_team_id=?) "
+                "ORDER BY starts_at, external_id",
+                (first, second, second, first)).fetchall()
+            if not rows:
+                return None
+            competition_ids = sorted({row[0] for row in rows})
+            placeholders = ",".join("?" for _item in competition_ids)
+            stored_competitions = {
+                row[0]: json.loads(row[1]) for row in db.execute(
+                    "SELECT external_id, payload FROM competitions "
+                    "WHERE external_id IN ({})".format(placeholders),
+                    competition_ids)
+            }
+
+        matches = []
+        teams = {}
+        competitions = {}
+        record = {"played": 0, "first_wins": 0, "draws": 0,
+                  "second_wins": 0, "first_goals": 0, "second_goals": 0}
+        for competition_id, payload in rows:
+            match = json.loads(payload)
+            if competition_id in stored_competitions:
+                match["competition"] = stored_competitions[competition_id]
+            competition = match.get("competition", {})
+            if competition.get("external_id"):
+                competitions[competition["external_id"]] = competition
+            for side in ("home_team", "away_team"):
+                team = match.get(side, {})
+                team_id = str(team.get("external_id") or "")
+                if team_id in (first, second):
+                    teams[team_id] = team
+            matches.append(match)
+            if match.get("status") != "finished":
+                continue
+            result, scored, conceded = _team_result(match, first)
+            record["played"] += 1
+            record[{"W": "first_wins", "D": "draws",
+                    "L": "second_wins"}[result]] += 1
+            record["first_goals"] += scored
+            record["second_goals"] += conceded
+
+        return {
+            "first_team": teams.get(first, {"external_id": first}),
+            "second_team": teams.get(second, {"external_id": second}),
+            "competitions": [competitions[key] for key in sorted(competitions)],
+            "record": record,
+            "matches": matches,
+        }
 
     def feed(self, params=None, followed=(), current_state=None):
         query = Query(params)

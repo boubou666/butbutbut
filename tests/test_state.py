@@ -198,6 +198,8 @@ class TestReporter(unittest.TestCase):
 
         data = state.read(self.path)
         self.assertEqual(data["goals_today"], 1)
+        self.assertEqual(data["recent_events"][0]["match_id"],
+                         str(guard.all_matches()[0].id))
         self.assertEqual(data["matches"][0]["away_score"], 1)
 
     def test_a_poll_enriches_a_legacy_souvenir(self):

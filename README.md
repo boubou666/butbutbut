@@ -101,6 +101,7 @@ butbutbut --test              # une carte de demonstration
 butbutbut --test 3            # trois cartes, pour voir l'empilement
 butbutbut --scores            # les matchs du jour dans le terminal
 butbutbut --next              # les prochains matchs, groupes par jour
+butbutbut --calendar om,30    # les prochains matchs de l'OM dans un .ics
 butbutbut --table             # le classement des competitions suivies
 butbutbut --table om          # ... celui de l'OM, sa ligne surlignee
 butbutbut --list              # les competitions surveillables
@@ -881,6 +882,26 @@ calendrier sort quand meme, avec ce qui manque dit en toutes lettres.
 
 Quand aucune ne repond, la commande le dit et sort en erreur plutot que de
 laisser croire a un week-end sans football.
+
+#### Ajouter les matchs a son agenda
+
+Le meme calendrier s'exporte au format iCalendar, compris par Apple Calendar,
+Google Calendar, Outlook et la plupart des agendas :
+
+```bash
+butbutbut --calendar                         # 30 jours -> butbutbut.ics
+butbutbut --calendar om                      # seulement cette equipe
+butbutbut --calendar om,60                   # cette equipe sur 60 jours
+butbutbut --calendar om,60 --calendar-output calendrier-om.ics
+```
+
+Les filtres `--leagues`, `--exclude`, `--teams` et `--exclude-teams`
+s'appliquent comme avec `--next`. L'horizon est borne a 90 jours. Chaque match
+garde un identifiant stable : reimporter une version actualisee permet aux
+agendas qui rapprochent les UID de mettre a jour l'evenement plutot que de le
+dupliquer. Les heures sont ecrites en UTC dans le fichier puis affichees dans
+le fuseau de l'agenda. Le lieu et le tour sont ajoutes quand la source les
+publie.
 
 ### Le classement
 
@@ -2825,8 +2846,27 @@ montre les matchs, les alertes effectivement livrees et les derniers
 souvenirs ; elle se rafraichit sans rechargement. Elle est autonome : aucune
 police, bibliotheque JavaScript ni image distante n'est chargee.
 
+Un match en direct ou un souvenir ouvre son **Match Center** : score, statut,
+phase ou tour officiel, chronologie des actions et statistiques comparatives
+sont reunis dans une page qui se rafraichit seule. Une donnee absente de la
+source reste absente au lieu d'etre estimee.
+
+Le nom de la competition ouvre son **explorateur** : changement d'edition,
+classements officiels par groupe et rencontres rangees par phase, groupe ou
+tour. Chaque ligne revient au Match Center correspondant.
+
+Le nom d'une equipe ouvre sa **fiche club** : bilan victoires-nuls-defaites,
+buts marques et encaisses, forme sur les cinq derniers matchs, competitions,
+prochaines rencontres et vingt derniers resultats. Les adversaires, les
+competitions et les scores ramenent aux autres fiches du compagnon.
+
+Chaque Match Center propose aussi le **face-a-face** des deux equipes : bilan
+des victoires, nuls, buts et douze dernieres confrontations. Une seance de tirs
+au but suit le vainqueur officiel, meme lorsque le score affiche reste egal.
+
 Quand un retard de streaming est actif, les scores bruts du direct sont
-masques : seules les alertes deja sorties de la file retardee apparaissent.
+masques dans les trois vues detaillees : seules les alertes deja sorties de la
+file retardee apparaissent.
 Le bouton de synchronisation mesure le retard au coup d'envoi. Il n'y a ni
 compte ni mot de passe ; pour cette raison l'ecoute reseau n'est jamais le
 defaut et ne doit pas etre exposee a Internet.
