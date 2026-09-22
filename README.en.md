@@ -2785,8 +2785,47 @@ matches, alerts actually delivered and recent keepsakes, refreshing without a
 reload. It is autonomous: no remote font, JavaScript library or image is
 loaded.
 
+The **Explore** panel searches local teams and competitions from the first two
+characters. It ignores accents and opens the club page or competition explorer
+directly, even when no match is being played.
+Press `/` to focus that search, or Escape to clear it. **Recently viewed**
+links to the last eight Match Center, team or competition pages opened in this
+browser. Team and competition entries can be favourited there; no scores are
+stored, and open tabs stay in sync.
+The star adds a result to **My favourites**: these shortcuts stay on the home
+page and are stored only in the local browser. The **Coming up** panel then
+gathers their live and upcoming matches without duplicates, with the same score
+redaction whenever the companion is synchronized with a stream.
+Matches are grouped by live status and date; **All**, **Live** and **Coming up**
+filter the twenty matches returned by the local feed immediately.
+When several favourites are followed, **Show favourite** also isolates one
+team or competition and loads up to twenty matches for that selection alone.
+This choice does not change alerts or the global calendar export.
+The chosen favourite and live/upcoming filter survive a reload in this browser.
+A small summary above the list shows the next known kickoff for the displayed
+selection.
+The **Export favourites** and **Import favourites** controls move this selection
+through a local `butbutbut-favoris.json` file. Import adds missing items without
+removing existing ones, up to twenty. The file contains only the names and IDs
+of the selected teams and competitions.
+The same favourite button is available in every team and competition header;
+its state stays synchronized with the home page, including across open tabs in
+the same browser.
+The **Calendar .ics** link in Coming up downloads these fixtures with stable
+identifiers and UTC kickoffs, ready for Apple Calendar, Google Calendar or
+Outlook. It uses the full twenty-match list regardless of the visible filter.
+When one favourite is selected, **Calendar for this favourite .ics** separately
+exports its scheduled fixtures; the global link remains available.
+The **Enable alerts** button explicitly requests browser permission, then
+locally reports favourite kickoffs and score changes while the companion stays
+open. Its first snapshot is only a baseline, so old changes are not replayed;
+a score hidden by stream-delay protection never triggers a notification.
+
 A live match or keepsake opens its **Match Center**, bringing together score,
 status, official phase or round, event timeline and comparative statistics.
+Its **Follow** row adds either team or the competition to the same local
+favourites as Explore, including while stream-delay protection hides a live
+score.
 The competition name opens an **explorer** with edition selection, official
 group tables and fixtures arranged by phase, group or round. Every row links
 back to its Match Center.

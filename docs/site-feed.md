@@ -44,6 +44,74 @@ La reponse est du JSON UTF-8. Elle contient toujours :
 preference utilisateur ni chemin local n'est expose. `errors` rend visibles
 les erreurs de backfill d'une competition sans retirer les donnees des autres.
 
+### Recherche locale
+
+Le compagnon indexe les equipes rencontrees et les competitions connues :
+
+```bash
+curl 'http://127.0.0.1:8765/api/v1/search?q=saint+etienne&limit=12'
+```
+
+`q` contient au moins deux caracteres et `limit` est optionnel, de 1 a 20.
+Chaque resultat porte `type: team` ou `type: competition` ainsi que l'objet
+normalise correspondant. La recherche ignore casse, accents et ponctuation,
+reste entierement locale et ne consulte pas la source sportive. L'index equipe
+est actualise avec les matchs et reconstruit une fois depuis les objets deja
+stockes lors de l'ouverture d'une ancienne base.
+
+Dans le compagnon, l'etoile d'un resultat l'ajoute a **Mes favoris**. La liste
+est conservee dans le stockage local du navigateur : elle ne modifie ni la
+configuration du daemon, ni la base SQLite, et ne quitte jamais la machine.
+L'Explorer montre aussi les huit dernieres fiches Match Center, equipe ou
+competition consultees. Cette liste locale ne conserve que type, identifiant
+et nom (jamais un score), ignore les entrees invalides et se synchronise entre
+onglets. Une etoile permet de suivre une equipe ou competition depuis cette
+liste. `/` focalise la recherche ; Echap l'efface.
+Le navigateur envoie uniquement leurs identifiants a la route locale
+`GET /api/v1/favorites?team=...&competition=...&limit=12`. La reponse deduplique
+les directs et matchs a venir, place les directs en premier et masque leur
+score lorsque le retard streaming est actif. Vingt favoris et vingt matchs par
+reponse constituent les bornes maximales.
+Le bloc **A suivre** demande maintenant `limit=20`, regroupe les rencontres
+par direct ou date locale et les filtre dans le navigateur. Le filtre visuel
+ne change ni la requete du calendrier ni les regles anti-spoiler.
+Un selecteur permet aussi de voir seulement les rencontres d'un favori lorsque
+plusieurs sont enregistres. Il lance une requete locale separee avec ce seul
+identifiant et `limit=20`, afin qu'un favori absent des vingt premiers matchs
+globaux reste consultable. Le flux global continue a alimenter les alertes et
+le calendrier ; le choix affiche ne les limite pas.
+Le navigateur retient le favori et le filtre Tous / En direct / A venir dans
+son stockage local, et revient a Tous mes favoris si la selection a disparu.
+Un encart annonce le prochain coup d'envoi programme dans la vue courante,
+sans consulter une autre source et sans afficher de score. Le lien secondaire
+**Calendrier de ce favori .ics** applique uniquement son identifiant a la
+route iCalendar ; le calendrier global reste inchange.
+L'Explorer peut exporter cette selection en `butbutbut-favoris.json`, puis
+importer ce fichier dans un autre navigateur. Le JSON versionne contient
+`version: 1` et une liste `favorites` (type, identifiant et nom) ; l'import
+valide le fichier, ignore les doublons et ajoute les entrees absentes sans
+retirer les favoris deja presents. Aucun fichier n'est envoye au serveur.
+Les fiches equipe et competition lisent et modifient la meme cle de stockage
+local que l'Explorer ; les onglets ouverts reagissent aussi aux changements de
+cette cle via l'evenement `storage`. Aucun appel d'ecriture n'est adresse au
+daemon.
+Le Match Center affiche aussi des boutons de favori pour ses deux equipes et
+sa competition. Ils restent utilisables dans la vue de direct synchronise,
+sans reveler le score masque.
+
+La variante `GET /api/v1/favorites.ics` accepte les memes parametres `team` et
+`competition`. Elle renvoie les rencontres programmees au format iCalendar,
+avec `Content-Type: text/calendar` et une piece jointe
+`butbutbut-favoris.ics`. Les directs, reports sans nouvel horaire et dates
+invalides ne sont pas ajoutes au calendrier.
+
+Le bouton **Activer les alertes** s'appuie sur l'API Notification du navigateur.
+L'autorisation et le choix restent propres a ce navigateur ; aucun abonnement
+n'est cree cote serveur. Tant que la page reste ouverte, deux releves successifs
+du flux favori permettent de signaler un passage en direct ou un changement de
+score. Le premier releve initialise seulement la comparaison, et un match
+`spoiler_free` ne produit aucune notification.
+
 Parametres optionnels :
 
 - `from` et `to` : date `YYYY-MM-DD` ou date/heure ISO 8601. Une date de fin

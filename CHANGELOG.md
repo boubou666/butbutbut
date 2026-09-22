@@ -7,6 +7,49 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.28.0] - 2026-09-22
+
+### Ajoute
+
+- Le compagnon recherche maintenant equipes et competitions sans reseau, des
+  deux premiers caracteres et sans tenir compte des accents. La route
+  `GET /api/v1/search` expose le meme index, reconstruit sur les anciennes bases.
+- Une etoile ajoute equipe ou competition aux favoris de l'Explorer. Ces
+  raccourcis persistent uniquement dans le navigateur local.
+- Le nouveau bloc **A suivre** rassemble les directs et prochains matchs de ces
+  favoris. `GET /api/v1/favorites` deduplique les selections et conserve le
+  masquage des scores pendant une synchronisation streaming.
+- Les fiches equipe et competition peuvent maintenant rejoindre ou quitter les
+  favoris directement depuis leur en-tete, avec un etat accessible et partage.
+- Le bloc **A suivre** telecharge aussi un calendrier iCalendar des favoris via
+  `GET /api/v1/favorites.ics`, avec UID stables et horaires UTC.
+- Des alertes navigateur facultatives signalent le coup d'envoi et les
+  changements de score des favoris tant que le compagnon reste ouvert. Elles
+  sont coupees quand le retard streaming masque le direct.
+- L'Explorer exporte et importe les favoris dans un fichier JSON local. L'import
+  conserve la selection existante, ignore les doublons et applique la limite
+  de vingt favoris.
+- Le Match Center permet de suivre directement l'equipe a domicile, l'equipe
+  adverse et la competition, y compris lorsque le direct est masque pendant
+  une synchronisation streaming.
+- Les favoris se synchronisent maintenant entre les onglets du meme navigateur :
+  Explorer, fiches equipe/competition et Match Center reagissent aux changements
+  sans rechargement manuel.
+- Le bloc **A suivre** regroupe les rencontres par direct et par date, avec des
+  filtres Tous, En direct et A venir. La liste et son export calendrier couvrent
+  maintenant jusqu'a vingt matchs.
+- Quand plusieurs favoris sont suivis, le bloc **A suivre** peut isoler les
+  matchs d'une equipe ou d'une competition. Cette vue charge maintenant ses
+  propres vingt rencontres, sans limiter les alertes des autres favoris.
+- Le bloc **A suivre** retient localement le favori et le filtre choisis,
+  rappelle le prochain coup d'envoi et propose un calendrier .ics limite au
+  favori affiche, en plus du calendrier global.
+- L'Explorer retrouve les huit dernieres fiches Match Center, equipe et
+  competition consultees dans ce navigateur. Une fiche equipe ou competition
+  peut etre ajoutee aux favoris depuis cet historique local.
+- Le raccourci `/` place le curseur dans la recherche de l'Explorer ; Echap
+  efface la recherche et rend le focus a la page.
+
 ## [1.27.0] - 2026-09-22
 
 ### Ajoute
@@ -2420,7 +2463,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.27.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.28.0...HEAD
+[1.28.0]: https://github.com/boubou666/butbutbut/compare/v1.27.0...v1.28.0
 [1.27.0]: https://github.com/boubou666/butbutbut/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/boubou666/butbutbut/compare/v1.25.0...v1.26.0
 [1.25.0]: https://github.com/boubou666/butbutbut/compare/v1.24.0...v1.25.0
