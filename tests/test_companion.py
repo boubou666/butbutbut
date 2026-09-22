@@ -27,6 +27,18 @@ class TestPage(unittest.TestCase):
             self.assertNotIn("https://", page)
             self.assertNotIn("http://", page)
         self.assertIn("/api/state", companion.PAGE)
+        self.assertIn("/api/v1/search?q=", companion.PAGE)
+        self.assertIn("Rechercher une équipe ou une compétition", companion.PAGE)
+        self.assertIn("butbutbut:favorites:v1", companion.PAGE)
+        self.assertIn("aria-pressed", companion.PAGE)
+        self.assertIn("Mes favoris", companion.PAGE)
+        self.assertIn("/api/v1/favorites?", companion.PAGE)
+        self.assertIn("/api/v1/favorites.ics?", companion.PAGE)
+        self.assertIn("favorite-agenda", companion.PAGE)
+        self.assertIn("butbutbut:favorite-alerts:v1", companion.PAGE)
+        self.assertIn("Notification.requestPermission", companion.PAGE)
+        self.assertIn("m.spoiler_free||previous.spoiler_free", companion.PAGE)
+        self.assertIn("Activer les alertes", companion.PAGE)
         self.assertIn("/api/sync", companion.PAGE)
         self.assertIn("/souvenir?id=", companion.PAGE)
         self.assertIn("/match?id=", companion.PAGE)
@@ -36,6 +48,11 @@ class TestPage(unittest.TestCase):
         self.assertIn("/team?id=", companion.MATCH_PAGE)
         self.assertIn("/team?id=", companion.COMPETITION_PAGE)
         self.assertIn("/api/v1/team?id=", companion.TEAM_PAGE)
+        self.assertIn("bindFavorite({type:'team'", companion.TEAM_PAGE)
+        self.assertIn("bindFavorite({type:'competition'",
+                      companion.COMPETITION_PAGE)
+        self.assertIn("butbutbut:favorites:v1", companion.TEAM_PAGE)
+        self.assertIn("butbutbut:favorites:v1", companion.COMPETITION_PAGE)
         self.assertIn("/head-to-head?team=", companion.MATCH_PAGE)
         self.assertIn("/api/v1/head-to-head?team=",
                       companion.HEAD_TO_HEAD_PAGE)
@@ -104,6 +121,38 @@ class TestPage(unittest.TestCase):
         self.assertNotIn("home_score", payload["matches"][0])
         self.assertEqual(payload["record"]["played"], 8)
         self.assertEqual(payload["matches"][1]["home_score"], 1)
+
+    def test_favorite_matches_apply_the_stream_delay(self):
+        payload = companion.favorite_matches_payload([{
+            "external_id": "live", "status": "live", "home_score": 2,
+            "away_score": 1, "home_team": {"name": "Angers"},
+            "away_team": {"name": "Lille"},
+        }], {"stream_delay": 90})
+        self.assertTrue(payload["matches"][0]["spoiler_free"])
+        self.assertNotIn("home_score", payload["matches"][0])
+
+    def test_favorite_calendar_uses_normalized_matches(self):
+        page = companion.favorite_calendar([{
+            "external_id": "401", "status": "scheduled",
+            "starts_at": "2026-10-03T19:05:00Z",
+            "competition": {"name": "Ligue 1"},
+            "home_team": {"name": "Marseille"},
+            "away_team": {"name": "Lyon"},
+            "round_name": "8e journée", "venue": "Vélodrome",
+        }])
+        self.assertIn("BEGIN:VCALENDAR\r\n", page)
+        self.assertIn("UID:401@butbutbut.local\r\n", page)
+        self.assertIn("DTSTART:20261003T190500Z\r\n", page)
+        self.assertIn("SUMMARY:Marseille – Lyon\r\n", page)
+
+    def test_favorite_calendar_ignores_live_and_invalid_dates(self):
+        page = companion.favorite_calendar([
+            {"external_id": "live", "status": "live",
+             "starts_at": "2026-10-03T19:05:00Z"},
+            {"external_id": "bad", "status": "scheduled",
+             "starts_at": "pas-une-date"},
+        ])
+        self.assertNotIn("BEGIN:VEVENT", page)
 
 
 if __name__ == "__main__":

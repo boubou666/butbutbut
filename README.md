@@ -2846,10 +2846,53 @@ montre les matchs, les alertes effectivement livrees et les derniers
 souvenirs ; elle se rafraichit sans rechargement. Elle est autonome : aucune
 police, bibliotheque JavaScript ni image distante n'est chargee.
 
+Le bloc **Explorer** recherche localement une equipe ou une competition des
+deux premiers caracteres saisis. Il ignore les accents et ouvre directement la
+fiche club ou l'explorateur de competition, meme lorsqu'aucun match ne se joue.
+Le raccourci `/` place le curseur dans cette recherche ; Echap l'efface.
+Sous les resultats, **Consultes recemment** donne acces aux huit dernieres
+fiches Match Center, equipe ou competition ouvertes dans ce navigateur. Les
+fiches equipe et competition peuvent etre ajoutees aux favoris depuis cette
+liste. Elle ne conserve aucun score et se met a jour entre onglets.
+L'etoile ajoute un resultat a **Mes favoris** : ces raccourcis restent sur la
+page d'accueil et sont conserves uniquement dans le navigateur local. Le bloc
+**A suivre** reunit alors leurs directs et prochains matchs, sans doublons et
+avec le meme masquage des scores lorsque le flux streaming est synchronise.
+Les rencontres sont rangees par direct et par jour ; les boutons **Tous**,
+**En direct** et **A venir** filtrent aussitot les vingt prochains matchs
+remontes par le flux local.
+Si plusieurs favoris sont suivis, le selecteur **Afficher le favori** isole
+aussi une equipe ou une competition et charge jusqu'a vingt rencontres pour
+elle seule. Ce choix ne change ni les alertes ni l'export calendrier global.
+Le favori et le filtre choisis sont retenus dans ce navigateur apres un
+rechargement. Un rappel au-dessus de la liste indique le prochain coup d'envoi
+de la selection affichee, lorsqu'un horaire est connu.
+Les boutons **Exporter les favoris** et **Importer des favoris** permettent de
+transporter cette selection dans un fichier `butbutbut-favoris.json`. L'import
+ajoute les favoris absents sans effacer ceux du navigateur, dans la limite de
+vingt. Le fichier reste sur ta machine et contient seulement les noms et
+identifiants des equipes et competitions selectionnees.
+Le meme bouton de favori est disponible dans l'en-tete de chaque fiche equipe
+et competition ; son etat reste synchronise avec l'accueil, y compris lorsque
+ces pages sont ouvertes dans plusieurs onglets du meme navigateur.
+Le lien **Calendrier .ics** du bloc A suivre telecharge ces rencontres avec des
+identifiants stables et des horaires UTC, prets a importer dans Apple Calendar,
+Google Calendar ou Outlook. Il utilise la liste complete de vingt matchs,
+independamment du filtre affiche.
+Quand un favori precis est affiche, **Calendrier de ce favori .ics** telecharge
+separement ses rencontres programmees ; le lien global reste disponible.
+Le bouton **Activer les alertes** demande explicitement la permission du
+navigateur, puis signale localement les coups d'envoi et changements de score
+des favoris tant que le compagnon reste ouvert. Le premier releve sert de point
+de depart afin de ne pas rejouer d'anciennes alertes ; aucun score masque par
+le retard streaming ne declenche de notification.
+
 Un match en direct ou un souvenir ouvre son **Match Center** : score, statut,
 phase ou tour officiel, chronologie des actions et statistiques comparatives
 sont reunis dans une page qui se rafraichit seule. Une donnee absente de la
 source reste absente au lieu d'etre estimee.
+La ligne **Suivre** de cette fiche ajoute directement chaque equipe ou la
+competition aux memes favoris que l'Explorer, meme pendant un direct masque.
 
 Le nom de la competition ouvre son **explorateur** : changement d'edition,
 classements officiels par groupe et rencontres rangees par phase, groupe ou

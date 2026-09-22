@@ -73,6 +73,16 @@ def slugify(value) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
+def _search_text(item) -> str:
+    """Mots normalises et dedupliques d'un objet equipe ou competition."""
+    words = []
+    for key in ("external_id", "name", "short_name", "slug"):
+        value = slugify(item.get(key))
+        if value and value not in words:
+            words.append(value)
+    return " ".join(words)
+
+
 def _http_url(value):
     text = str(value or "").strip()
     return text if text.lower().startswith(("http://", "https://")) else None
@@ -403,6 +413,14 @@ class Store:
                 payload TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS teams (
+                external_id TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                search_text TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS teams_search
+                ON teams(search_text, external_id);
             CREATE TABLE IF NOT EXISTS matches (
                 external_id TEXT PRIMARY KEY,
                 competition_id TEXT NOT NULL,
@@ -494,6 +512,28 @@ class Store:
         db.execute(
             "CREATE INDEX IF NOT EXISTS matches_away_team "
             "ON matches(away_team_id, starts_at, external_id)")
+        if db.execute("SELECT 1 FROM teams LIMIT 1").fetchone() is None:
+            migrated_teams = {}
+            for payload, updated_at in db.execute(
+                    "SELECT payload, updated_at FROM matches "
+                    "ORDER BY updated_at, external_id"):
+                try:
+                    match = json.loads(payload)
+                except (TypeError, ValueError):
+                    continue
+                for side in ("home_team", "away_team"):
+                    team = match.get(side) or {}
+                    team_id = str(team.get("external_id") or "")
+                    if team_id:
+                        migrated_teams[team_id] = (team, updated_at)
+            db.executemany(
+                "INSERT OR REPLACE INTO teams "
+                "(external_id, payload, search_text, updated_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(team_id, json.dumps(team, ensure_ascii=False,
+                                      separators=(",", ":")),
+                  _search_text(team), updated_at)
+                 for team_id, (team, updated_at) in migrated_teams.items()])
         return db
 
     def upsert(self, leagues=(), matches=(), tables=()):
@@ -509,6 +549,11 @@ class Store:
             normalized.append(row)
         standings = [item for table in tables
                      for item in normalize_standings(table)]
+        teams = {}
+        for row in normalized:
+            for side in ("home_team", "away_team"):
+                team = row[side]
+                teams[team["external_id"]] = team
         with closing(self._connect()) as db, db:
             for key, value in competitions.items():
                 if value.get("logo_url") is not None:
@@ -544,6 +589,29 @@ class Store:
                 "updated_at=excluded.updated_at",
                 [(key, json.dumps(value, ensure_ascii=False, separators=(",", ":")), stamp)
                  for key, value in competitions.items()])
+            for key, value in teams.items():
+                if value.get("crest_url") is not None:
+                    continue
+                previous = db.execute(
+                    "SELECT payload FROM teams WHERE external_id=?", (key,)
+                ).fetchone()
+                if previous:
+                    try:
+                        value["crest_url"] = json.loads(previous[0]).get(
+                            "crest_url")
+                    except (TypeError, ValueError):
+                        pass
+            db.executemany(
+                "INSERT INTO teams "
+                "(external_id, payload, search_text, updated_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(external_id) DO UPDATE SET "
+                "payload=excluded.payload, search_text=excluded.search_text, "
+                "updated_at=excluded.updated_at",
+                [(key, json.dumps(value, ensure_ascii=False,
+                                  separators=(",", ":")),
+                  _search_text(value), stamp)
+                 for key, value in teams.items()])
             db.executemany(
                 "INSERT INTO matches "
                 "(external_id, competition_id, starts_at, payload, updated_at, "
@@ -800,6 +868,87 @@ class Store:
             "record": record,
             "matches": matches,
         }
+
+    def search(self, query, limit=12):
+        """Equipes et competitions locales classees par proximite du terme."""
+        needle = slugify(query)
+        if len(needle) < 2:
+            return []
+        limit = max(1, min(int(limit), 20))
+        with closing(self._connect()) as db, db:
+            teams = [(json.loads(row[0]), row[1]) for row in db.execute(
+                "SELECT payload, search_text FROM teams "
+                "WHERE search_text LIKE ?", ("%{}%".format(needle),))]
+            competitions = [json.loads(row[0]) for row in db.execute(
+                "SELECT payload FROM competitions")]
+
+        candidates = [("team", item, text) for item, text in teams]
+        candidates.extend(
+            ("competition", item, _search_text(item))
+            for item in competitions if needle in _search_text(item))
+
+        def rank(candidate):
+            kind, item, text = candidate
+            keys = [slugify(item.get(key)) for key in (
+                "external_id", "name", "short_name", "slug")]
+            if needle in keys:
+                quality = 0
+            elif any(key.startswith(needle) for key in keys if key):
+                quality = 1
+            elif any(word.startswith(needle) for word in text.split()):
+                quality = 2
+            else:
+                quality = 3
+            return quality, 0 if kind == "team" else 1, slugify(item.get("name"))
+
+        result = []
+        for kind, item, _text in sorted(candidates, key=rank)[:limit]:
+            result.append(dict(item, type=kind))
+        return result
+
+    def favorite_matches(self, team_ids=(), competition_ids=(), limit=12):
+        """Directs et prochains matchs des favoris, sans doublon."""
+        teams = sorted({str(item).strip() for item in team_ids if str(item).strip()})
+        competitions = sorted({str(item).strip() for item in competition_ids
+                               if str(item).strip()})
+        if not teams and not competitions:
+            return []
+        limit = max(1, min(int(limit), 20))
+        where, values = [], []
+        if teams:
+            marks = ",".join("?" for _item in teams)
+            where.append("(home_team_id IN ({0}) OR away_team_id IN ({0}))".format(
+                marks))
+            values.extend(teams)
+            values.extend(teams)
+        if competitions:
+            marks = ",".join("?" for _item in competitions)
+            where.append("competition_id IN ({})".format(marks))
+            values.extend(competitions)
+        sql = ("SELECT payload FROM matches WHERE " + " OR ".join(where)
+               + " ORDER BY starts_at, external_id")
+        with closing(self._connect()) as db, db:
+            rows = [json.loads(row[0]) for row in db.execute(sql, values)]
+            stored_competitions = {
+                row[0]: json.loads(row[1]) for row in db.execute(
+                    "SELECT external_id, payload FROM competitions")
+            }
+        matches = []
+        now = utc_now()
+        for match in rows:
+            if match.get("status") not in ("live", "scheduled", "postponed"):
+                continue
+            if (match.get("status") == "scheduled" and match.get("starts_at")
+                    and match["starts_at"] < now):
+                continue
+            competition_id = match.get("competition", {}).get("external_id")
+            if competition_id in stored_competitions:
+                match["competition"] = stored_competitions[competition_id]
+            matches.append(match)
+        matches.sort(key=lambda item: (
+            0 if item.get("status") == "live" else 1,
+            item.get("starts_at") or "", item.get("external_id") or ""))
+        return matches[:limit]
 
     def feed(self, params=None, followed=(), current_state=None):
         query = Query(params)

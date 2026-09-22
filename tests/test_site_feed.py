@@ -11,7 +11,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from butbutbut import companion, espn, leagues, site_feed, state
-from helpers import event, goal_detail, payload
+from helpers import event, goal_detail, in_minutes, payload
 
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -100,6 +100,31 @@ class TestContract(SiteFeedCase):
         self.assertEqual(
             self.store.get_match("401")["competition"]["name"], "Ligue 1")
         self.assertIsNone(self.store.get_match("missing"))
+
+    def test_search_finds_teams_and_competitions_without_accents(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", home="Saint-Étienne", away="Paris FC")))
+        teams = self.store.search("etienne")
+        self.assertEqual(teams[0]["external_id"], "H401")
+        self.assertEqual(teams[0]["type"], "team")
+        competitions = self.store.search("ligue")
+        self.assertEqual(competitions[0]["external_id"], "fra.1")
+        self.assertEqual(competitions[0]["type"], "competition")
+        self.assertEqual(len(self.store.search("i", limit=1)), 0)
+
+    def test_favorites_join_teams_and_competitions_without_duplicates(self):
+        matches = self.matches(
+            event(match_id="401", state="pre", status_name="STATUS_SCHEDULED",
+                  date=in_minutes(60)),
+            event(match_id="402", state="in", status_name="STATUS_IN_PROGRESS"),
+            event(match_id="403", state="post", status_name="STATUS_FULL_TIME"),
+            event(match_id="404", state="pre", status_name="STATUS_SCHEDULED"))
+        self.store.upsert([self.league], matches)
+        selected = self.store.favorite_matches(
+            team_ids=["H401"], competition_ids=["fra.1"])
+        self.assertEqual(
+            [item["external_id"] for item in selected], ["402", "401"])
+        self.assertEqual(self.store.favorite_matches(), [])
 
     def test_absent_structure_is_null_not_invented(self):
         row = site_feed.normalize_match(self.matches(event())[0])
@@ -355,6 +380,8 @@ class TestBackfill(SiteFeedCase):
             ).fetchone()
         self.assertEqual(edition_id, "2026")
         self.assertEqual((home_id, away_id), ("Hlegacy", "Alegacy"))
+        self.assertEqual(
+            legacy.search("angers")[0]["external_id"], "Hlegacy")
 
     def test_an_old_completed_period_is_renormalized_once(self):
         path = self.root / "legacy.sqlite3"
@@ -452,6 +479,67 @@ class TestHttp(SiteFeedCase):
         self.assertEqual(headers.get_content_charset(), "utf-8")
         self.assertEqual(body["state"]["goals_today"], 3)
         self.assertNotIn("private_preference", json.dumps(body))
+
+    def test_local_search_has_a_dedicated_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(match_id="401")))
+        status, _headers, body = self.get("/api/v1/search?q=angers&limit=5")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["query"], "angers")
+        self.assertEqual(body["results"][0]["external_id"], "H401")
+        self.assertEqual(body["results"][0]["type"], "team")
+
+    def test_local_search_rejects_bad_queries(self):
+        for path in ("/api/v1/search", "/api/v1/search?q=a",
+                     "/api/v1/search?q=angers&limit=0",
+                     "/api/v1/search?q=angers&extra=1"):
+            with self.subTest(path=path), self.assertRaises(
+                    urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:{}{}".format(
+                        self.server.server_address[1], path), timeout=2)
+            self.assertEqual(caught.exception.code, 400)
+            caught.exception.close()
+
+    def test_favorites_have_a_spoiler_safe_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", state="in", home_score=2, away_score=1)))
+        state.write(self.state_path, {"version": 2, "stream_delay": 90})
+        status, _headers, body = self.get(
+            "/api/v1/favorites?team=H401&competition=fra.1&limit=5")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["matches"][0]["external_id"], "401")
+        self.assertTrue(body["matches"][0]["spoiler_free"])
+        self.assertNotIn("home_score", body["matches"][0])
+
+    def test_favorites_calendar_is_downloadable(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", state="pre", status_name="STATUS_SCHEDULED",
+            date=in_minutes(60))))
+        url = "http://127.0.0.1:{}/api/v1/favorites.ics?team=H401".format(
+            self.server.server_address[1])
+        with urllib.request.urlopen(url, timeout=2) as response:
+            page = response.read().decode("utf-8")
+            self.assertEqual(response.headers.get_content_type(),
+                             "text/calendar")
+            self.assertIn("butbutbut-favoris.ics",
+                          response.headers["Content-Disposition"])
+        self.assertIn("BEGIN:VCALENDAR\r\n", page)
+        self.assertIn("UID:401@butbutbut.local\r\n", page)
+
+    def test_favorites_reject_bad_queries(self):
+        paths = ("/api/v1/favorites",
+                 "/api/v1/favorites.ics",
+                 "/api/v1/favorites?team=",
+                 "/api/v1/favorites?team=H401&limit=0",
+                 "/api/v1/favorites?team=H401&extra=1")
+        for path in paths:
+            with self.subTest(path=path), self.assertRaises(
+                    urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:{}{}".format(
+                        self.server.server_address[1], path), timeout=2)
+            self.assertEqual(caught.exception.code, 400)
+            caught.exception.close()
 
     def test_api_state_is_unchanged(self):
         _status, _headers, body = self.get("/api/state")
