@@ -56,6 +56,81 @@ cle et non un decalage : elle ne charge pas tout l'historique en memoire. Un
 curseur est lie a ses filtres `from` et `to` ; le reutiliser avec d'autres
 bornes rend HTTP 400. A la derniere page, `next_cursor` vaut `null`.
 
+### Fiche d'un match
+
+Le compagnon expose aussi la lecture directe d'un match deja present dans le
+stockage, sans parcourir les pages du flux :
+
+```bash
+curl 'http://127.0.0.1:8765/api/v1/match?id=401'
+```
+
+La reponse contient `schema_version`, `generated_at`, `spoiler_free` et
+`match`. L'objet `match` reprend exactement la representation normalisee du
+flux, avec la metadonnee de competition la plus recente. Un identifiant absent
+rend HTTP 404 et un parametre absent ou ambigu rend HTTP 400.
+
+Quand le retard de streaming est actif et que le match est en direct,
+`spoiler_free` vaut `true`. La fiche ne publie alors que l'identifiant, la
+competition, les deux equipes, l'heure de debut et le statut : score, minute,
+actions et statistiques restent volontairement masques.
+
+### Fiche d'une competition
+
+L'explorateur local lit une edition complete avec ses matchs et ses
+classements :
+
+```bash
+curl 'http://127.0.0.1:8765/api/v1/competition?id=fifa.world&edition=2022'
+```
+
+`edition` est optionnel ; sans lui, l'edition qui porte le match le plus recent
+est choisie. La reponse contient `competition`, l'`edition` selectionnee, la
+liste `editions`, les `matches` chronologiques et les `standings` officiels de
+cette edition. Un identifiant de competition ou d'edition inconnu rend HTTP
+404. L'index local `(competition, edition, date)` evite de parcourir tout
+l'historique a chaque ouverture.
+
+Pendant une synchronisation de streaming, chaque match en direct de cette
+fiche porte `spoiler_free: true` et perd, comme le Match Center, score brut,
+minute, actions et statistiques. Les matchs termines et a venir restent
+inchanges.
+
+### Fiche d'une equipe
+
+La route equipe rassemble son historique local dans toutes les competitions :
+
+```bash
+curl 'http://127.0.0.1:8765/api/v1/team?id=176'
+```
+
+La reponse contient `team`, les `competitions` rencontrees, le bilan `record`,
+la `form` des cinq derniers matchs termines et les `matches` chronologiques.
+Le bilan compte uniquement les rencontres terminees et utilise le vainqueur
+officiel lorsqu'un score reste egal apres une seance de tirs au but. Un
+identifiant inconnu rend HTTP 404.
+
+Deux index locaux, un par camp, evitent de parcourir l'historique complet. Ils
+sont alimentes a chaque releve et reconstruits automatiquement lors de la
+premiere ouverture d'une ancienne base. Les matchs en direct y respectent le
+meme champ `spoiler_free` et le meme masquage que les autres vues detaillees.
+
+### Face-a-face
+
+Deux equipes deja rencontrees peuvent etre comparees sans requete distante :
+
+```bash
+curl 'http://127.0.0.1:8765/api/v1/head-to-head?team=176&opponent=160'
+```
+
+La reponse conserve l'ordre demande dans `first_team` et `second_team`, puis
+fournit leurs `competitions`, leur `record` commun et les `matches`
+chronologiques. Le bilan compte victoires, nuls et buts de chaque camp sur les
+seuls matchs termines. Il utilise `winner_team_external_id` pour ne pas lire
+une victoire aux tirs au but comme un nul. Deux identifiants identiques rendent
+HTTP 400 ; une paire sans rencontre connue rend HTTP 404. Le masque du direct
+est identique a celui des fiches match, competition et equipe.
+
 Les champs historiques `external_id` des competitions, matchs et equipes sont
 conserves sans changement. Les nouveaux identifiants de structure sont des
 chaines opaques : un consommateur ne doit dependre ni de leur forme, ni d'une

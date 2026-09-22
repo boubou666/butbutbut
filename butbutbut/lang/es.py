@@ -685,4 +685,16 @@ MESSAGES = {
         'no queda ninguna competicion que seguir tras las exclusiones.',
     'butbutbut : impossible de verifier les equipes (source injoignable), on continue sans verification.':
         'butbutbut : no se pueden comprobar los equipos (fuente inaccesible), se continua sin comprobar.',
+    "exporte les prochains matchs en calendrier iCalendar. Sans rien : les {} prochains jours ; '--calendar om' cible une equipe":
+        "exporta los proximos partidos como calendario iCalendar. Sin valor: los proximos {} dias; '--calendar om' selecciona un equipo",
+    'chemin .ics de --calendar (defaut : butbutbut.ics dans le dossier courant)':
+        'ruta .ics de --calendar (por defecto: butbutbut.ics en la carpeta actual)',
+    "butbutbut : aucune competition n'a repondu : calendrier impossible.":
+        'butbutbut : ninguna competicion respondio: calendario imposible.',
+    'butbutbut : calendrier impossible : {}':
+        'butbutbut : calendario imposible : {}',
+    'butbutbut : calendrier -> {} ({} match(s), {} jour(s))':
+        'butbutbut : calendario -> {} ({} partido(s), {} dia(s))',
+    '  (le calendrier est incomplet ; les autres competitions ont repondu)':
+        '  (el calendario esta incompleto; las otras competiciones respondieron)',
 }

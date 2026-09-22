@@ -7,6 +7,29 @@ et le projet respecte le [versionnage semantique](https://semver.org/lang/fr/).
 
 ## [Non publie]
 
+## [1.27.0] - 2026-09-22
+
+### Ajoute
+
+- L'ecran compagnon ouvre maintenant un Match Center dedie depuis un match en
+  direct ou un souvenir : score, statut, contexte de competition, chronologie
+  et statistiques comparatives y sont reunis sans ressource distante.
+- `GET /api/v1/match?id=...` fournit la fiche normalisee d'un match sans
+  parcourir le flux pagine. Pendant une synchronisation de streaming, sa vue
+  masque le score brut, la minute, les actions et les statistiques du direct.
+- `--calendar [EQUIPE|JOURS]` exporte les prochains matchs au format iCalendar,
+  avec des UID stables, les horaires UTC, le lieu et le tour disponibles. La
+  GUI propose le meme export et `--calendar-output` choisit le fichier `.ics`.
+- Le Match Center ouvre maintenant un explorateur de competition : editions,
+  classements officiels et rencontres par phase, groupe ou tour. La route
+  `GET /api/v1/competition` sert la meme vue avec un index local par edition.
+- Les noms d'equipe ouvrent maintenant une fiche club avec bilan, buts, forme,
+  competitions, calendrier et derniers resultats. `GET /api/v1/team` expose
+  la meme vue, indexee par camp et protegee par le masque anti-spoiler.
+- Chaque Match Center ouvre maintenant un face-a-face : victoires, nuls, buts
+  et douze dernieres confrontations. `GET /api/v1/head-to-head` respecte
+  l'ordre des equipes, le vainqueur officiel et le masque anti-spoiler.
+
 ## [1.26.0] - 2026-09-21
 
 ### Ajoute
@@ -2397,7 +2420,8 @@ Premiere version.
 - 113 tests, sans reseau ni ecran : la source est simulee, la geometrie de
   l'empilement est testee sans tkinter.
 
-[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.26.0...HEAD
+[Non publie]: https://github.com/boubou666/butbutbut/compare/v1.27.0...HEAD
+[1.27.0]: https://github.com/boubou666/butbutbut/compare/v1.26.0...v1.27.0
 [1.26.0]: https://github.com/boubou666/butbutbut/compare/v1.25.0...v1.26.0
 [1.25.0]: https://github.com/boubou666/butbutbut/compare/v1.24.0...v1.25.0
 [1.24.0]: https://github.com/boubou666/butbutbut/compare/v1.23.1...v1.24.0

@@ -159,6 +159,7 @@ def _match_row(match) -> dict:
 def _event_row(event) -> dict:
     """La forme publique d'une alerte, pour l'ecran compagnon."""
     return {
+        "match_id": str(event.match.id),
         "at": event.at,
         "kind": event.kind,
         "title": event.title,

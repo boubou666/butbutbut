@@ -113,6 +113,18 @@ ACTIONS: Tuple[ActionSpec, ...] = (
             hint="Exemples : om, psg, 14 ou om,psg,3. Vide = 7 jours."),),
         button="Rechercher"),
     ActionSpec(
+        "calendar", "Exporter le calendrier", "MATCHS",
+        "Cree un fichier .ics des prochains matchs, importable dans un agenda.",
+        "--calendar", fields=(
+            FieldSpec(
+                "query", "Equipe ou nombre de jours", "text", "", None,
+                hint="Exemples : om, 60 ou om,90. Vide = 30 jours."),
+            FieldSpec(
+                "calendar_output", "Fichier de destination", "save_file",
+                "butbutbut.ics", "--calendar-output", required=True,
+                hint="Format iCalendar compatible Apple, Google et Outlook."),
+        ), button="Exporter"),
+    ActionSpec(
         "table", "Classements", "MATCHS",
         "Affiche les classements suivis ou surligne une equipe dans le sien.",
         "--table", fields=(FieldSpec(

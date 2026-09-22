@@ -93,6 +93,14 @@ class TestContract(SiteFeedCase):
         self.assertEqual(row["events"][0]["external_id"], "espn-event-9")
         self.assertEqual(row["home_statistics"]["totalShots"], 12.0)
 
+    def test_one_match_can_be_read_directly_with_fresh_competition_metadata(self):
+        match = self.matches(event(match_id="401"))[0]
+        self.store.upsert([self.league], [match])
+        self.assertEqual(self.store.get_match("401")["external_id"], "401")
+        self.assertEqual(
+            self.store.get_match("401")["competition"]["name"], "Ligue 1")
+        self.assertIsNone(self.store.get_match("missing"))
+
     def test_absent_structure_is_null_not_invented(self):
         row = site_feed.normalize_match(self.matches(event())[0])
         for key in ("edition_external_id", "edition_name", "phase_kind",
@@ -194,6 +202,57 @@ class TestOfficialCompetitionStructure(SiteFeedCase):
         })
         self.assertIsNone(beta["penalties"])
 
+    def test_one_competition_exposes_its_editions_matches_and_tables(self):
+        self.normalized_feed()
+        detail = self.store.competition_detail("test.cup")
+        self.assertEqual(detail["competition"]["name"], "Test Cup")
+        self.assertEqual(detail["edition"]["external_id"], "2026")
+        self.assertEqual(detail["edition"]["match_count"], 3)
+        self.assertEqual(
+            [row["external_id"] for row in detail["matches"]],
+            ["group-1", "r16-1", "qf-1"])
+        self.assertEqual(len(detail["standings"]), 1)
+        with self.assertRaises(site_feed.NotFound):
+            self.store.competition_detail("test.cup", edition_id="1900")
+
+    def test_one_team_exposes_its_record_form_and_matches(self):
+        self.normalized_feed()
+        detail = self.store.team_detail("alpha")
+        self.assertEqual(detail["team"]["name"], "Alpha")
+        self.assertEqual(detail["record"], {
+            "played": 2, "won": 1, "drawn": 1, "lost": 0,
+            "goals_for": 3, "goals_against": 3,
+        })
+        self.assertEqual(detail["form"], ["D", "W"])
+        self.assertEqual(
+            [row["external_id"] for row in detail["matches"]],
+            ["group-1", "r16-1", "qf-1"])
+        self.assertEqual(
+            [row["external_id"] for row in detail["competitions"]],
+            ["test.cup"])
+        self.assertIsNone(self.store.team_detail("missing"))
+
+    def test_a_penalty_shootout_uses_the_official_winner_in_team_form(self):
+        self.normalized_feed()
+        detail = self.store.team_detail("gamma")
+        self.assertEqual(detail["record"]["lost"], 1)
+        self.assertEqual(detail["record"]["drawn"], 0)
+        self.assertEqual(detail["form"], ["L"])
+
+    def test_head_to_head_uses_the_official_winner_and_requested_order(self):
+        self.normalized_feed()
+        detail = self.store.head_to_head("gamma", "alpha")
+        self.assertEqual(detail["first_team"]["name"], "Gamma")
+        self.assertEqual(detail["second_team"]["name"], "Alpha")
+        self.assertEqual(detail["record"], {
+            "played": 1, "first_wins": 0, "draws": 0,
+            "second_wins": 1, "first_goals": 2, "second_goals": 2,
+        })
+        self.assertEqual(
+            [row["external_id"] for row in detail["matches"]], ["r16-1"])
+        self.assertIsNone(self.store.head_to_head("alpha", "missing"))
+        self.assertIsNone(self.store.head_to_head("alpha", "alpha"))
+
     def test_a_live_score_update_does_not_erase_backfilled_structure(self):
         self.normalized_feed()
         live = espn.parse(self.fixture["scoreboard"], self.league)
@@ -270,6 +329,33 @@ class TestPagination(SiteFeedCase):
 
 
 class TestBackfill(SiteFeedCase):
+    def test_a_legacy_match_table_is_indexed_by_edition_once(self):
+        path = self.root / "legacy-matches.sqlite3"
+        match = site_feed.normalize_match(
+            self.matches(event(match_id="legacy"))[0])
+        with closing(sqlite3.connect(str(path))) as db, db:
+            db.execute("CREATE TABLE competitions (external_id TEXT PRIMARY KEY, "
+                       "payload TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            db.execute("CREATE TABLE matches (external_id TEXT PRIMARY KEY, "
+                       "competition_id TEXT NOT NULL, starts_at TEXT NOT NULL, "
+                       "payload TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            db.execute("INSERT INTO competitions VALUES (?, ?, ?)", (
+                "fra.1", json.dumps(match["competition"]), "2026-01-01T00:00:00Z"))
+            db.execute("INSERT INTO matches VALUES (?, ?, ?, ?, ?)", (
+                "legacy", "fra.1", match["starts_at"], json.dumps(match),
+                "2026-01-01T00:00:00Z"))
+
+        legacy = site_feed.Store(path)
+        detail = legacy.competition_detail("fra.1")
+        self.assertEqual(detail["matches"][0]["external_id"], "legacy")
+        with closing(sqlite3.connect(str(path))) as db:
+            edition_id, home_id, away_id = db.execute(
+                "SELECT edition_id, home_team_id, away_team_id FROM matches "
+                "WHERE external_id='legacy'"
+            ).fetchone()
+        self.assertEqual(edition_id, "2026")
+        self.assertEqual((home_id, away_id), ("Hlegacy", "Alegacy"))
+
     def test_an_old_completed_period_is_renormalized_once(self):
         path = self.root / "legacy.sqlite3"
         with closing(sqlite3.connect(str(path))) as db, db:
@@ -378,6 +464,87 @@ class TestHttp(SiteFeedCase):
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(url, timeout=2)
         self.assertEqual(caught.exception.code, 400)
+        caught.exception.close()
+
+    def test_one_match_has_a_dedicated_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", state="in", home_score=2, away_score=1)))
+        status, _headers, body = self.get("/api/v1/match?id=401")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["match"]["external_id"], "401")
+        self.assertEqual(body["match"]["home_score"], 2)
+        self.assertFalse(body["spoiler_free"])
+
+    def test_the_match_endpoint_rejects_missing_or_unknown_ids(self):
+        for path, code in (("/api/v1/match", 400),
+                           ("/api/v1/match?id=missing", 404)):
+            with self.subTest(path=path), self.assertRaises(
+                    urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:{}{}".format(
+                        self.server.server_address[1], path), timeout=2)
+            self.assertEqual(caught.exception.code, code)
+            caught.exception.close()
+
+    def test_one_competition_has_a_dedicated_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(match_id="401")))
+        status, _headers, body = self.get(
+            "/api/v1/competition?id=fra.1")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["competition"]["external_id"], "fra.1")
+        self.assertEqual(body["matches"][0]["external_id"], "401")
+        self.assertEqual(body["edition"]["match_count"], 1)
+
+    def test_one_team_has_a_dedicated_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", state="post", status_name="STATUS_FULL_TIME",
+            home_score=2, away_score=1)))
+        status, _headers, body = self.get("/api/v1/team?id=H401")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["team"]["name"], "Angers")
+        self.assertEqual(body["record"]["won"], 1)
+        self.assertEqual(body["matches"][0]["external_id"], "401")
+
+    def test_two_teams_have_a_head_to_head_endpoint(self):
+        self.store.upsert([self.league], self.matches(event(
+            match_id="401", state="post", status_name="STATUS_FULL_TIME",
+            home_score=2, away_score=1)))
+        status, _headers, body = self.get(
+            "/api/v1/head-to-head?team=H401&opponent=A401")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["first_team"]["name"], "Angers")
+        self.assertEqual(body["second_team"]["name"], "Stade Rennais")
+        self.assertEqual(body["record"]["first_wins"], 1)
+
+    def test_head_to_head_rejects_invalid_or_unknown_pairs(self):
+        for path, code in (("/api/v1/head-to-head?team=a&opponent=a", 400),
+                           ("/api/v1/head-to-head?team=a&opponent=b", 404)):
+            with self.subTest(path=path), self.assertRaises(
+                    urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:{}{}".format(
+                        self.server.server_address[1], path), timeout=2)
+            self.assertEqual(caught.exception.code, code)
+            caught.exception.close()
+
+    def test_the_team_endpoint_rejects_missing_or_unknown_ids(self):
+        for path, code in (("/api/v1/team", 400),
+                           ("/api/v1/team?id=missing", 404)):
+            with self.subTest(path=path), self.assertRaises(
+                    urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(
+                    "http://127.0.0.1:{}{}".format(
+                        self.server.server_address[1], path), timeout=2)
+            self.assertEqual(caught.exception.code, code)
+            caught.exception.close()
+
+    def test_the_competition_endpoint_rejects_an_unknown_edition(self):
+        self.store.upsert([self.league], self.matches(event(match_id="401")))
+        url = "http://127.0.0.1:{}/api/v1/competition?id=fra.1&edition=1900".format(
+            self.server.server_address[1])
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(url, timeout=2)
+        self.assertEqual(caught.exception.code, 404)
         caught.exception.close()
 
 

@@ -459,7 +459,8 @@ class TestNoOptionIsForgotten(unittest.TestCase):
     # ce sont des sessions, pas des reglages - personne ne veut que tous ses
     # samedis soirs partent sur le disque parce que la cle est restee la.
     ACTIONS = {
-        "test", "test_hook", "scores", "next", "table", "status", "stop",
+        "test", "test_hook", "scores", "next", "calendar",
+        "calendar_output", "table", "status", "stop",
         "paths", "screens", "today", "week", "month", "since", "top_scorers",
         "stats", "export", "list_leagues", "list_teams", "regen_sound",
         "write_config", "config", "update", "check_update", "dev", "record",
